@@ -1,0 +1,109 @@
+# NBA Analytics Platform
+
+COMS3011A Project 3 (Sport Analytics Tool), built for the NBA.
+
+An event-derived stats platform: every published statistic (points per game,
+shooting splits, etc.) is computed from per-game boxscore rows rather than
+typed in directly, satisfying the brief's core requirement that statistics
+trace back to underlying event records.
+
+## Structure
+
+Non-monolithic front-end/back-end, per the brief's key requirements:
+
+```
+apps/
+  api/    Express + TypeScript + Prisma + Postgres — hand-written REST API
+  web/    React + Vite + TypeScript + Tailwind — frontend SPA
+docs/     Documentation site (to be set up with Docusaurus/MkDocs)
+```
+
+The two apps only ever communicate over HTTP. `apps/web` is a plain Vite SPA
+(not Next.js/SvelteKit), so there is no framework-level coupling between
+front and back end.
+
+## Prerequisites
+
+- Node.js 20+
+- Docker (for local Postgres)
+
+## Getting started
+
+1. **Start Postgres:**
+
+   ```bash
+   docker compose up -d postgres
+   ```
+
+   This runs Postgres on `localhost:55432` (not 5432, to avoid clashing with
+   any Postgres already installed on your machine — see `docker-compose.yml`).
+
+2. **Set up the API:**
+
+   ```bash
+   cd apps/api
+   cp .env.example .env
+   npm install
+   npm run prisma:migrate   # creates tables
+   npm run prisma:seed      # loads mock NBA players/teams/games/stats
+   npm run dev              # starts on http://localhost:4000
+   ```
+
+3. **Set up the frontend** (in a separate terminal):
+
+   ```bash
+   cd apps/web
+   npm install
+   npm run dev               # starts on http://localhost:5173
+   ```
+
+   The Vite dev server proxies `/api/*` to `http://localhost:4000`, so the
+   frontend never needs to know the API's real port.
+
+4. Open http://localhost:5173 and browse to **Players** to see seeded mock
+   NBA data (LeBron James, Stephen Curry, Jayson Tatum, Giannis
+   Antetokounmpo) with derived season averages.
+
+## Current state of this scaffold
+
+This is a base scaffold, not the finished product. What's wired up:
+
+- **Auth**: sign up, sign in, sign out, password reset, delete account —
+  via Passport.js (local strategy) + bcrypt + server-side sessions. RBAC
+  roles (`PUBLIC`, `USER`, `ANALYST`, `ADMIN`) exist on the `User` model and
+  are enforced in Express middleware (`requireRole`), not the database.
+- **API**: versioned under `/v1/`, with pagination, a consistent JSON error
+  envelope (`{ error: { code, message } }`), and routes for players, teams,
+  and derived per-player season stats.
+- **Data**: Prisma schema models teams, players, games, raw `GameEvent`
+  rows, and per-game `PlayerGameStat` boxscores. Season averages
+  (`apps/api/src/services/statsService.ts`) are computed from those boxscore
+  rows at request time — nothing is stored as a pre-computed total.
+- **Mock data only.** `prisma/seed.ts` generates a handful of players and
+  five games' worth of made-up boxscores so the UI has something to render.
+  **Real NBA data ingestion via `nba_api` (Python) is not yet built** — see
+  the NBA pitch doc for the intended approach (a separate Python ingestion
+  script writing into this same Postgres database, keeping Express as the
+  only thing that talks to the database over HTTP-facing requests).
+- **Frontend**: dark-themed dashboard shell — sidebar nav, players list,
+  and a player profile page (stat tiles, a traits radar chart, a points
+  trend line chart) built with Recharts + Tailwind.
+
+## What's not done yet (follow-up tasks for the team)
+
+- Real `nba_api` ingestion pipeline (Python) writing into Postgres.
+- Second external API integration (brief requirement — e.g. an
+  injury/news feed).
+- Documentation site (Docusaurus/MkDocs on GitHub Pages).
+- CI/CD (lint, typecheck, test, deploy on PR/merge).
+- Automated tests (this scaffold has no test suite yet — `vitest` and
+  `supertest` are installed in `apps/api` but unused).
+- Responsiveness/accessibility pass (axe-core, keyboard nav).
+- Production deployment.
+
+## AI usage
+
+See `docs/AI_USAGE.md` for the attribution ledger. This scaffold (backend,
+schema, seed data, frontend, and this README) was generated with
+Claude Code [Claude Sonnet 5], per the brief's AI attribution requirement.
+Log any further AI-assisted changes there as you make them.

@@ -1,0 +1,116 @@
+// Prisma schema for the NBA Analytics Platform.
+// Postgres is used purely as managed storage — all reads/writes go through
+// this hand-written Express API, nothing is exposed directly to clients.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PUBLIC
+  USER
+  ANALYST
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Team {
+  id           String   @id @default(uuid())
+  nbaTeamId    Int      @unique
+  name         String
+  abbreviation String
+  city         String
+  conference   String
+  division     String
+  logoUrl      String?
+
+  players Player[]
+  homeGames Game[] @relation("HomeTeam")
+  awayGames Game[] @relation("AwayTeam")
+}
+
+model Player {
+  id           String   @id @default(uuid())
+  nbaPlayerId  Int      @unique
+  firstName    String
+  lastName     String
+  position     String
+  heightInches Int?
+  weightLbs    Int?
+  jerseyNumber String?
+  headshotUrl  String?
+  teamId       String?
+  team         Team?    @relation(fields: [teamId], references: [id])
+
+  gameStats PlayerGameStat[]
+}
+
+model Game {
+  id           String   @id @default(uuid())
+  nbaGameId    String   @unique
+  gameDate     DateTime
+  season       String
+  homeTeamId   String
+  awayTeamId   String
+  homeTeam     Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam     Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeScore    Int?
+  awayScore    Int?
+
+  playerStats  PlayerGameStat[]
+  events       GameEvent[]
+}
+
+// Raw play-by-play events — the source of truth every derived stat traces back to.
+model GameEvent {
+  id          String   @id @default(uuid())
+  gameId      String
+  game        Game     @relation(fields: [gameId], references: [id])
+  sequence    Int
+  period      Int
+  clock       String
+  eventType   String
+  playerId    String?
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([gameId, sequence])
+}
+
+// Per-game boxscore figures — derived from GameEvent rows, never entered by hand.
+model PlayerGameStat {
+  id        String  @id @default(uuid())
+  playerId  String
+  player    Player  @relation(fields: [playerId], references: [id])
+  gameId    String
+  game      Game    @relation(fields: [gameId], references: [id])
+
+  minutes      Int
+  points       Int
+  rebounds     Int
+  assists      Int
+  steals       Int
+  blocks       Int
+  turnovers    Int
+  fieldGoalsMade Int
+  fieldGoalsAttempted Int
+  threesMade   Int
+  threesAttempted Int
+  freeThrowsMade Int
+  freeThrowsAttempted Int
+
+  @@unique([playerId, gameId])
+}

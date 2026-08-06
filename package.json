@@ -1,0 +1,13 @@
+{
+  "name": "nba-analytics-platform",
+  "private": true,
+  "description": "COMS3011A Sport Analytics Tool — NBA. See README.md for setup.",
+  "scripts": {
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "api:install": "npm install --prefix apps/api",
+    "api:dev": "npm run dev --prefix apps/api",
+    "web:install": "npm install --prefix apps/web",
+    "web:dev": "npm run dev --prefix apps/web"
+  }
+}
