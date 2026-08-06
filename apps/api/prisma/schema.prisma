@@ -1,6 +1,6 @@
 // Prisma schema for the NBA Analytics Platform.
 // Postgres is used purely as managed storage — all reads/writes go through
-// this hand-written Express API, nothing is exposed directly to clients.
+// this NestJS API, nothing is exposed directly to clients.
 
 generator client {
   provider = "prisma-client-js"

@@ -13,7 +13,7 @@ Non-monolithic front-end/back-end, per the brief's key requirements:
 
 ```
 apps/
-  api/    Express + TypeScript + Prisma + Postgres — hand-written REST API
+  api/    NestJS + TypeScript + Prisma + Postgres — REST API
   web/    React + Vite + TypeScript + Tailwind — frontend SPA
 docs/     Documentation site (to be set up with Docusaurus/MkDocs)
 ```
@@ -69,12 +69,15 @@ front and back end.
 This is a base scaffold, not the finished product. What's wired up:
 
 - **Auth**: sign up, sign in, sign out, password reset, delete account —
-  via Passport.js (local strategy) + bcrypt + server-side sessions. RBAC
-  roles (`PUBLIC`, `USER`, `ANALYST`, `ADMIN`) exist on the `User` model and
-  are enforced in Express middleware (`requireRole`), not the database.
+  via Passport.js (local strategy, wired through `@nestjs/passport`) +
+  bcrypt + server-side sessions. RBAC roles (`PUBLIC`, `USER`, `ANALYST`,
+  `ADMIN`) exist on the `User` model and are enforced via a Nest `RolesGuard`,
+  not the database. (Passport local auth is a placeholder — see "not done
+  yet" below for the planned move to BetterAuth + Google OAuth.)
 - **API**: versioned under `/v1/`, with pagination, a consistent JSON error
-  envelope (`{ error: { code, message } }`), and routes for players, teams,
-  and derived per-player season stats.
+  envelope (`{ error: { code, message } }`) via a global Nest exception
+  filter, and routes for players, teams, and derived per-player season
+  stats.
 - **Data**: Prisma schema models teams, players, games, raw `GameEvent`
   rows, and per-game `PlayerGameStat` boxscores. Season averages
   (`apps/api/src/services/statsService.ts`) are computed from those boxscore
@@ -83,14 +86,17 @@ This is a base scaffold, not the finished product. What's wired up:
   five games' worth of made-up boxscores so the UI has something to render.
   **Real NBA data ingestion via `nba_api` (Python) is not yet built** — see
   the NBA pitch doc for the intended approach (a separate Python ingestion
-  script writing into this same Postgres database, keeping Express as the
-  only thing that talks to the database over HTTP-facing requests).
+  script writing into this same Postgres database, keeping the NestJS API as
+  the only thing that talks to the database over HTTP-facing requests).
 - **Frontend**: dark-themed dashboard shell — sidebar nav, players list,
   and a player profile page (stat tiles, a traits radar chart, a points
   trend line chart) built with Recharts + Tailwind.
 
 ## What's not done yet (follow-up tasks for the team)
 
+- Auth: swap Passport local-strategy for BetterAuth + Google OAuth.
+- Frontend: adopt TanStack Query for data fetching and shadcn/ui for
+  components (currently plain `fetch` + hand-rolled UI).
 - Real `nba_api` ingestion pipeline (Python) writing into Postgres.
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
