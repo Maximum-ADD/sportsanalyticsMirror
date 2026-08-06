@@ -1,37 +1,41 @@
 import "reflect-metadata";
 import "dotenv/config";
 import { NestFactory } from "@nestjs/core";
-import cookieParser from "cookie-parser";
+import { ExpressAdapter } from "@nestjs/platform-express";
+import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
-import session from "express-session";
+import expressFactory from "express";
 import helmet from "helmet";
-import passport from "passport";
+import { auth } from "./auth/auth.config.js";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter.js";
 import { AppModule } from "./app.module.js";
 
-const SESSION_COOKIE_MAX_AGE_IN_MILLISECONDS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const DEFAULT_PORT = 4000;
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Built and wired up manually, then handed to Nest via ExpressAdapter,
+  // because NestFactory.create() attaches Nest's own router (including the
+  // catch-all NotFoundController) to the Express instance immediately, as
+  // part of creating the app — anything added to that instance afterwards,
+  // including the BetterAuth handler, would never be reached.
+  const server = expressFactory();
 
-  app.use(helmet());
-  app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
-    credentials: true,
-  });
-  app.use(cookieParser());
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
-      resave: false,
-      saveUninitialized: false,
-      cookie: { httpOnly: true, sameSite: "lax", maxAge: SESSION_COOKIE_MAX_AGE_IN_MILLISECONDS },
+  server.use(helmet());
+  server.use(
+    cors({
+      origin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
+      credentials: true,
     })
   );
-  app.use(passport.initialize());
-  app.use(passport.session());
 
+  // BetterAuth (session cookies, Google OAuth redirects) owns every request
+  // under /auth — see auth/auth.config.ts for the basePath. It needs the
+  // raw, unparsed body, so it's mounted ahead of express.json().
+  server.all("/auth/*splat", toNodeHandler(auth));
+
+  server.use(expressFactory.json());
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { bodyParser: false });
   app.useGlobalFilters(new AllExceptionsFilter());
 
   const port = Number(process.env.PORT) || DEFAULT_PORT;

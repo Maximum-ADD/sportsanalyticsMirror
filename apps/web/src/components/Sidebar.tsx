@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { AuthStatus } from "./AuthStatus";
 
 const NAV_LINKS = [
   { to: "/", label: "Home" },
@@ -8,7 +9,7 @@ const NAV_LINKS = [
 
 export function Sidebar() {
   return (
-    <aside className="w-60 shrink-0 border-r border-border-subtle bg-surface-raised px-4 py-6">
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border-subtle bg-surface-raised px-4 py-6">
       <div className="mb-8 px-2 text-lg font-semibold text-text-primary">
         NBA Analytics
       </div>
@@ -30,6 +31,9 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <div className="mt-auto pt-6">
+        <AuthStatus />
+      </div>
     </aside>
   );
 }

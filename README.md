@@ -49,6 +49,14 @@ front and back end.
    npm run dev              # starts on http://localhost:4000
    ```
 
+   Sign-in uses Google OAuth via BetterAuth, which needs a client set up at
+   the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   (authorized redirect URI: `http://localhost:4000/auth/callback/google`) —
+   put its ID/secret in `.env` as `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
+   Without them the API still runs (everything except signing in works, and
+   `/v1/*` currently doesn't require a session anyway), it just logs a
+   startup warning.
+
 3. **Set up the frontend** (in a separate terminal):
 
    ```bash
@@ -68,12 +76,15 @@ front and back end.
 
 This is a base scaffold, not the finished product. What's wired up:
 
-- **Auth**: sign up, sign in, sign out, password reset, delete account —
-  via Passport.js (local strategy, wired through `@nestjs/passport`) +
-  bcrypt + server-side sessions. RBAC roles (`PUBLIC`, `USER`, `ANALYST`,
-  `ADMIN`) exist on the `User` model and are enforced via a Nest `RolesGuard`,
-  not the database. (Passport local auth is a placeholder — see "not done
-  yet" below for the planned move to BetterAuth + Google OAuth.)
+- **Auth**: Google OAuth via [BetterAuth](https://better-auth.com), mounted
+  at `/auth/*` directly on the Express instance (ahead of Nest's own
+  routing — see `apps/api/src/main.ts`) so it owns session cookies and the
+  OAuth redirect flow. A Nest `SessionAuthGuard` looks up the current
+  BetterAuth session on protected routes; RBAC roles (`PUBLIC`, `USER`,
+  `ANALYST`, `ADMIN`) live on the `User` model as a custom BetterAuth field
+  (not settable via sign-up/OAuth profile) and are enforced by a Nest
+  `RolesGuard`, not the database. No route currently requires a role above
+  the default `USER`.
 - **API**: versioned under `/v1/`, with pagination, a consistent JSON error
   envelope (`{ error: { code, message } }`) via a global Nest exception
   filter, and routes for players, teams, and derived per-player season
@@ -94,9 +105,10 @@ This is a base scaffold, not the finished product. What's wired up:
 
 ## What's not done yet (follow-up tasks for the team)
 
-- Auth: swap Passport local-strategy for BetterAuth + Google OAuth.
-- Frontend: adopt TanStack Query for data fetching and shadcn/ui for
-  components (currently plain `fetch` + hand-rolled UI).
+- Frontend: wire up the Google sign-in button/flow against BetterAuth (the
+  backend is ready — see Auth above — but no UI calls it yet); adopt
+  TanStack Query for data fetching and shadcn/ui for components (currently
+  plain `fetch` + hand-rolled UI).
 - Real `nba_api` ingestion pipeline (Python) writing into Postgres.
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
