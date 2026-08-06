@@ -1,21 +1,23 @@
-import { authClient, useSession } from "../lib/authClient";
+import { authClient, useSession } from "@/lib/authClient";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function AuthStatus() {
   const { data: session, isPending } = useSession();
 
   if (isPending) {
-    return <div className="px-2 text-sm text-text-muted">Loading…</div>;
+    return <Skeleton className="h-9 w-full" />;
   }
 
   if (!session) {
     return (
-      <button
+      <Button
         type="button"
+        className="w-full"
         onClick={() => authClient.signIn.social({ provider: "google", callbackURL: window.location.href })}
-        className="w-full rounded-md bg-brand-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-accent-soft"
       >
         Sign in with Google
-      </button>
+      </Button>
     );
   }
 
@@ -24,13 +26,9 @@ export function AuthStatus() {
       <span className="truncate text-sm text-text-secondary" title={session.user.email}>
         {session.user.email}
       </span>
-      <button
-        type="button"
-        onClick={() => authClient.signOut()}
-        className="shrink-0 text-sm font-medium text-text-secondary hover:text-text-primary"
-      >
+      <Button type="button" variant="ghost" size="sm" onClick={() => authClient.signOut()}>
         Sign out
-      </button>
+      </Button>
     </div>
   );
 }

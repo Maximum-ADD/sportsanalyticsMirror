@@ -1,17 +1,25 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface-base: #0b0e14;
-  --color-surface-raised: #12161f;
-  --color-surface-card: #171c27;
-  --color-border-subtle: #232939;
+  /* Dark hardwood court at night: warm near-black surfaces, an NBA-ball
+     orange accent, and off-white "court line" text instead of the previous
+     cool blue palette. */
+  --color-surface-base: #120d09;
+  --color-surface-raised: #1c140d;
+  --color-surface-card: #241a10;
+  --color-border-subtle: #3a2a19;
 
-  --color-brand-accent: #3b82f6;
-  --color-brand-accent-soft: #1d4ed8;
+  --color-brand-accent: #f97316;
+  --color-brand-accent-soft: #ea580c;
+  /* Text/icon color for content sitting on top of a solid brand-accent fill
+     (e.g. primary buttons). White-on-orange measures ~2.8:1 contrast, well
+     under WCAG AA's 4.5:1 — this near-black (matching the basketball seam
+     color) measures ~6.7:1. */
+  --color-brand-accent-foreground: #1a1005;
 
-  --color-text-primary: #f3f5f8;
-  --color-text-secondary: #9aa4b8;
-  --color-text-muted: #616d82;
+  --color-text-primary: #f7f1e8;
+  --color-text-secondary: #baa88f;
+  --color-text-muted: #8a7862;
 }
 
 body {

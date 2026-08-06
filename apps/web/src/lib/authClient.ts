@@ -9,4 +9,4 @@ export const authClient = createAuthClient({
   basePath: "/auth",
 });
 
-export const { useSession, signOut } = authClient;
+export const { useSession } = authClient;
