@@ -113,11 +113,39 @@ This is a base scaffold, not the finished product. What's wired up:
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
 - Documentation site (Docusaurus/MkDocs on GitHub Pages).
-- CI/CD (lint, typecheck, test, deploy on PR/merge).
-- Automated tests (this scaffold has no test suite yet — `vitest` and
-  `supertest` are installed in `apps/api` but unused).
+- CI/CD: tests + coverage run on every push (see Testing below); linting,
+  typechecking, and a deploy stage are still not wired into CI.
 - Responsiveness/accessibility pass (axe-core, keyboard nav).
 - Production deployment.
+
+## Testing
+
+Both apps use Vitest. The backend's tests run against a real (disposable)
+Postgres database rather than a mocked Prisma client, so they exercise
+actual queries.
+
+```bash
+# one-off: start the disposable test database
+npm run db:up:test
+
+# backend — unit tests (pagination, derived-stats math, guards, exception
+# filter) plus supertest e2e tests against a real Postgres instance
+cd apps/api
+cp .env.test.example .env.test   # only needed once
+npm test              # or: npm run test:cov for coverage
+
+# frontend — component/page tests with React Testing Library
+cd apps/web
+npm test               # or: npm run test:cov for coverage
+```
+
+CI (`.gitlab-ci.yml`) runs both suites with coverage on every push against a
+Postgres service container, then merges both apps' coverage into one HTML
+dashboard (`scripts/build-coverage-report.mjs`) — published to GitLab Pages
+on the default branch, and posted as a comment on merge requests. Note: this
+targets **GitLab CI** (matching this repo's `sdp.ms.wits.ac.za` remote), not
+GitHub Actions, and GitLab Pages must be enabled on the project for the
+published dashboard link to work.
 
 ## AI usage
 
