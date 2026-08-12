@@ -4,6 +4,35 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="NBA team and player analytics, with every published statistic derived from per-game event data."
+    />
+
+    <!-- This is a client-rendered SPA, so the hero <img> and the font are not in
+         the served HTML. These preloads start both fetches before the bundle
+         parses, which is why the assets live in public/ at stable paths. -->
+    <link
+      rel="preload"
+      as="image"
+      type="image/avif"
+      imagesrcset="
+        /hero-arena-640.avif   640w,
+        /hero-arena-960.avif   960w,
+        /hero-arena-1440.avif 1440w,
+        /hero-arena-1920.avif 1920w
+      "
+      imagesizes="100vw"
+      fetchpriority="high"
+    />
+    <link
+      rel="preload"
+      href="/fonts/oswald-latin-var.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
     <title>NBA Analytics Platform</title>
   </head>
   <body>

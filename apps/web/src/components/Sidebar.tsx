@@ -3,8 +3,9 @@ import { House, Shield, Users } from "lucide-react";
 import { AuthStatus } from "./AuthStatus";
 import { BasketballIcon } from "./BasketballIcon";
 
+// "/" is the public landing page; the dashboard home lives at /home.
 const NAV_LINKS = [
-  { to: "/", label: "Home", icon: House },
+  { to: "/home", label: "Home", icon: House },
   { to: "/players", label: "Players", icon: Users },
   { to: "/teams", label: "Teams", icon: Shield },
 ];
@@ -18,10 +19,11 @@ export function Sidebar() {
       </div>
       <nav className="flex flex-col gap-1">
         {NAV_LINKS.map((link) => (
+          // No `end` prop: it existed only because NavLink to="/" matched every
+          // path. /home needs no such guard.
           <NavLink
             key={link.to}
             to={link.to}
-            end={link.to === "/"}
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                 isActive

@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* Self-hosted so the headline (the LCP element) does not wait on a Google
+   Fonts round trip. Oswald is OFL-1.1. Latin subset, variable 200-700. */
+@font-face {
+  font-family: "Oswald";
+  src: url("/fonts/oswald-latin-var.woff2") format("woff2-variations");
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Metric-matched stand-in, so font-display: swap does not reflow a ~126px
+   headline when Oswald arrives. */
+@font-face {
+  font-family: "Oswald Fallback";
+  src: local("Arial Narrow"), local("Liberation Sans Narrow"), local("Helvetica Neue");
+  size-adjust: 88%;
+  ascent-override: 105%;
+  descent-override: 26%;
+  line-gap-override: 0%;
+}
+
 @theme {
   /* Dark hardwood court at night: warm near-black surfaces, an NBA-ball
      orange accent, and off-white "court line" text instead of the previous
@@ -17,18 +40,41 @@
      color) measures ~6.7:1. */
   --color-brand-accent-foreground: #1a1005;
 
+  /* Neutral near-black for the landing page's nav bar and background, kept out
+     of the warm court palette above so it does not tint the hero photo. */
+  --color-surface-nav: #1e1e1e;
+
   --color-text-primary: #f7f1e8;
   --color-text-secondary: #baa88f;
   --color-text-muted: #8a7862;
+
+  /* Condensed display face for the landing headline. */
+  --font-display: "Oswald", "Oswald Fallback", "Arial Narrow", "Liberation Sans Narrow", system-ui,
+    sans-serif;
+  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
 body {
   margin: 0;
   background-color: var(--color-surface-base);
   color: var(--color-text-primary);
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Outlined treatment for the headline's third line. The design's near-black
+   measured 1.08:1 against the page; lighting only the glyph edges keeps the
+   hollow look and measures 17.2:1. */
+@utility hero-outline-text {
+  color: transparent;
+  paint-order: stroke fill;
+  -webkit-text-stroke: clamp(1px, 0.16vw, 2.5px) var(--color-text-primary);
+
+  /* Without -webkit-text-stroke the above renders as nothing at all. */
+  @supports not (-webkit-text-stroke: 1px black) {
+    color: var(--color-text-muted);
+  }
 }
