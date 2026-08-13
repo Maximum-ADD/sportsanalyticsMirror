@@ -61,6 +61,24 @@ export interface Game {
   awayScore: number | null;
 }
 
+export interface LineupSlot {
+  id: string;
+  lineupId: string;
+  playerId: string;
+  player: Player;
+  predictedFantasyPoints: number | null;
+  salary: number | null;
+}
+
+export interface Lineup {
+  id: string;
+  totalPredictedPoints: number;
+  totalSalary: number;
+  budget: number;
+  createdAt: string;
+  slots: LineupSlot[];
+}
+
 export interface PagedResult<T> {
   data: T[];
   page: number;

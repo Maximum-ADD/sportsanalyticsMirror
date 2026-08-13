@@ -14,3 +14,7 @@ apps/api/generated/
 coverage/
 coverage-report/
 test-report.json
+
+apps/optimizer/.venv/
+apps/optimizer/__pycache__/
+apps/optimizer/**/__pycache__/

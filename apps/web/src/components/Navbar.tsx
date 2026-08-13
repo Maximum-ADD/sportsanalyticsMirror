@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { House, Shield, Users } from "lucide-react";
+import { House, Shield, Target, Users } from "lucide-react";
 import { AuthStatus } from "./AuthStatus";
 import { BasketballIcon } from "./BasketballIcon";
 import { RecentResultWidget } from "./RecentResultWidget";
@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { to: "/", label: "Home", icon: House },
   { to: "/players", label: "Players", icon: Users },
   { to: "/teams", label: "Teams", icon: Shield },
+  { to: "/optimizer", label: "Optimizer", icon: Target },
 ];
 
 export function Navbar() {

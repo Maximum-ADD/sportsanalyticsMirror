@@ -9,6 +9,9 @@ export const testPrisma = new PrismaClient();
 // schema/migrations. Call from afterEach so specs never depend on leftover
 // state from a previous test.
 export async function resetDatabase() {
+  await testPrisma.lineupSlot.deleteMany();
+  await testPrisma.lineup.deleteMany();
+  await testPrisma.playerPrediction.deleteMany();
   await testPrisma.playerGameStat.deleteMany();
   await testPrisma.gameEvent.deleteMany();
   await testPrisma.game.deleteMany();

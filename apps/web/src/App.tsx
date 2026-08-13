@@ -5,6 +5,7 @@ import { PlayersListPage } from "./pages/PlayersListPage";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage";
 import { TeamsListPage } from "./pages/TeamsListPage";
 import { TeamProfilePage } from "./pages/TeamProfilePage";
+import { OptimizerPage } from "./pages/OptimizerPage";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/players/:playerId" element={<PlayerProfilePage />} />
             <Route path="/teams" element={<TeamsListPage />} />
             <Route path="/teams/:teamId" element={<TeamProfilePage />} />
+            <Route path="/optimizer" element={<OptimizerPage />} />
           </Routes>
         </main>
       </div>
