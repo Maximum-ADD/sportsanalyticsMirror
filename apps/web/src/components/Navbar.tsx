@@ -1,7 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { House, Shield, Users } from "lucide-react";
 import { AuthStatus } from "./AuthStatus";
 import { BasketballIcon } from "./BasketballIcon";
+import { RecentResultWidget } from "./RecentResultWidget";
 
 const NAV_LINKS = [
   { to: "/", label: "Home", icon: House },
@@ -9,14 +10,15 @@ const NAV_LINKS = [
   { to: "/teams", label: "Teams", icon: Shield },
 ];
 
-export function Sidebar() {
+export function Navbar() {
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-border-subtle bg-surface-raised px-4 py-6">
-      <div className="mb-8 flex items-center gap-2 px-2 text-lg font-semibold text-text-primary">
+    <header className="flex h-16 shrink-0 items-center gap-6 border-b border-border-subtle bg-surface-raised px-6">
+      <Link to="/" className="flex shrink-0 items-center gap-2 text-lg font-semibold text-text-primary">
         <BasketballIcon className="size-6 shrink-0" />
         NBA Analytics
-      </div>
-      <nav className="flex flex-col gap-1">
+      </Link>
+
+      <nav className="flex items-center gap-1">
         {NAV_LINKS.map((link) => (
           <NavLink
             key={link.to}
@@ -35,9 +37,11 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="mt-auto pt-6">
+
+      <div className="ml-auto flex items-center gap-4">
+        <RecentResultWidget />
         <AuthStatus />
       </div>
-    </aside>
+    </header>
   );
 }

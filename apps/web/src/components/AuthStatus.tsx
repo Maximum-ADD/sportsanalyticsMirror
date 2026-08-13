@@ -6,14 +6,13 @@ export function AuthStatus() {
   const { data: session, isPending } = useSession();
 
   if (isPending) {
-    return <Skeleton className="h-9 w-full" />;
+    return <Skeleton className="h-9 w-28" />;
   }
 
   if (!session) {
     return (
       <Button
         type="button"
-        className="w-full"
         onClick={() => authClient.signIn.social({ provider: "google", callbackURL: window.location.href })}
       >
         Sign in with Google
@@ -22,8 +21,8 @@ export function AuthStatus() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-2 px-2">
-      <span className="truncate text-sm text-text-secondary" title={session.user.email}>
+    <div className="flex items-center gap-3">
+      <span className="max-w-40 truncate text-sm text-text-secondary" title={session.user.email}>
         {session.user.email}
       </span>
       <Button type="button" variant="ghost" size="sm" onClick={() => authClient.signOut()}>

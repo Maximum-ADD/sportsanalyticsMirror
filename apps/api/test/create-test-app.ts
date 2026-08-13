@@ -1,14 +1,24 @@
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { ExpressAdapter } from "@nestjs/platform-express";
+import expressFactory from "express";
 import { AppModule } from "../src/app.module.js";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
 
-// Boots the real Nest routing tree (players/teams/health/not-found) the same
-// way main.ts does, minus the BetterAuth/Express wiring around it — none of
-// the routes under test require a session, and BetterAuth's own HTTP
+// Boots the real Nest routing tree (players/teams/games/health/not-found)
+// on the same Express 5 instance + ExpressAdapter setup as main.ts, rather
+// than letting NestFactory.create() fall back to its own bundled Express 4.
+// That distinction matters: NotFoundController's catch-all route uses
+// Express 5's "*splat" wildcard syntax (see its own comment for why), which
+// silently fails to match anything under Express 4 — a mismatch that only
+// showed up once these specs were actually wired into the test run. None of
+// the routes under test require a session, so BetterAuth's own HTTP
 // handlers aren't part of what these specs exercise.
 export async function createTestApp(): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const server = expressFactory();
+  server.use(expressFactory.json());
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { logger: false });
   app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();
   return app;

@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Sidebar } from "./components/Sidebar";
+import { Navbar } from "./components/Navbar";
 import { HomePage } from "./pages/HomePage";
 import { PlayersListPage } from "./pages/PlayersListPage";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage";
@@ -9,8 +9,8 @@ import { TeamProfilePage } from "./pages/TeamProfilePage";
 function App() {
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen bg-surface-base">
-        <Sidebar />
+      <div className="flex min-h-screen flex-col bg-surface-base">
+        <Navbar />
         <main className="flex-1">
           <Routes>
             <Route path="/" element={<HomePage />} />
