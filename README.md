@@ -149,7 +149,7 @@ published dashboard link to work.
 
 ## AI usage
 
-See `docs/AI_USAGE.md` for the attribution ledger. This scaffold (backend,
+See `docs/ai-usage.md` for the attribution ledger. This scaffold (backend,
 schema, seed data, frontend, and this README) was generated with
 Claude Code [Claude Sonnet 5], per the brief's AI attribution requirement.
 Log any further AI-assisted changes there as you make them.

@@ -6,7 +6,7 @@ Kept up to date as the project grows; if you change something structural,
 update this file in the same commit.
 
 For team git conventions see [`GIT_METHODOLOGY.md`](./GIT_METHODOLOGY.md).
-For the AI attribution ledger see [`AI_USAGE.md`](./AI_USAGE.md). For
+For the AI attribution ledger see [`ai-usage.md`](./ai-usage.md). For
 step-by-step local setup see the root [`README.md`](../README.md) — this
 doc explains *how things work*, the README explains *how to run them*.
 
@@ -27,7 +27,7 @@ could build on, not a single-team dashboard.
 apps/
   api/    NestJS + TypeScript + Prisma + Postgres — hand-written REST API
   web/    React + Vite + TypeScript + Tailwind — frontend SPA
-docs/     This file, GIT_METHODOLOGY.md, AI_USAGE.md
+docs/     This file, GIT_METHODOLOGY.md, PROJECT_METHODOLOGY.md, ai-usage.md
 scripts/  Coverage-report build/post scripts used by CI
 ```
 
