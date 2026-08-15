@@ -12,7 +12,8 @@ function App() {
     <BrowserRouter>
       <div className="flex min-h-screen flex-col bg-surface-base">
         <Navbar />
-        <main className="flex-1">
+        {/* tabIndex={-1} is what lets the skip link move focus here, not just scroll to it. */}
+        <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/players" element={<PlayersListPage />} />

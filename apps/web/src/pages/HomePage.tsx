@@ -1,14 +1,31 @@
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Free to use under the Unsplash License (no attribution required, credited
 // here anyway as courtesy) — chosen instead of the celebrity photography in
 // the original reference mockup, which is copyrighted press photography we
 // don't have rights to.
-const HERO_PHOTO_URL =
-  "https://images.unsplash.com/photo-1579487685737-e435a87b2518?fm=jpg&q=80&w=1920&auto=format&fit=crop";
+const HERO_PHOTO_ID = "photo-1579487685737-e435a87b2518";
 const HERO_PHOTO_CREDIT = { name: "Logan Weaver", url: "https://unsplash.com/@lgnwvr" };
+
+// The source is a portrait photo (2080x3120) — these crop it to a
+// landscape hero frame (3:2) at each breakpoint via Unsplash's own
+// on-the-fly resizing, rather than shipping locally-built responsive
+// assets: no binary files in the repo, and no risk of quietly re-baking in
+// an unlicensed image the way a local export pipeline could.
+const HERO_WIDTHS = [640, 960, 1440, 1920] as const;
+const HERO_IMAGE_QUALITY = 70;
+
+function heroSrcSet(format: "avif" | "webp" | "jpg"): string {
+  return HERO_WIDTHS.map((width) => {
+    const height = Math.round((width * 2) / 3);
+    return `https://images.unsplash.com/${HERO_PHOTO_ID}?fm=${format}&q=${HERO_IMAGE_QUALITY}&w=${width}&h=${height}&fit=crop&auto=format ${width}w`;
+  }).join(", ");
+}
+
+const HERO_FALLBACK_SRC = `https://images.unsplash.com/${HERO_PHOTO_ID}?fm=jpg&q=${HERO_IMAGE_QUALITY}&w=1920&h=1280&fit=crop&auto=format`;
 
 // Approximates a basketball's pebbled leather grain as a repeating dot
 // pattern, layered under the button's solid brand-accent background.
@@ -20,11 +37,21 @@ const BASKETBALL_TEXTURE_STYLE: CSSProperties = {
 export function HomePage() {
   return (
     <div className="relative overflow-hidden">
-      <img
-        src={HERO_PHOTO_URL}
-        alt="A basketball player dunking in front of a crowd"
-        className="absolute inset-0 size-full object-cover"
-      />
+      <picture>
+        <source type="image/avif" srcSet={heroSrcSet("avif")} sizes="100vw" />
+        <source type="image/webp" srcSet={heroSrcSet("webp")} sizes="100vw" />
+        <img
+          src={HERO_FALLBACK_SRC}
+          // Decorative — the <h1> below names this region, so a screen
+          // reader doesn't need a separate description of the photo.
+          alt=""
+          width={1920}
+          height={1280}
+          decoding="async"
+          fetchPriority="high"
+          className="absolute inset-0 size-full object-cover"
+        />
+      </picture>
       {/* Dark gradient so the headline stays legible over the photo — fades
           from opaque on the left (where the text sits) to lighter on the
           right (where the photo itself should read clearly). */}
@@ -45,10 +72,10 @@ export function HomePage() {
 
       <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-6 py-24 lg:grid-cols-2 lg:py-32">
         <div>
-          <h1 className="text-5xl leading-[0.95] font-black tracking-tight uppercase sm:text-6xl">
+          <h1 className="font-display text-[clamp(2.75rem,6.5vw,5.5rem)] leading-[0.95] font-semibold tracking-tight uppercase">
             <span className="block text-brand-accent">Sports</span>
             <span className="block text-text-primary">Analytics</span>
-            <span className="block text-text-muted">Platform</span>
+            <span className="hero-outline-text block">Platform</span>
           </h1>
           <p className="mt-6 max-w-md text-sm text-text-secondary">
             Browse teams and players and see season stats derived from game
@@ -56,8 +83,11 @@ export function HomePage() {
             produced it.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild size="lg" style={BASKETBALL_TEXTURE_STYLE}>
-              <Link to="/players">Get Started</Link>
+            <Button asChild size="lg" className="group" style={BASKETBALL_TEXTURE_STYLE}>
+              <Link to="/players">
+                Get Started
+                <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
+              </Link>
             </Button>
             <Button asChild size="lg" variant="secondary">
               <Link to="/teams">Browse teams</Link>

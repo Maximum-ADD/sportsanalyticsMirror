@@ -19,10 +19,13 @@ import pulp
 from db import get_connection
 
 LINEUP_SIZE = 5
-SALARY_CAP = 50_000
+SALARY_CAP_IN_DOLLARS = 50_000
+MINIMUM_GUARDS = 1
+MINIMUM_FORWARDS = 1
 
 
 def fetch_latest_predictions(cursor) -> list[dict]:
+    """Reads each player's most recent PlayerPrediction row (by asOf)."""
     cursor.execute(
         """
         SELECT DISTINCT ON (pp."playerId")
@@ -37,15 +40,21 @@ def fetch_latest_predictions(cursor) -> list[dict]:
 
 
 def solve_lineup(players: list[dict]) -> list[dict]:
+    """Solves for the LINEUP_SIZE-player subset maximizing predicted points.
+
+    players must each have player_id/points/salary/position keys (the shape
+    fetch_latest_predictions returns). Raises RuntimeError if no lineup
+    satisfies the salary cap and position-coverage constraints together.
+    """
     problem = pulp.LpProblem("lineup_optimizer", pulp.LpMaximize)
     pick = {p["player_id"]: pulp.LpVariable(f"pick_{p['player_id']}", cat="Binary") for p in players}
 
     problem += pulp.lpSum(pick[p["player_id"]] * p["points"] for p in players)
 
     problem += pulp.lpSum(pick.values()) == LINEUP_SIZE
-    problem += pulp.lpSum(pick[p["player_id"]] * p["salary"] for p in players) <= SALARY_CAP
-    problem += pulp.lpSum(pick[p["player_id"]] for p in players if "G" in p["position"]) >= 1
-    problem += pulp.lpSum(pick[p["player_id"]] for p in players if "F" in p["position"]) >= 1
+    problem += pulp.lpSum(pick[p["player_id"]] * p["salary"] for p in players) <= SALARY_CAP_IN_DOLLARS
+    problem += pulp.lpSum(pick[p["player_id"]] for p in players if "G" in p["position"]) >= MINIMUM_GUARDS
+    problem += pulp.lpSum(pick[p["player_id"]] for p in players if "F" in p["position"]) >= MINIMUM_FORWARDS
 
     status = problem.solve(pulp.PULP_CBC_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":
@@ -55,6 +64,27 @@ def solve_lineup(players: list[dict]) -> list[dict]:
         )
 
     return [p for p in players if pick[p["player_id"]].value() == 1]
+
+
+def save_lineup(cursor, total_points: float, total_salary: int, chosen_players: list[dict]) -> str:
+    """Writes the Lineup row and one LineupSlot per chosen player. Returns the new lineup's id."""
+    lineup_id = str(uuid.uuid4())
+    cursor.execute(
+        """
+        INSERT INTO "Lineup" ("id", "totalPredictedPoints", "totalSalary", "budget")
+        VALUES (%s, %s, %s, %s)
+        """,
+        (lineup_id, total_points, total_salary, SALARY_CAP_IN_DOLLARS),
+    )
+    for player in chosen_players:
+        cursor.execute(
+            """
+            INSERT INTO "LineupSlot" ("id", "lineupId", "playerId")
+            VALUES (%s, %s, %s)
+            """,
+            (str(uuid.uuid4()), lineup_id, player["player_id"]),
+        )
+    return lineup_id
 
 
 def main() -> None:
@@ -72,25 +102,10 @@ def main() -> None:
             total_points = round(sum(p["points"] for p in chosen), 2)
             total_salary = sum(p["salary"] for p in chosen)
 
-            lineup_id = str(uuid.uuid4())
-            cursor.execute(
-                """
-                INSERT INTO "Lineup" ("id", "totalPredictedPoints", "totalSalary", "budget")
-                VALUES (%s, %s, %s, %s)
-                """,
-                (lineup_id, total_points, total_salary, SALARY_CAP),
-            )
-            for player in chosen:
-                cursor.execute(
-                    """
-                    INSERT INTO "LineupSlot" ("id", "lineupId", "playerId")
-                    VALUES (%s, %s, %s)
-                    """,
-                    (str(uuid.uuid4()), lineup_id, player["player_id"]),
-                )
+            lineup_id = save_lineup(cursor, total_points, total_salary, chosen)
 
         connection.commit()
-        print(f"Lineup {lineup_id}: {total_points} predicted points, ${total_salary} of ${SALARY_CAP}.")
+        print(f"Lineup {lineup_id}: {total_points} predicted points, ${total_salary} of ${SALARY_CAP_IN_DOLLARS}.")
     finally:
         connection.close()
 
