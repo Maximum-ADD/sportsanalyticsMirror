@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
-import { fetchPlayer, fetchPlayerStats } from "../lib/nbaApi";
-import { StatTile } from "../components/StatTile";
-import { PlayerTraitsRadar } from "../components/PlayerTraitsRadar";
-import { PointsTrendChart, type GamePointsDatum } from "../components/PointsTrendChart";
-import type { Player, PlayerStatsResponse } from "../types/nba";
+import { fetchPlayer, fetchPlayerStats } from "@/lib/nbaApi";
+import { StatTile } from "@/components/StatTile";
+import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
+import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ErrorState";
+import { TeamBadge } from "@/components/TeamBadge";
+import type { PlayerStatsResponse } from "@/types/nba";
 
 function formatHeight(heightInches: number | null): string {
   if (heightInches === null) return "—";
@@ -22,76 +26,95 @@ function toTrendData(gameLog: PlayerStatsResponse["gameLog"]): GamePointsDatum[]
 
 export function PlayerProfilePage() {
   const { playerId } = useParams<{ playerId: string }>();
-  const [player, setPlayer] = useState<Player | null>(null);
-  const [stats, setStats] = useState<PlayerStatsResponse | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!playerId) return;
+  const playerQuery = useQuery({
+    queryKey: ["player", playerId],
+    queryFn: () => fetchPlayer(playerId!),
+    enabled: !!playerId,
+  });
 
-    Promise.all([fetchPlayer(playerId), fetchPlayerStats(playerId)])
-      .then(([playerResult, statsResult]) => {
-        setPlayer(playerResult);
-        setStats(statsResult);
-      })
-      .catch(() => setErrorMessage("Could not load player data."));
-  }, [playerId]);
+  const statsQuery = useQuery({
+    queryKey: ["playerStats", playerId],
+    queryFn: () => fetchPlayerStats(playerId!),
+    enabled: !!playerId,
+  });
 
-  if (errorMessage) {
-    return <div className="p-8 text-red-400">{errorMessage}</div>;
+  if (playerQuery.isError || statsQuery.isError) {
+    return (
+      <ErrorState
+        message="Could not load player data."
+        onRetry={() => {
+          playerQuery.refetch();
+          statsQuery.refetch();
+        }}
+      />
+    );
   }
 
-  if (!player || !stats) {
-    return <div className="p-8 text-text-secondary">Loading player…</div>;
+  if (playerQuery.isPending || statsQuery.isPending) {
+    return (
+      <div className="grid grid-cols-1 gap-6 p-6 xl:grid-cols-3">
+        <Skeleton className="h-64 xl:col-span-2" />
+        <Skeleton className="h-64" />
+      </div>
+    );
   }
 
-  const { seasonAverages } = stats;
+  const player = playerQuery.data;
+  const { seasonAverages, gameLog } = statsQuery.data;
 
   return (
     <div className="grid grid-cols-1 gap-6 p-6 xl:grid-cols-3">
-      <section className="rounded-xl border border-border-subtle bg-surface-card p-6 xl:col-span-2">
-        <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-surface-raised text-2xl font-semibold text-text-secondary">
-            {player.firstName[0]}
-            {player.lastName[0]}
+      <Card className="xl:col-span-2">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-surface-raised text-2xl font-semibold text-text-secondary">
+              {player.firstName[0]}
+              {player.lastName[0]}
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-text-primary">
+                {player.firstName} {player.lastName}
+              </h1>
+              <p className="flex items-center gap-2 text-sm text-text-secondary">
+                {player.team && <TeamBadge team={player.team} size="sm" />}
+                {player.team?.city} {player.team?.name} · {player.position} · #{player.jerseyNumber}
+              </p>
+              <p className="text-sm text-text-muted">Height {formatHeight(player.heightInches)}</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-text-primary">
-              {player.firstName} {player.lastName}
-            </h1>
-            <p className="text-sm text-text-secondary">
-              {player.team?.city} {player.team?.name} · {player.position} · #{player.jerseyNumber}
-            </p>
-            <p className="text-sm text-text-muted">Height {formatHeight(player.heightInches)}</p>
+
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile label="PPG" value={seasonAverages.pointsPerGame} />
+            <StatTile label="RPG" value={seasonAverages.reboundsPerGame} />
+            <StatTile label="APG" value={seasonAverages.assistsPerGame} />
+            <StatTile label="Games" value={seasonAverages.gamesPlayed} />
           </div>
-        </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile label="PPG" value={seasonAverages.pointsPerGame} />
-          <StatTile label="RPG" value={seasonAverages.reboundsPerGame} />
-          <StatTile label="APG" value={seasonAverages.assistsPerGame} />
-          <StatTile label="Games" value={seasonAverages.gamesPlayed} />
-        </div>
+          <div className="mt-6">
+            <h2 className="mb-2 text-sm font-medium text-text-secondary">Points trend</h2>
+            <PointsTrendChart data={toTrendData(gameLog)} />
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="mt-6">
-          <h2 className="mb-2 text-sm font-medium text-text-secondary">Points trend</h2>
-          <PointsTrendChart data={toTrendData(stats.gameLog)} />
-        </div>
-      </section>
+      <Card>
+        <CardContent className="p-6">
+          <h2 className="mb-2 text-sm font-medium text-text-secondary">Player traits</h2>
+          <PlayerTraitsRadar seasonAverages={seasonAverages} />
+        </CardContent>
+      </Card>
 
-      <section className="rounded-xl border border-border-subtle bg-surface-card p-6">
-        <h2 className="mb-2 text-sm font-medium text-text-secondary">Player traits</h2>
-        <PlayerTraitsRadar seasonAverages={seasonAverages} />
-      </section>
-
-      <section className="rounded-xl border border-border-subtle bg-surface-card p-6 xl:col-span-3">
-        <h2 className="mb-4 text-sm font-medium text-text-secondary">Shooting splits</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <StatTile label="FG%" value={`${seasonAverages.fieldGoalPercentage}%`} />
-          <StatTile label="3P%" value={`${seasonAverages.threePointPercentage}%`} />
-          <StatTile label="FT%" value={`${seasonAverages.freeThrowPercentage}%`} />
-        </div>
-      </section>
+      <Card className="xl:col-span-3">
+        <CardContent className="p-6">
+          <h2 className="mb-4 text-sm font-medium text-text-secondary">Shooting splits</h2>
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile label="FG%" value={`${seasonAverages.fieldGoalPercentage}%`} />
+            <StatTile label="3P%" value={`${seasonAverages.threePointPercentage}%`} />
+            <StatTile label="FT%" value={`${seasonAverages.freeThrowPercentage}%`} />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
