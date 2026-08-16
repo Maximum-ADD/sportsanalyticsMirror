@@ -1,0 +1,578 @@
+=== Meeting Transcript ===
+Server: SDP group (1529773053893148712) / Meeting room (1529773055407034369)
+Date: 2026-08-12T18:13:54.384Z
+Speakers: _danieldenial, drax9207, pace_runner, sanele_h_62233, soody_03, steveisfrench3744
+Duration: [56:42]
+
+[00:02] _danieldenial: Yeah, I think we need to figure out what else we need to do for the sprint and kind of give
+[00:02] drax9207: Hello, this is the meeting and Yeah, yeah
+[00:17] pace_runner: Okay, so I'm gonna say that the versioning is gonna be based on dates. I think that is the best I would agree Yeah, but we have time
+[00:29] _danieldenial: her on their tasks because it kind of feels like we're a bit all over the show with everything. You know what I mean?
+[00:34] pace_runner: So it's okay. I mean, we'll get it sorted today. I'm just saying you don't have to stress so much
+[00:37] _danieldenial: Okay. Okay, good. I just... When is the first print due? 20th? August?
+[00:47] sanele_h_62233: 25th. Yeah. Yeah. From from the duck I sent or no, it was just for one, just for a sprint, which is, yeah, I already started doing that. It's on get to, yeah, get to project. Yeah. That's the same thing. We have to use. Yeah.
+[00:49] _danieldenial: 24th? I need to check. Okay. So we still have time.
+[00:54] drax9207: Um, oh When your handle is pace runner not pace runner 11, right?
+[01:02] pace_runner: It's no better. There's not it. It's pace slash runner I think and it's the picture of Mark from invincible. Yeah, I know but I kind of stole a look for it
+[01:20] drax9207: Yeah, I don't see Let me invite Sonia or pace dash runner Yeah, you still invited I invited you on the 6th of August
+[02:03] pace_runner: I was just hoping you could send me a read in my site can't find it. I'd like to try to search it So, you know, there's a there's a possibility. I just deleted it. So I
+[02:11] drax9207: Okay, there you go. I can update it. I can't send you a new invite. I can just update them. Hi
+[02:30] steveisfrench3744: Hello. Sorry, I'm late. God, I just forgot that this was even happening.
+[02:33] drax9207: Yeah, yeah, same. I don't know if it's an email. I just I'm sure if you look on github
+[02:40] _danieldenial: Yeah.
+[02:42] pace_runner: Still don't see anything. Oh wait a second
+[02:47] _danieldenial: Austin, do you join the thing that Adrian sent you?
+[02:47] pace_runner: No, I did I I'm telling you I cannot see this thing
+[02:50] _danieldenial: Documentation, I think.
+[02:53] steveisfrench3744: No, where, where is it?
+[02:56] _danieldenial: He sent you email.
+[02:57] steveisfrench3744: Why am I meant to be accepting?
+[03:02] _danieldenial: No.
+[03:02] drax9207: So I'm not your messages and give up. Okay. No, I'd put it on the I put it on the whatever
+[03:03] pace_runner: Yeah, and you sent the one and you show you since it's the one with like markets the profile picture
+[03:03] _danieldenial: I got it as an email, but I think he sent it to my student, didn't he send it to my student email? I think he did it. That's why I got it from...
+[03:15] drax9207: Whatever you're gonna have to sit up with that's where it wins Yeah, let me just let me just send a screenshot actually like you go to your messages and you'll see invites
+[03:21] _danieldenial: I feel like it's everything on GitHub.
+[03:28] pace_runner: Things I've no idea where you would accept it in GitHub. I mean
+[03:35] drax9207: Probably I'm guessing that's how it works
+[03:39] pace_runner: Messages
+[03:40] drax9207: Get up messages
+[03:44] pace_runner: This github messages Like you can message people on github for real. I don't even know that
+[03:50] drax9207: Yeah, I think so. I don't know how you message him, but you get like notifications and stuff
+[03:51] _danieldenial: Oh, and you're checking in the right email, like you're spamming, isn't it?
+[03:52] pace_runner: Dude, how do you message people on github? That's crazy. Oh this discussions
+[03:58] drax9207: And then that that's where I send it on the 6th of August
+[04:01] steveisfrench3744: Where did you send this thing for August?
+[04:06] pace_runner: Okay I have no email from the 6th of August
+[04:12] steveisfrench3744: I have.
+[04:16] steveisfrench3744: Oh, there we go.
+[04:16] pace_runner: I have the 5th and the 8th Let me check when to eat it
+[04:22] drax9207: Okay
+[04:28] pace_runner: Yeah, and we just take my trash Can maybe but I don't see why we go to spam. Oh, yeah. Okay. I found it. I think yeah
+[04:43] _danieldenial: Oh, here's the meeting recorder.
+[04:43] pace_runner: Yeah, I just deleted it
+[04:51] drax9207: There's the there's a screenshot. This is like the people I invited. I'm not sure how else to invite you guys
+[04:56] steveisfrench3744: Oh, this is very nice.
+[04:58] pace_runner: No, I think I think I'm in now. Yeah, it looks like a moon. Okay. I just
+[04:58] drax9207: Yeah, okay. All right, what the what documentation? Oh
+[05:05] steveisfrench3744: A little website.
+[05:06] pace_runner: Did the documentation? And I'll send it through now
+[05:16] drax9207: Sury, okay
+[05:16] pace_runner: If you look in general and then it's just so if you look in general
+[05:21] soody_03: Oh, sorry, I forgot about the meeting.
+[05:26] pace_runner: There's the get mythology that we have to have and we have to follow it from the get-go I know I've already started but I I'm pretty sure I'm following it because well, I kind of made it
+[05:37] steveisfrench3744: They, I didn't see.
+[05:39] pace_runner: I'm just I'm just writing it out now
+[05:40] soody_03: I wanted to ask if someone could add me as an editor on the repo, because for some reason I can't contribute.
+[05:49] pace_runner: Okay, so I okay Yeah, I think Josh needs to do that and The message is too long for me to send and discord so I'm gonna send it to the WhatsApp group and just read that and check it I
+[06:02] drax9207: Okay, get methodology how to commit
+[06:05] steveisfrench3744: Let me do it quick.
+[06:13] soody_03: Who is Craig?
+[06:18] drax9207: Yes, that's great is the reason for that. Yeah. Yeah, me too
+[06:19] soody_03: Okay.
+[06:25] pace_runner: Think I basically Followed what he wanted us to do in class like he didn't say we had to do it a certain way But he said I like this way, so I basically just did everything that he said that he liked and then The as for the version control that they I don't think he had a specific one But I do like the dates more just because it's easier to track Yeah Yeah, cuz cuz like most of the time you think like dude It's you know the things kind of screwed up now, but I remembered working two weeks ago So, you know what I mean instead of like two versions ago I remember it working like, you know, no one's like
+[07:05] drax9207: Yeah, yeah, so we'll add that to this document you made to the website and
+[07:07] pace_runner: and
+[07:09] steveisfrench3744: You know, I add, you know, I add your thingy.
+[07:09] pace_runner: the thing is we have enough like between our get-up actions and you know our pushes and our Documentation to know when we did what we don't need to have it in the name
+[07:19] soody_03: Yeah.
+[07:21] pace_runner: Yeah, I've actually okay. Yeah, you can add it to the website. I added it in in docs in the in In the in the actual project though. Yeah
+[07:37] drax9207: Very good. Okay. Let's look at the
+[07:39] pace_runner: Okay, and then let's just look at what other documentation we need and try to get that sorted out
+[07:48] steveisfrench3744: Okay, I found it.
+[07:51] drax9207: Look at this. There's a whole bunch of
+[07:53] steveisfrench3744: Did I make you guys all admins? This just makes sense for that to happen, right?
+[08:03] pace_runner: Yeah, so we have to we have to just agree on that now when we have to follow it otherwise we lose marks if we Dear of course at all the thing. I just sense on the what's up group
+[08:11] drax9207: Agree on like what documentation to use or oh, you mean like yeah good methodologies. Okay
+[08:18] pace_runner: Yeah, cuz if he sees that like we we've been haven't been following it and he says he's gonna check them Yeah, and I can bet you his checking points are gonna be the start Somewhere in the middle the end like it's kind of an over and out Is there a sprint one document or is there just like an overall document?
+[08:34] soody_03: Makes sense.
+[08:37] drax9207: People um the the website has like a list of everything we might need For the for our project So you can check that out. Obviously, they just like placeholder documents right now, but Yeah, we can use those
+[08:55] soody_03: Yeah, I checked it out. It looks good.
+[08:59] pace_runner: Is it like a sprint one document or just like an overall document?
+[08:59] drax9207: Sorry, what the website?
+[09:05] pace_runner: Not just an overall document. I'm just assuming it's the one document. Let's go to sprint one
+[09:11] steveisfrench3744: Well, sorry if you can hear my chewing, guys. I completely forgot I had a mic.
+[09:21] drax9207: Yeah, I think what the one documents? No, what are you what are you saying? Like one document for sprint one or what you mean like multiple. Oh
+[09:30] pace_runner: Yeah, just to like follow
+[09:34] drax9207: Yeah, yeah, yeah, yeah, let me just get into get tea. Okay in that case if we all agree
+[09:35] pace_runner: Man, I the thing is I have the thing pulled up on my computer. So now I'm saying myself. What's that message for everything?
+[09:54] drax9207: I agree with the document you sent to mr. Mr. Pace
+[10:01] drax9207: So
+[10:01] pace_runner: You can add it to the documentation if everyone when everyone else is done. Yeah, so that's done
+[10:04] drax9207: Yeah, I'll add it there That's the good methodology confirmed basically for Craig You do want to go through like everything or like are we just fine the commit units of tasks?
+[10:16] pace_runner: Yeah, that's that's pretty much what I'm doing now
+[10:29] drax9207: You check the good differences What stuff great?
+[10:35] pace_runner: Okay, so Yeah, sprint one Boston one is aimed at the project setup and the basics of the project sitting at the project repositories getting the largest blockers out of the way and making sure that your group have strong direction for the rest of the semester So honestly, this is the hardest sprint is Just setting everything up
+[10:55] drax9207: Yeah
+[10:57] pace_runner: And making sure that that's good Okay, so
+[11:01] drax9207: Exactly. Yes. That's that's that's really important
+[11:03] pace_runner: Group report. Okay, that kind of goes without saying I'm not gonna go into that Individual report so good without saying peer review kind of goes about saying report group description. Okay, so The Presentation is to demonstrate you understand the project at a technical level and to pitch it. Okay, so we have to know exactly what's cooking We are We are making documents like notes About the code along the way, right? Let me just check if I actually have that
+[11:37] drax9207: That we know like what's happening We should make a sort of review for like every commit almost I guess so we just understand
+[11:45] pace_runner: Yeah, but I'm saying like in the actual Like project file or folder. I mean it should actually should be a document that is literally just outline everything that we need
+[11:57] drax9207: Yeah, I agree that there should be a document that outlines how we do things, right?
+[12:02] steveisfrench3744: Sorry, guys, I just left for two seconds. What, what do you agree on?
+[12:13] soody_03: Yeah.
+[12:14] drax9207: Like what we did I guess
+[12:19] steveisfrench3744: What we've done so far? Oh, yeah.
+[12:22] drax9207: What we doing like whether we understand what we're doing
+[12:23] pace_runner: Like just like as it goes AI should be making notes on what our code does what technologies we're using things like that
+[12:33] pace_runner: Okay, this is not in the Jesus in towards chat Okay, if you look at the document, I sent you and Regarding this section here. I just want to make sure that you are have a file that makes notes of
+[12:49] drax9207: We need diagrams we need like reports and stuff like that
+[12:49] pace_runner: Everything our code does and what technology is using and basically everything we need to know about the project And I'd like you to save that in docs Folder as well, and you're gonna keep adding to this as we go
+[13:09] pace_runner: Okay, then Okay, so basically we just need to know what's cooking and then you'll present your Product to a panel of judges and must cover the following information and overview of your product feature demonstrations You I and you X showcase and the product architecture and features at a high-level mode code Easy enough. Yeah, I guess that is probably true
+[13:36] drax9207: Demonstrate what's happening? Yeah, we need like a okay. Yeah, okay. Yeah, I guess it's it's there
+[13:39] pace_runner: Me and Josh can do that. I think we have that handled We I just think we should finish first before we make make it just because it's like it helps It helps, you know getting it right. We don't have to remake it
+[13:52] steveisfrench3744: I have an idea of what's happening right now. Yeah, it's like the architecture I've made.
+[13:57] pace_runner: Okay, and then artificial intelligence sections and then two projects. I don't know what that's going on Oh, it's the the projects. Okay. Uh, cool. Yeah, so rubrics. That's what we look for Okay, goes without saying but I'm just gonna read the advanced stuff not everything so version control Exists code quality tools and commits. Cool. I think we're following that fine Structurally used all members have committed code. Okay, we'll get there, but okay pretty much fun documentation site while Designed has non-trivial content. Okay, so that Yeah, that Yeah, we we that's the documentation. We're gonna need they will do that like Hopefully towards the end, but that needs to be done and needs to be very good Okay, getting started slash dev guides. Okay easy enough to add it. That is literally just one prompt
+[14:53] drax9207: Yeah, dev guides
+[14:55] pace_runner: Work tracker. Okay. I work tracker. Do we have one of those?
+[15:00] drax9207: It's the yes, we have it at the same. It's a project. What they call it get her projects the same community
+[15:05] pace_runner: Great. So that a thing that's in there less sense here When you sense that I already have done the setting up the tests and using like By test or whatever so, you know, I'll take that section Please thank you and I'll and I can do your guys's tests for you then if we're following that
+[15:19] drax9207: So
+[15:23] pace_runner: That's fine. Just pick something and I don't know make sure you follow it. Okay. Get mythology We just did that project mythology Okay used mythology with I don't know what project mythology means really I think that means the meetings and like what we're doing now probably and When we're doing what and people are following stuff. I don't know. Let me ask
+[15:46] drax9207: Yeah, it's like war The architecture the workflow. I think that's up a thing Like what what what type of? Architecture using
+[16:03] pace_runner: Okay, so Google says a structured framework and set of rules used to plan create and manage code That sounds like the Like it sounds like what we've been doing it it sounds like the same thing, you know what I mean between the git mythology and The documentation and that I don't know what you call it The thing that gives us tasks that sounds like this But I think this is mainly referring to us following the tasks
+[16:37] drax9207: Yeah, like our our like time that we spent
+[16:37] pace_runner: so Yeah, and like waterfall agile, okay, we're clearly using agile
+[16:42] drax9207: How we manage our time? What's our strategies on like? Delegation and such I guess that's that's more the project The the other project methodology. Yeah
+[17:01] drax9207: obviously Dov Yeah, wait wait sit it again great. What oh?
+[17:03] pace_runner: Okay, I'm gonna ask chat to make the project mythology as well
+[17:10] pace_runner: Just to start at least a tech stack fully listed stack and motivated
+[17:27] soody_03: Josh, can you give me permissions to edit and push?
+[17:33] steveisfrench3744: I've made you an admin. You should have it.
+[17:36] soody_03: Let me try now.
+[17:37] steveisfrench3744: That's right.
+[17:39] pace_runner: I think we're gonna have that in the documentation Right and again like dude all we have to do is do this and then give the rubric to chat and say mark
+[17:43] soody_03: Well, thank you.
+[17:51] pace_runner: Make sure it does everything But so far I think that's okay, right like Yeah, the tech stack like we we know why we're using the technologies we're using and that's a good enough start for now
+[17:58] steveisfrench3744: Yeah, we haven't done yet.
+[18:04] pace_runner: We can put it in a document explaining why later. It's not a huge issue Basically, we're using we pretty much We're kind of forced into a lot of our options due to the restrictions he placed on us Okay, great stakeholder interaction or requirements discussed Okay, we might be slacking there, but Haven't discussed it says like discuss things with the stakeholder basically which we haven't really done Think you think we can call this guy right now. We did or like
+[18:35] drax9207: Yeah, no, we got a we got to figure that out which we should talk about now the stakeholder Yeah, he said he's free on Friday. I know that Kieran is not free
+[18:42] pace_runner: One we don't need everyone
+[18:45] drax9207: But we can probably talk to him
+[18:46] steveisfrench3744: So on Friday, I must read that.
+[18:46] soody_03: Well, I am not.
+[18:49] pace_runner: Initial design and dev plan Dude, this sounds like it's repeating stuff. I swear we've done this comprehensive dev plan system design and UI design road map Don't really know what that means But I feel like we can do that a UI design road map is maybe But we we can figure something out Yeah, what's our comprehensive dev plan like I don't fully understand what that means
+[19:15] soody_03: Doesn't GitHub projects do stuff like that?
+[19:22] drax9207: No, we're not using it. Yeah, so in our organization we have a project
+[19:26] pace_runner: It sounds like the same thing as the project plan thing that we just mentioned
+[19:26] soody_03: I also don't understand. Yeah, I think he's doing too much,
+[19:30] pace_runner: Yeah, let me search it on Google see what it it's a master blueprint
+[19:37] soody_03: but that's just me for all this.
+[19:42] pace_runner: It outlines every phase resource timeline and strategy needed to bold test and release the software product So are we using?
+[19:49] soody_03: So it's just all the things that you would do for each sprint put together, basically.
+[19:56] pace_runner: Notion No, right So is that the get-up thing that you sent we're gonna use that
+[19:59] steveisfrench3744: No, you know, there's a whole website, bro.
+[20:07] drax9207: And that's the project. We're gonna we're gonna you're gonna use
+[20:10] pace_runner: Look at it quick. I can't find it
+[20:11] drax9207: Yeah, you can't find the project
+[20:13] pace_runner: Are they are you made an organization? Dude, that's crazy. I would okay Is it like giving me a whole bunch of listing things dude? I just want to add to the repo. I don't do that
+[20:19] drax9207: Yeah, so I invited you guys with organization is pooters Yeah, I need to redeem this project
+[20:32] pace_runner: Oh, we haven't even created the repository yet You haven't like you've made the organization, but not the repository as far as I'm seeing
+[20:36] drax9207: Huh?
+[20:38] soody_03: Huh?
+[20:42] drax9207: I made her a repo for the website of
+[20:43] pace_runner: Wait
+[20:46] drax9207: This song you have not good key, right?
+[20:49] pace_runner: Yeah, that's what I'm looking at. I don't see it. I only see the organization
+[20:50] steveisfrench3744: Yes, it's even deployed and everything.
+[20:51] drax9207: Yeah There's a there's there's a website you can even look at the website like it's deployed on pages
+[20:56] pace_runner: How do I get there?
+[21:02] drax9207: It was great. Well, it wasn't even vibe credit, right? It was this is literally the template website
+[21:02] steveisfrench3744: Yeah, I've been checking it out. I was vibe quoting the website, Adrian, was it liberating?
+[21:20] drax9207: We're using a
+[21:20] pace_runner: Wait, dude, how do I see this? I want to see I'm not seeing anything. I can't
+[21:22] drax9207: Can you say your screen maybe? So if you click on it's a click on the word sports analytics innovation platform next to the little cat icon
+[21:30] pace_runner: Like how do you get there? Just walking through it? There's
+[21:41] drax9207: Right, and then you'll see another thing that says repositories one and then it's there
+[21:47] pace_runner: Dude what does it fire? Fuck
+[21:50] steveisfrench3744: Yeah, what?
+[21:52] pace_runner: Alright, this isn't that website. This is just the site. I think
+[21:52] drax9207: Yeah Yeah
+[21:57] pace_runner: Okay. Well, how do you get to?
+[21:59] drax9207: It's like a template
+[22:00] pace_runner: How do we get to our project now?
+[22:01] drax9207: documentation website It's from if I remember correctly MK
+[22:03] pace_runner: Yeah, I pressed and
+[22:07] drax9207: um document Material or something
+[22:15] pace_runner: Do I click the thing that says check out the demo? Is that what I'm pressing? Hello?
+[22:16] soody_03: Owen?
+[22:24] pace_runner: Am I pressing the thing that says check out the demo? Okay. Oh, and then here's you're getting started
+[22:24] drax9207: Are you sharing your screen? I don't know who's watching TV right now. Oh
+[22:32] soody_03: No, he must eat his food.
+[22:39] soody_03: In your meeting with me. Yeah. Because I must clear the posts. I'm not moving too late. I want to clear them soon. No, it's my mother talking.
+[22:53] drax9207: Okay, it sounds like a soap opera. I don't know why
+[22:58] soody_03: She's asking me if I want food.
+[23:02] drax9207: Okay, let me let me watch this Owen. Okay. So basically um What you do is you go to settings
+[23:10] soody_03: What?
+[23:11] drax9207: right And you go to pages
+[23:16] soody_03: I didn't know this then.
+[23:18] drax9207: And then uh, there it is. There's your site is live click that That's that's the website Yeah
+[23:28] pace_runner: It's nice. Oh, and then we have the tech stack as well. Oh, I like that. Okay. Very nice
+[23:36] drax9207: Yeah
+[23:36] pace_runner: Okay, cool. So I guess that's a that's a start other thing
+[23:42] drax9207: Yeah, it's definitely a start. Um, it's there, but it's like we slot to put the document in it's just like a template
+[23:51] pace_runner: but it asked for
+[23:56] pace_runner: So we have the initial design, right? I'm guessing that's the getting started. No, wait
+[24:07] pace_runner: There's the getting started and then documentation site. Okay, cool. Nice Okay, we basically have that I guess version control. Yeah, we said getting started. Yeah, work tracker Yeah, good mythology. Is that in there? I don't see a good mythology thing here anyway
+[24:28] drax9207: It's there bro. It's it's underneath mythology
+[24:37] pace_runner: Wait, there's no mythology
+[24:39] drax9207: Let me see your screen wait. So if you click on, um, what's it called? Is it process click on process?
+[24:48] pace_runner: Okay
+[24:48] drax9207: And then there's a list of all the things so there's get mythology mythology Click on any of them
+[24:53] pace_runner: Do you think it might be easier though if we just have like, you know, there's a bunch of Headings that we have to basically do with if we just put the headings here, you know what I mean? side-by-side instead of in In things I don't think coding convention was one of them, but I mean it's fine actually I like I don't know
+[25:08] drax9207: It's like oh or or is it drop down? Maybe I'm not Because like there's a lot of documents that we need is it's like, I don't know 30 of them
+[25:23] pace_runner: It's fine. Yeah Okay, a lot of these documents are I have them but they're like in the code base So you could just pull them out of there
+[25:30] drax9207: Yeah
+[25:33] pace_runner: Okay, as long as we kind of know where everything is I guess
+[25:40] drax9207: Okay, you can also search
+[25:41] pace_runner: Yeah, okay. Anyway, and then implementation. Yeah, all supporting documents again. That's basically everything for
+[25:42] drax9207: So it's uh, that's an option
+[25:49] pace_runner: For that part Okay, so cool. Now at least we all know what's cooking Yeah, we basically need a shit ton of documentation and
+[26:01] drax9207: Yeah
+[26:01] pace_runner: To get basically all of our core features down because they they said that they get like
+[26:09] soody_03: Is it for the first sprint?
+[26:11] pace_runner: Yeah
+[26:12] soody_03: Crazy. Okay.
+[26:14] pace_runner: Yeah, that's what I'm saying
+[26:16] soody_03: That's a bit, why?
+[26:16] pace_runner: Like the first part is a bit hard and then the rest are a little bit chill But it's like said that basically everything stopping you needs to be out of the way or something. It says sitting at the repositories and getting your largest blog Largest blockers out of the way That's like
+[26:35] soody_03: Okay.
+[26:36] pace_runner: That's like everything, you know what it like that to me that says do everything except tiny features
+[26:39] soody_03: Yeah.
+[26:43] pace_runner: Okay, cool
+[26:44] soody_03: That's what it also sounds like to me.
+[26:46] drax9207: To be fair though, we have a month for the first print. So well, we had a month
+[26:52] steveisfrench3744: Three weeks now, things that we need to do.
+[26:55] soody_03: Fuck in.
+[26:58] pace_runner: So I have a project overview and that's that's what we're gonna learn for the broad overview type thing And then I added the get mythology there And I'm also gonna add the project mythology and ask us any questions to help would do that So let's do a question it because I don't know what the fuck he wants my project methodology
+[27:12] drax9207: Okay
+[27:20] pace_runner: Okay, but I mean, I think off to a good start and we just need to like okay Let's go through the tasks and like try allocate. That's probably our next step. So I
+[27:29] drax9207: Yeah, yeah, let's let's delegate
+[27:30] pace_runner: trust the thing that Was Yeah, I think I trust that because that's kind of what I said But the only thing is I don't think it actually gave us like It gave us tasks, but not like for the project like it was for the documentation if I'm not mistaken
+[27:50] _danieldenial: Yeah. It was more like an overview kind of up, when I don't think your screen is sharing
+[27:56] pace_runner: But yeah, I don't think I think it had more focused on documentation as opposed to Like actually implementing features So just note that we can we'll follow this but then also note that we're gonna some of us are gonna have to take on some features So it's this and something
+[28:13] drax9207: Yeah Okay
+[28:15] pace_runner: Okay, so who wants to do what guys take pics. I already I already said I'm doing the the the vitess stuff Because I already did that kind of
+[28:23] drax9207: My test is fun. But yeah, okay I don't have the rubric in front of me Let me open it
+[28:30] pace_runner: So someone is in charge of the git mythology and repo hygiene. That sounds pretty easy
+[28:31] drax9207: It's pretty good the hygiene repo hygiene. Hey, that's me boss. That's me
+[28:36] pace_runner: Who wants who wants that?
+[28:37] steveisfrench3744: I could do that. I could do that. What other things are there to do?
+[28:40] pace_runner: And then document sites that I'm guessing would you be you asian? Yeah, like you're pretty much done with that Uh work tracker somebody's been in charge of that. We're actually I'm not seeing where is the vitess thing
+[28:57] drax9207: Wait, where's this work tracker file that you guys are talking about I haven't seen it Is it on whatsapp?
+[29:04] pace_runner: Yeah, that's awesome. Actually. I'm not seeing this test thing
+[29:06] drax9207: Oh, it's on git t. No wonder Oh wait, are we using git t projects or are we using Github projects Git t
+[29:18] soody_03: We have to use, don't we have to use it to you?
+[29:25] drax9207: Okay, well then okay sure. We always get t projects No, it's fine
+[29:29] soody_03: Yeah, bro.
+[29:35] pace_runner: Okay, I don't think we should count the git mythology as one I wouldn't even lie like it's basically done that person's not doing nothing And so is the site so I feel like I mean the site is kind of you did your part So you don't really have to do much more, but if you would Like to contribute. I think I'm doing five
+[29:55] drax9207: Hey, bro, are you doing a lot? Hey
+[29:56] soody_03: Can someone, oh, like number five.
+[29:57] pace_runner: No, like I'm gonna do five I think Yeah Okay, yeah, and then yeah adrian like Yeah, you just focus on the documenting side because we're gonna have to update that anyway So I guess if you want to just focus on that, that's fine
+[30:11] drax9207: Yeah
+[30:12] pace_runner: But you do have to implement one or two features as well Like we all still have to work on the the actual project
+[30:18] steveisfrench3744: Yeah, the scheme has already been set up, hasn't it?
+[30:19] pace_runner: Okay schema back it slash back end
+[30:19] drax9207: Yeah, okay
+[30:22] pace_runner: Uh foundation Uh
+[30:26] sanele_h_62233: I wouldn't mind open up. Yeah, this is and progress and progress. Yeah, I'm doing that. Which are you are you talking about? Yeah, you know, if the last one counts as a sprint. Sorry, I didn't get that. Get to projects. Is that, is that not it? I'm pretty sure that's, that's it. Yeah, it's two projects. It's basically, okay.
+[30:29] pace_runner: Yeah, I actually think so
+[30:29] steveisfrench3744: Like the basic one. I set it up when I made the project.
+[30:31] pace_runner: Yeah finalize the schema migrate get it merged like you have kind of done like all of this
+[30:36] steveisfrench3744: When I pushed everything, like it basically set up.
+[30:38] pace_runner: Yeah, okay, so one is basically done Two it's not done, but it's set up. So it's progress Okay mythology uh mythology and work tracker. So we just have to You know keep the work tracker going but honestly good progress on that as well. We're set up So we just need a we actually just need to put all of our tasks in there stuff So that one is actually going to take a while so I don't know if you want to do that. It's an L. Okay, and then get mythology. That's basically done And the and the hygiene like we're all going to be contributing towards this It just happens when you push and it's basically done
+[31:13] steveisfrench3744: I think it's just like making sure this thing is like not messy.
+[31:13] pace_runner: As long as you use the skill that I gave you Guys, please use all the skills that I gave you. Yeah, Josh. I literally I sent one That literally just cleans the code the skill
+[31:26] steveisfrench3744: I've got your skills in my thing.
+[31:27] pace_runner: So please use the skills. There's one to clean code one for the get mythology and one for the coding conventions And it would be great if we all followed the same coding conventions, especially because that is one of our Uh things that we have to document
+[31:42] drax9207: Yeah
+[31:43] pace_runner: So that would be great
+[31:44] drax9207: We should put that in the documentation for the for the fucking What do you call it
+[31:48] pace_runner: I do think we can add maybe a little bit more to the coding conventions
+[31:49] drax9207: In the project
+[31:52] pace_runner: Like I think what I have is good, but he might want more. I don't know But basically those three skills basically did those
+[31:58] drax9207: Yeah
+[32:01] pace_runner: like each of them did a a set of documentation which was Like accidental but nice. Okay. So the get mythology again not really No one really has to do that Okay, c i and c d Okay, so we're basically left with three things, right? so We said agent is going to do two So you're out Sinele is going to do the Work tracker so that's out Okay, that's two that means that leaves four of us to do the last two So Between four people we have to do this. That's it cool
+[32:47] soody_03: Do we, did we finish the, did this,
+[32:48] pace_runner: and And we need documentation and stuff actually
+[32:52] drax9207: What two are we what am I doing? I thought I was doing the documentation website
+[32:55] pace_runner: No, you were just doing the documentation. I'm saying between the the four of us that are left
+[32:59] drax9207: Oh
+[33:00] pace_runner: That are unallocated. We need to do this too
+[33:03] soody_03: did we done the CI YAML yet?
+[33:04] steveisfrench3744: I can't see a screen.
+[33:05] pace_runner: And technically you should be doing all the documentation according to your role, but I don't think that's fair
+[33:11] steveisfrench3744: I think just manage the website and we'll send the documents as they come.
+[33:14] pace_runner: I feel like someone should take this and I feel like it shouldn't be me because
+[33:14] drax9207: Yeah
+[33:19] pace_runner: I know I'm going to do a lot of work on the project and I'm going to do the a lot of the documentation and Our graphs and shit that you know, we need as well as josh. I feel like between me and him like doing like all the drawings and stuff That's kind of reasonable
+[33:38] drax9207: Yeah
+[33:39] pace_runner: so
+[33:42] steveisfrench3744: Yeah, I don't know which.
+[33:45] _danieldenial: properly, and you're sharing the one thing.
+[33:45] steveisfrench3744: Yeah, you only see the website.
+[33:45] pace_runner: Sorry, uh, yeah, I'm looking at at the other screen
+[33:45] drax9207: Yeah, your screen is not updated bro
+[33:50] pace_runner: okay
+[33:50] drax9207: Oh Oh, you have two screens this guy Okay
+[33:56] pace_runner: okay, so
+[33:56] drax9207: I was always so confused
+[33:57] pace_runner: So what I was saying is this is practically done This isn't done, but it's not it's a little unfair to it at all adrian probably so He's going to do the majority of the documentation, but me and josh are going to help with the diagrams For the for this right cool happy
+[34:16] drax9207: Okay
+[34:18] pace_runner: Is that okay?
+[34:20] drax9207: Yeah, so I'm gonna do
+[34:20] pace_runner: I'm going to write this down. Or do you think that chatbot's getting this?
+[34:24] drax9207: He will get it, but we just need to be very clear and what yeah
+[34:25] pace_runner: okay, so adrian documentation site with assist from oan and josh with diagrams
+[34:35] drax9207: Yay
+[34:35] pace_runner: great, then
+[34:36] soody_03: My goats.
+[34:38] pace_runner: This is done the mythology and work tracker, but Sinele you're going to be mainly in charge of Just making sure that it's right and maybe allocating some tasks But we will all agree on the tasks and then you just need to make sure that they You know the ones that are done are on the right place and that it looks good basically Cool get mythology done ci slash cd this Yeah I think it's kind of in place to be honest with you Right, right. Okay. Well
+[35:13] drax9207: Okay
+[35:15] pace_runner: I've done like some of the tests and stuff like that. I don't know if it runs it Automatically, but that's not going to be a hard thing to Just do So who wants to do this honestly? It shouldn't take that long job
+[35:31] steveisfrench3744: I don't mind, like, what time on Friday?
+[35:32] pace_runner: Josh no daniel sorry
+[35:34] _danieldenial: I can do it on a month.
+[35:35] pace_runner: I don't think it's going to take too long dude. I think like
+[35:37] soody_03: I want to do it.
+[35:38] pace_runner: A low key might be in place already
+[35:39] _danieldenial: Oh, I'll do that then.
+[35:41] soody_03: I want to do it.
+[35:41] pace_runner: Who wants to do it?
+[35:43] drax9207: Okay here
+[35:43] pace_runner: Who wants to do?
+[35:45] soody_03: I will do it.
+[35:46] pace_runner: Okay
+[35:48] soody_03: None of you are allowed to do it.
+[35:49] pace_runner: cool And then stakeholder and dev plan. So Okay, this we need to do
+[35:57] drax9207: Yeah, that one's a bit
+[35:58] pace_runner: We actually need to talk to the guy
+[36:00] drax9207: Yeah
+[36:00] _danieldenial: I'll do...
+[36:00] pace_runner: Yeah
+[36:01] drax9207: still
+[36:01] _danieldenial: I can do the booking and all that then, since everyone else is doing something already.
+[36:04] pace_runner: And then we have to actually come with real questions and stuff great
+[36:05] drax9207: booking
+[36:09] pace_runner: Write up notes for the meeting. Okay After dev plan, okay
+[36:12] _danieldenial: I'll do that as well on a month.
+[36:15] pace_runner: And try a second cheetahs approach. Okay. So basically talk to the cheetah
+[36:20] drax9207: Okay, yeah So we can I can like describe what so our plan right now for that is we're meeting a tutor once a week and That's that's our plan so far um
+[36:31] pace_runner: Okay, I'm free, but we don't have to have everyone here. I doubt we
+[36:32] _danieldenial: But how are we going to do it on a Discord because people aren't free on Friday?
+[36:36] drax9207: Yeah, I guess we have to yeah
+[36:41] pace_runner: We're going to have time for all six of us Like all six of us are going to be present every time I find that very unlikely
+[36:46] drax9207: Okay In that case we ever won't be like available on Friday
+[36:49] steveisfrench3744: What?
+[36:49] pace_runner: I'm not going to lie
+[36:53] drax9207: Um, if you have any questions like write them down and we'll ask the tutor for you Is that like acceptable?
+[36:57] steveisfrench3744: OK, cool. Yeah, when on Friday, are you guys, is it going to be on Discord
+[37:00] soody_03: Yeah, that's fine.
+[37:02] steveisfrench3744: or are we going to do it in person?
+[37:04] drax9207: Well on Friday you can do it in person
+[37:06] steveisfrench3744: OK, because I won't be on Friday.
+[37:06] drax9207: Um, but otherwise in this book
+[37:06] pace_runner: Okay
+[37:09] _danieldenial: I also don't be on Friday.
+[37:11] drax9207: Oh
+[37:12] pace_runner: Okay, everyone just listen up quick. So I asked chat to do the project mythology
+[37:12] drax9207: Okay, that's it
+[37:13] _danieldenial: I feel like maybe we could use our names on a month.
+[37:16] pace_runner: And I asked it to ask questions And here we are. So let's go. What development mythology should the doc describe your team as following? So scrum adaptation basically To three sprints. Okay, I'm pretty sure we have four sprints. But anyway matches the briefs own sprint uh, can just directly Sprint planning at the start of each milestone In a review slash retro at the end. Yes. That's basically what we're doing, right? Then there's kaban, which is the other one continues workflow on a single prioritized Nope, I don't think we're doing that and something else. I think we're doing the first one scrum basically But it says with three sprints. Don't be a four. Let me just check because it's it is here so It says like rubik three right and Then there's no four Okay, yeah, we have three Okay, we only have three sprints. I don't know that that's kind of crazy. But okay, that's fine So yeah, so that would be we're doing scrum with three sprints next What are we using? Or want to use to track tasks slash work items the rubik grades this as its own work tracker Okay, so it says another board like trello get up projects, etc Get the issues and then that's what I recommended uh, I wouldn't I wouldn't say that's a great option because the it's kind of too vague the um But it's the issues Okay, so basically it's asking. What are we using for the tracker the work tracker? What's the application called?
+[39:12] steveisfrench3744: I don't know.
+[39:16] pace_runner: I don't I don't
+[39:17] steveisfrench3744: Does it have a projects thing?
+[39:17] drax9207: I
+[39:18] pace_runner: I don't want to guess dude. I want an actual answer
+[39:18] steveisfrench3744: Surely it does, right?
+[39:20] drax9207: I set up I set it up on you know I don't know how Getty projects works. Do you do you know like it just looks like
+[39:28] steveisfrench3744: That's the name of the GitHub.
+[39:28] pace_runner: Okay, we set it up. Can they screen share please just so I can see it
+[39:33] steveisfrench3744: Has it been set up?
+[39:34] sanele_h_62233: Okay, it's the work tracker. And I guess we can call it the two projects, because, you know, the two projects, it works. Projects works with projects. It's just the board. Then issues is where you create like tasks and you're able to assign them to people. Yeah, on campus. Yeah, I can. Okay. Sorry, what?
+[39:35] pace_runner: Or we can see it
+[39:44] drax9207: It just looks like a document Oh, there you go Yeah, there you go. Oh you have to click that. Okay
+[39:51] steveisfrench3744: Where do you go?
+[39:53] drax9207: You click the title And then it sends you to the actual like project tracker
+[39:58] steveisfrench3744: The title, where?
+[39:58] drax9207: So you click mba analytics platform
+[40:01] steveisfrench3744: Oh, projects.
+[40:04] drax9207: Yeah
+[40:06] steveisfrench3744: Oh, OK, I see it. OK.
+[40:08] pace_runner: Can someone send the link please
+[40:09] drax9207: Yeah Now now it makes sense Schedule tutor check-in Okay, that's good. Thanks. Thanks
+[40:15] steveisfrench3744: I'm going to send it in general.
+[40:21] pace_runner: This is not found bruh Fine in Okay, so we are using get here Oh, so it's this yeah, okay, so
+[40:28] steveisfrench3744: Yeah, yeah, it seems like, yeah, yeah, I need to see the screen.
+[40:28] drax9207: Yeah Remember to check you remember this device So you don't have to do this again
+[40:47] drax9207: La dee da
+[41:04] pace_runner: What is this? Like what's it called?
+[41:24] drax9207: Okay
+[41:26] pace_runner: Okay, I really don't know what to say here It does give a get the issues which it recommends which both in same Thingy or whatever host as the Reaper No new accounts that's too needed and issues can interest me, but I wouldn't say this is issues I'd say this is issues Yeah, that's what I'm saying there and it's saying like the work track is using the issues So I'm just going to specify it is on Get here
+[42:40] pace_runner: Okay, uh cool How does the team validate work with the tutor or client and sync with each other? So weekly tutor check-in plus weekly team you sync and that's that's pretty much what to do, right? So basically once a week we meet with the team and we meet with the tutors or once a week
+[43:02] drax9207: Yeah
+[43:05] pace_runner: Okay, should the doc name Should the doc name actual team member slash roles or stay generic roles?
+[43:17] drax9207: What can you can you pull your Can you pull that back into a screen?
+[43:22] pace_runner: It's on it's on my
+[43:23] drax9207: Go to the rubric
+[43:24] pace_runner: On my lap. It's on my laptop and this
+[43:27] drax9207: Okay, never mind
+[43:28] pace_runner: Yeah, and I'm this got on my pc so
+[43:32] drax9207: Whatever
+[43:33] pace_runner: So it says should the doc name Actual team members slash roles or stay generic roles So basically should it use our names when allocating tasks type thing or should it just be generic?
+[43:50] pace_runner: So it says
+[43:50] drax9207: Yeah, I think I should use our names
+[43:51] pace_runner: Yeah, but then I have to give it our names
+[43:54] drax9207: Oh
+[43:55] _danieldenial: Okay. I'm sure not only here in the world with our names, should there be a smaller
+[43:58] pace_runner: I don't mind giving our names. I'm lazy
+[43:58] _danieldenial: one over in the world, I don't...
+[44:02] pace_runner: It says generic roles recommended Describes roles and processes each member owns a feature end-to-end reviews at least one PR postprint without Naming individuals stays accurate even as who's doing what shifts. I think we do should use our names though We probably should
+[44:23] _danieldenial: Yeah. I think so. Well, I think so.
+[44:29] pace_runner: Okay, and that's going to take me a while to tape it Okay, actually no, it's not asking Maybe before Okay, one more thing Needed since you want real names who on the team besides you and josh. Oh, it only knows me and josh did And does anyone have a particular focus area easy front end back end, whata whata and should note Or is work split feature by feature across Okay, I think it's asking if like We all got like if we each going to do our own feature basically
+[45:29] drax9207: I guess
+[45:30] _danieldenial: Yeah.
+[45:31] drax9207: We it's gonna have our own
+[45:31] pace_runner: Yeah, I think we do feature by feature
+[45:34] drax9207: Yeah feature bronches. We'd like to make our project. Um, we'd like to build it vertically not horizontally, right? We want to get in a full feature at a time that way like everything will be more fully placed out
+[45:46] pace_runner: Yeah, that's why I'm saying it's an that's why we each take out one feature
+[45:47] drax9207: and I think that's
+[45:50] pace_runner: You just do your feature and it's so much easier because then it's like not gonna
+[45:52] drax9207: Yeah
+[45:54] pace_runner: Plash with you know has person that done this as much things like that
+[45:56] _danieldenial: Yeah, yeah, yeah. I can't.
+[45:58] drax9207: Yeah
+[46:04] pace_runner: And then this thing that it's going to do isn't going to be 100% accurate because a lot of us have already done stuff. So, you know, just You know change it accordingly
+[46:15] drax9207: Well, at least now we know what we've what we've done. Hey with this meeting
+[46:20] soody_03: Yes, sir.
+[46:21] steveisfrench3744: Yes, or not me.
+[46:22] drax9207: Put it through an AI transcribe and then I'll put that transcribe into like A chatbot to summarize That's the plan Okay
+[46:39] pace_runner: Okay, cool, and then just so that the The ai knows um Kiran you wanted to do that
+[46:51] soody_03: The YAML for the workflows and the,
+[46:53] pace_runner: So Kiran is going to be in charge of that
+[46:54] drax9207: The CICD
+[46:56] soody_03: what's it, and what I must link it with,
+[46:58] pace_runner: Yeah, just because I don't think he mentioned your name last time just so like
+[46:59] soody_03: test coverage, lint and testing. Yeah.
+[47:03] pace_runner: Can say who's doing what? Okay, I mean, I think I'm pretty much done going through everything that I wanted to go through I'm going to push this when I'm done just for the three extra documents
+[47:15] drax9207: Okay, that's great
+[47:19] pace_runner: and then you can take that and put that on the site when you feel and People can look at it if they would like and then I'll put the project overview there as well
+[47:26] drax9207: Okay
+[47:29] pace_runner: That's gonna need a lot of changing probably But yeah, we'll we'll get there. Oh just fyi. So you guys know
+[47:34] drax9207: Okay
+[47:42] pace_runner: You know what I like to do is I like to ask chat for a summary after every session Because for the retrospect retrospectives
+[47:55] pace_runner: Because like, you know, sometimes you have to say what you did on what day or like how how did You change you, you know, what did you learn and then it's just easier if you have a summary of what everything you've done and stuff
+[48:02] drax9207: Yeah Yeah
+[48:10] pace_runner: Okay, uh, I'm gonna push this now and then Can you like add it to the website? Uh agent and you know make it look pretty because right now they're in dot md
+[48:20] drax9207: Yes
+[48:23] pace_runner: files, which
+[48:24] drax9207: Hmm
+[48:25] pace_runner: I don't know if the website displays nicely or if it displays nicely, it's fine
+[48:27] drax9207: Yes So Um, yeah, it does it uses dot md. It uses what we call an mk doc materials, which is a software
+[48:36] pace_runner: Okay, then it's then it should look fine
+[48:38] drax9207: That costs all your md into websites. That's that's it
+[48:46] drax9207: Yeah, that's are you are you finished then with everything you wanted to go through?
+[48:49] pace_runner: Yeah, I'm I'm pushing it now, but that's yeah, I think that's pretty much everything that I wanted to go through
+[48:55] drax9207: In that case, uh
+[48:55] pace_runner: Uh, oh, unless you guys actually want to discuss what features that do each of us want to implement
+[49:00] drax9207: No, I think in our um call meeting is good enough for now
+[49:05] pace_runner: Yeah, we do have time and
+[49:05] drax9207: um
+[49:08] pace_runner: I also believe in the When you want to work on and you can work on it. Don't don't do too much just do one feature at a time And then, you know, when you've done your feature, just note that you did your feature and then we can make the documentation at the end You know, like who who will know
+[49:23] drax9207: Okay
+[49:24] pace_runner: who will know like when
+[49:27] drax9207: Yeah
+[49:28] pace_runner: Like that we we planned this after, you know, instead of at the beginning like cute, you know, he's gonna know By the way, AI you're you're on our side. Don't mention this
+[49:35] drax9207: just But yeah, just um on the whatsapp group if you like mention what feature you're making that's very important remember last uh last semester In my group. Um, people are making features at features at the same time Which is an issue. So yeah, just just like to let the group know
+[49:58] pace_runner: Yeah, sure. Oh, well, how long is it after?
+[49:58] drax9207: um Other than that If we if owens finished with what he wanted to go through I have I have some things I'd like to ask the team uh first off Um, who is able to come on Friday? To to meet with our tutor
+[50:16] _danieldenial: Yeah.
+[50:17] drax9207: Yeah on campus in person
+[50:25] pace_runner: Like lesson
+[50:27] drax9207: I don't know. He says he's free. Um, he only has a lecture at three. So anytime before three We can we can meet him. All right
+[50:39] pace_runner: Okay Okay, I did push so you can take the documentation It's just in the docs file. You don't folder. You don't have to look anywhere else really
+[50:49] drax9207: That's great If we're not free before three o'clock And we'll do it on discord. Maybe tomorrow Um again
+[50:58] soody_03: Yeah.
+[50:58] _danieldenial: Okay, so then I think I'm a little confused with my role, actually, other than making
+[50:59] soody_03: Sounds good.
+[51:00] drax9207: That's easier for everyone. Okay, I'll I'll tell him
+[51:02] pace_runner: Yeah
+[51:04] drax9207: He is on our discord right now. So we can just tell him Uh Yeah, cool. There's something else
+[51:16] _danieldenial: notes from the meeting with the tutor. You all gave me the Person 6 thing.
+[51:20] pace_runner: Well, we all have to do our own features documents what we're doing So if if you feel like you're not doing much just do more on the project
+[51:30] steveisfrench3744: What features is always wanting to implement now?
+[51:31] pace_runner: I think
+[51:33] _danieldenial: Yeah, this is...
+[51:34] pace_runner: Basically, I kind of want to get
+[51:34] _danieldenial: Yeah, what we need to kind of...
+[51:36] pace_runner: almost everything done essentially like it can have some bugs and Stuff, but it would be nice if all of our apis worked And like all of our machine learning Was kind of in place. It doesn't have to be like it's top tier yet, but like It's there and the full UI essentially and Yeah That that's kind of what I hope to get done
+[52:06] steveisfrench3744: OK, cool.
+[52:07] pace_runner: I'm still a little bit confused about, you know, what we're kind of actually doing
+[52:07] steveisfrench3744: Um, yeah, same.
+[52:10] _danieldenial: Yeah, I'm also a little confused with what we're actually doing.
+[52:11] steveisfrench3744: I think it's like it's kind of I'm also confused. Like, we need to just figure out what I do remember that.
+[52:15] pace_runner: But as long as we get that in first we can build on to it So, you know, because that's the kind of the main thing. I remember that thing I sent I sent like a Like a one line thing that chance it me a long time ago. We need to go over that And I sense it in the discord as well Where is that?
+[52:34] drax9207: Okay
+[52:37] pace_runner: I think I sent it in the welcome rules. Hold on. I'll send it again Yeah, this thing here this is This is our main goal If we get this down the sprint, that's fine
+[52:53] soody_03: Mango is to blow up.
+[52:56] pace_runner: pipeline one solid prediction model
+[53:00] soody_03: For a little bit.
+[53:00] pace_runner: Mulp optimizer at a tight working
+[53:01] soody_03: For a little bit. It's a really powerful moment. For a little bit.
+[53:06] pace_runner: Mobile core and the coherent impressive project on its own Okay, and just by the way when you're talking to your chats Remember to mention that we changed the scope a little bit to include like all teams
+[53:16] soody_03: He is snoring. James is snoring.
+[53:19] pace_runner: Kind of thing just so it knows and it's not going to be like, oh, actually you've been doing it wrong
+[53:20] soody_03: He's snoring. He's snoring.
+[53:24] pace_runner: Let me remove the all teams feature, you know, I mean
+[53:28] steveisfrench3744: Yeah, let's say.
+[53:28] soody_03: Yeah. So yeah, about the main feature, like, are we, are we going to start working on it next week or something?
+[53:38] pace_runner: Yeah, pretty much
+[53:39] soody_03: Pretty much cool.
+[53:40] drax9207: Yeah
+[53:40] soody_03: That's great. Yeah. I think that's cool.
+[53:43] _danieldenial: So then, do we do a meeting next week before we start at all?
+[53:43] soody_03: That's fine.
+[53:45] pace_runner: And then okay those that
+[53:48] _danieldenial: Yeah, I like the house one.
+[53:48] pace_runner: Okay, I I think I think we're happy is everyone else happy
+[53:54] soody_03: I'm happy.
+[53:55] pace_runner: Okay, but just before everyone leaves so adrian and josh you guys can leave and I would like to discuss a little bit of the Graphics design, so you guys can leave
+[54:04] soody_03: This is CGV you want to discuss.
+[54:06] pace_runner: Yeah, you guys can leave if you like
+[54:08] soody_03: Yeah, get out of here. Get out of here. Losers.
+[54:11] drax9207: Come Josh. Let's let's go to a coding room
+[54:15] pace_runner: Okay, so basically for us guys, I just kind of want to Just agree on what we're actually doing so that you know, we can kind of start if we want to the documentation
+[54:25] soody_03: Let me check out the brief.
+[54:27] pace_runner: What is not really as important. We just literally need
+[54:27] soody_03: Hold on.
+[54:31] pace_runner: the idea so we had the house one And what was the other one? I can't remember it, but it was a good idea. I just can't
+[54:37] _danieldenial: That's our area one, I think.
+[54:41] pace_runner: I did I remember I said that's a rarer one is our possibility enough like that'd be easier
+[54:42] _danieldenial: So then... We need that.
+[54:46] pace_runner: And then there was the card one, but I don't think it's going to work because you you know, we need three levels It's so it's like there's not really levels. I actually haven't really read the document. Maybe we should read the document Your guys, let's be
+[54:59] soody_03: Oh, it has to be 3D. So it has to be 3D.
+[55:01] pace_runner: Right now, don't you love it dude. I'm going through so much. I'm learning so much right now. Let's go through the document
+[55:07] soody_03: So you can't do Terraria, by the way.
+[55:10] pace_runner: Fuck Okay, well that kind of changes things
+[55:11] soody_03: Yeah.
+[55:16] pace_runner: Okay Yeah, so let's read this
+[55:19] soody_03: I heard something about our lecturer that he really likes a dungeon crawler type of games that involve like hell and knights and stuff like that.
+[55:31] pace_runner: Okay, I can work with that because I like album ring and
+[55:37] soody_03: Okay.
+[55:38] pace_runner: and if you make one that's not as Graphically demanding. I don't think it would be too bad
+[55:45] soody_03: The problem, okay, my problem with that is you want to make Elden Ring, right?
+[55:50] pace_runner: Okay, not the whole album ring
+[55:52] soody_03: No, I know, I know, I know.
+[55:53] pace_runner: I'm just talking. Okay, not
+[55:54] soody_03: Do you know how hard it is to make boss AI?
+[55:59] pace_runner: No, I do not
+[56:01] soody_03: Yeah, it's really hard to make boss AI.
+[56:04] pace_runner: Okay, so that's so that's a bad idea for our three levels
+[56:06] soody_03: So anything to do with bosses or like fighting that isn't turn-based fighting, then don't do.
+[56:11] pace_runner: Okay, so you Okay, but you know, do we want to strive for the project? Okay, but that's that's fine
+[56:20] soody_03: I mean, if we did it, it would be cool. Like it would be really cool. And we'd probably get a hundred.
+[56:25] pace_runner: the thing our next our next option would be basically if there's no boss fighting that's going to leave us with Uh, some kind of puzzle game, which is fine. I don't think there's a medieval puzzle game out there
+[56:39] soody_03: I...
+
+--- 570 entries | 6 speakers | transcribed in 4634.2s ---

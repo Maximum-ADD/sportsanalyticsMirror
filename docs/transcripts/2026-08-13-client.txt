@@ -1,0 +1,214 @@
+=== Meeting Transcript ===
+Server: SDP group (1529773053893148712) / Meeting room (1529773055407034369)
+Date: 2026-08-13T16:05:42.496Z
+Speakers: drax9207, kovendanraman, pace_runner, sanele_h_62233, steveisfrench3744
+Duration: [25:27]
+
+[00:00] pace_runner: just for like banking, for gambling sites, that API.
+[00:02] steveisfrench3744: Sorry. Now recording. Yeah. That's a good point. Yes. Not yet. That's a whole lot. Yeah, look,
+[00:11] kovendanraman: Okay, like the API will export like your odds and stuff. Okay, cool
+[00:15] pace_runner: Yeah, basically.
+[00:18] drax9207: Yeah, I believe Sonelia did some research on this. It's basically just documentation. I think right
+[00:21] kovendanraman: Do you guys know like Where you'll get your data sources for this for like which API you're gonna use to download all of the That data you need for the NBA stuff
+[00:35] sanele_h_62233: Yeah, um, yeah, yeah, I have found a source.
+[00:35] pace_runner: I think someone did look into it, but I don't know them off the top of my head.
+[00:39] kovendanraman: Okay Okay Yeah, so obviously for spins one is just gonna be like your initial product like MVP So you don't need to have like the models implemented now and So just stuff like getting your your DB all set up your hosting Also set up Then just have like basic. I don't know how many features you need to have implemented by this print like for the rubric like what it says Oh, it's just okay. Okay. Yeah. Yeah. Docs. Yeah. I
+[01:25] pace_runner: Yeah, but I also think we need to have like the core
+[01:25] drax9207: Yeah, yeah
+[01:27] pace_runner: of our project in place.
+[01:29] steveisfrench3744: we basically want to get as much done as possible in this print just before things get hectic in the semester. So like we're probably going to do as much as we can. Yeah. We basically
+[01:34] drax9207: Yeah, yeah, but the rubric is it's like there's not much in the rubric. Yeah, of course
+[01:45] kovendanraman: See it now Yeah, so Have you like what have you guys done so far like just planning like roughly?
+[01:56] steveisfrench3744: we've set up our website for all our documentation. We've also done like kind of a basic idea
+[01:56] kovendanraman: Okay
+[02:01] steveisfrench3744: of what the program would look like. So we just kind of gave Claude like, okay, cool. Can we just like have like a basic setup? We have like a basic schema for our database. We have like a kind of like a bad UI, but like one that like has kind of like some of the stats and it's pulling from mock data. So it's like we have like the base thing set up just so we can start building off of that. So we just have like a few commits in the in the repo already. But it's just not GitHub. Yeah, doing that too. But we're doing
+[02:25] kovendanraman: Okay, and you guys are using a get here or something for your version control So not like gets Brendan said use that It's yeah. Yeah. Okay for documentation. I know us we use Guitar pages. It was like really easy to use it there. Okay. Cool. That's easy
+[02:42] drax9207: Yeah, we're doing the same. Well, the website from good hub. Yeah. Yeah
+[02:45] steveisfrench3744: it on get tea on not on GitHub, but it's the same thing. Yeah. Okay, that's a good idea.
+[02:45] kovendanraman: Okay Okay, and then also with regards to like setting up your DB and the DB schema like it's good that you have a schema set up but like what we did we did was a f1 basically the same thing but like would formula one instead of like so What we did was we tried to mirror our API. I mean try to mirror the DB schema To the database source that you're getting everything from that API So whatever you guys want to use to populate your database. We tried to Get it similar enough. So the everything works with like whatever Relational database stuff and things like that
+[03:33] steveisfrench3744: I think but yeah, obviously things will change as we go along. But just like so we have a
+[03:35] kovendanraman: Yeah
+[03:36] steveisfrench3744: base thing to build off of, like just installing all the libraries that we need and stuff like just so it's all there and people can just start working. Yeah. Well, we're using
+[03:43] kovendanraman: Yeah, cool, and then What else was there? Yeah, so the API thing
+[03:51] drax9207: Responsible. Yeah. Yeah. Yeah. It's a good idea. Let's check it out
+[03:54] kovendanraman: It's not in the rubric but I remember for us It wasn't listed in like the project brief for Splint one But Brendan didn't give it like a five percent allocation during Splint marking for Having like a basic API set up and we didn't get any marks takers like it wasn't on the thing So maybe prepare like just some basic information even if it's just like getting player names Like just set up with your your own API for your own website For Splint one just is like a safety net for that five percent Obviously it's like randomized marking. So I don't know who's marking your guy stuff. So like Just set it up nicely for whatever's on the Splint one Rubric Like always aim for whatever advanced eighty two hundred percent to make sure everything's like covered there Your work tracker, I'm not sure we use notion but Brendan said no no like accounts one. So Which ever
+[04:59] steveisfrench3744: get tea projects. I think that's how we kind of I'm so nearly set it up for us. It's like just it's basically like GitHub projects, but just hosted on get tea. It's not
+[05:07] kovendanraman: Yeah, and then do you have like the The MVP set up now like and on any of your machines
+[05:16] steveisfrench3744: really an MVP yet. To be honest, like still using mock data, like the UI is still kind
+[05:20] kovendanraman: Yeah, yeah, like just so I can see like where you guys are now
+[05:21] steveisfrench3744: of bad. Have it on my laptop, but it's dead. I'm on a PC right now. Wait, let me just
+[05:29] pace_runner: I have it on my laptop, and I don't have this good on my laptop,
+[05:33] drax9207: Interesting should be somewhere on the workshop group
+[05:34] kovendanraman: Okay, while you set it up like any plan any questions for me that you're anything you're confused about in the rubric or with your brief for this project
+[05:34] steveisfrench3744: see if I can get it. Just plug it in. Yeah. Okay, I have a question just in terms of
+[05:37] pace_runner: but we can pull from a quick period of time.
+[05:48] kovendanraman: So, I'm not sure how you like
+[05:55] steveisfrench3744: like marking like how does it work like in terms of the sprints because like I know the sprint is very long, but like do we need to meet with you every week? How does like the meetings work? Okay, I think it's on our. I can share my screen quickly just on
+[06:07] kovendanraman: We Brendan never sent us the rubric for marking for the Sprint and then what do we have now for client meetings? It's just like We're all members in attendance or had a valid excuse to like your group Then a brief description of what happened in the meeting how satisfied I am with the meeting and then like general comments on the group slash meeting so like that's it Yeah
+[06:30] pace_runner: Does anyone have that documentation that's nearly made or whatever for each API that we have to use or remember where you sent it?
+[06:42] kovendanraman: For API documentation, we use swagger. I'm not sure if
+[06:43] drax9207: Wagga, what is swagger? Is it a type setting software or oh
+[06:46] kovendanraman: I'll probably be fine for you guys to use it as well no it's like it's basically like a website where It has like a whole bunch of rules on how you to use your API and like So it shows like how to use posts and gets from your API what it does and how to implement it
+[07:02] drax9207: Okay, okay, that makes sense. Okay, it makes sense
+[07:10] kovendanraman: but Yeah, but don't focus too much on API like just if you have enough time extra like try to get it but
+[07:16] pace_runner: The thing is, we kind of, I would like to kind of get the majority of our program at learning the Sprint one, because it's our longest Sprint as well.
+[07:28] kovendanraman: Yeah, it's I don't know if it's gonna be realistic to get most of your program done, but in the Sprint one but Yeah, definitely try to get everything on the rubric done and then anything extra will be good I don't know your documentation in order as well
+[07:48] pace_runner: Yeah, do you see like, the rubric is mainly documentation, doesn't really speak much about any features, which we obviously are going to need.
+[07:54] kovendanraman: Yeah, more the features mostly come like in the next sprints. I remember like our one had like basically full mock data and just a couple like Real data stuff. So like I think we had like it was just like you could click like some of the Whatever they they called it. I forgot what lucky call this in first semester But like some of the things you could do on the app would just like click on a driver View his information then click on a team like they would that they want many Features implemented. It was just enough Yeah, and then also there is something here for like all members committing. So Even if some guys don't do any work like just tell them change the comments Like we did that for like two of them is so
+[08:52] drax9207: So like just fake it they did the work. Okay. Um, I actually I have a bit of a question as well
+[08:55] kovendanraman: No, I just get any single comments like one guy like literally just changed a line to read or something like Yeah, yeah, I see what you mean. Yeah, some people can be just on docs
+[09:04] drax9207: About about that. So let's say one of us is just a completely focused on documentation since it's such a big part of The the project now is that like a valid things be part of Because you wouldn't have the comments. Okay. Okay
+[09:22] kovendanraman: I think it's fine because it commits will show on like whatever the pages there But I don't think the tutors actually looked for it. I think it's print one we looked but Sprint I don't know if it anyone checked. Okay. Yeah. Yeah, okay. Yeah, cool. That's
+[09:39] drax9207: Interesting. Let's see it. Can you can we show him the the inspiration for it by the way?
+[09:43] steveisfrench3744: what it looks like so far. Which screen is it? Can you see it? Okay. Yeah. It's just like you can just browse. This is all just like mock data so far. Okay. Okay. Are we
+[10:10] kovendanraman: One thing with the machine learning stuff it is a bit like hectic to set it up I remember we try to set it up a machine learning model in like the last two weeks And we just it worked on local hosts perfectly fine But just when you try sets it up on like your deployment. So we used One render for our back end and then What did we even use for our front end? I think like Versa or something just check that all the environment does work nicely the
+[10:39] steveisfrench3744: allowed to host on this all? Okay. Okay. Well, it's the easy thing to do. Like it's
+[10:42] kovendanraman: You hosted last year on like we hosted last year on Versa. I don't know how Brandon wants now but Yeah, oh
+[10:53] steveisfrench3744: the easiest thing. Okay, cool. Well, this is all we have so far. I mean, we have like a front end design that we're going to just add to it. But like it's just bare bones right now just so you can this is this is kind of what we're leaning towards in
+[11:04] pace_runner: We're actually working on it now.
+[11:09] kovendanraman: Yeah, wait, wait, I read it in rubric now. It says deployed this
+[11:11] drax9207: We can send you the link to the website if you'd like the documentation website
+[11:13] kovendanraman: Oh, no. Yeah deployed this site via static web hosting. So get our pages or cloud for your pages
+[11:23] drax9207: No, you can't see it. There you go. Hope that's not too complicated looking
+[11:25] kovendanraman: Yeah, okay, send it in general or some notes and
+[11:28] pace_runner: Okay, it turns out the API that he sent earlier were for football, and then we decided that NBA would be better. So I have a list of NBA ones here,
+[11:38] kovendanraman: Okay
+[11:38] pace_runner: and why they're the best option.
+[11:44] steveisfrench3744: terms of what we wanted to look like as well. Like when everything is set up, you can see that's weird. It's not showing my discord. Okay, wait. Cool. I think I
+[12:00] pace_runner: Okay, so this is what I got in terms of each APIs.
+[12:13] pace_runner: So we're literally going to be using NBS underscore API,
+[12:13] kovendanraman: Okay, okay free is good. Yeah
+[12:20] pace_runner: and it's free.
+[12:20] drax9207: Do we have to go through all the requirements all the key room requirements like now or is
+[12:23] pace_runner: It's unofficial. It's not an official API though, but it's apparently well maintained and widely used.
+[12:31] kovendanraman: Okay. Yeah, and yeah, this Whatever your front end design. It looks good. I'm happy with that
+[12:47] kovendanraman: Okay. Yeah, then any other questions for me?
+[12:57] drax9207: Is that it or will you be the one to like? Ask us for the requirements
+[13:03] kovendanraman: Oh, what's that? No, just show me what like what you've done so far and any ideas you have or anything that's confusing you
+[13:10] drax9207: Okay. Yeah Okay, then it's fine
+[13:12] kovendanraman: Yeah, all these requirements are like
+[13:13] drax9207: Because the the rubric the rubric says like we have to talk to you about every
+[13:15] kovendanraman: For your sprint. Ah, no, it's fine. I'll just give you guys ten. It's okay
+[13:20] drax9207: requirement that we have Okay, cool, and I guess I guess that's it
+[13:30] kovendanraman: Okay, yeah Yeah, no seems good Hopefully you guys do well And we'll see how this goes. Um, when you want to meet again
+[13:43] steveisfrench3744: think the best time would just be after the labs, but I don't know how the
+[13:45] drax9207: Yeah
+[13:45] steveisfrench3744: rest of our team feels about that. But like for me, it just seems like that's everyone. We're all going to be there anyways. Yeah, it took long. People for the
+[13:49] drax9207: So if we miss the Tuesday, we'll do it on the Friday, that's the plan. Okay before the lab is break
+[13:52] kovendanraman: Yeah, or even Even before the labs because I'm not sure like last like this week Tuesday uh, you guys Would that whole stp lab? It took us to like 5 30 to mark. So I don't know if that'll Uh, even like before or like friday
+[14:09] steveisfrench3744: lab. I'm fine. Yeah, I'm fine. Yeah, I'm fine. We definitely are. That's why we
+[14:10] pace_runner: Even during the lab,
+[14:12] kovendanraman: um Friday after I don't know cgv or os one of them What time is that like 12 o'clock? Is everyone gonna be down friday? Okay. Yeah, then
+[14:24] sanele_h_62233: See, um, CGVNZ12, then we have a TadAAA at our first 12 until 1.15.
+[14:27] pace_runner: there's no mistake,
+[14:37] kovendanraman: even
+[14:38] sanele_h_62233: Would the lunch hour work before you go?
+[14:40] kovendanraman: Yeah, like 130 or even two is good
+[14:49] kovendanraman: Yeah, if you missed And then you want to have it before after the lab like I don't think you guys have anything Before lab on
+[14:59] drax9207: Yeah, we can come a bit earlier and just do the and just do it before the lab I think and then we can leave earlier to great. Yeah
+[15:08] kovendanraman: Yeah Okay, cool. Yeah in person then like I don't know. So either one or 130
+[15:14] drax9207: Yeah, either or yeah, sorry about this
+[15:17] kovendanraman: on Tuesday and then uh, what like uh 130 again on friday
+[15:29] drax9207: This this meeting was a bit of a or it was but all over the place. I mean I think on the meeting
+[15:37] kovendanraman: No, but it's fun. Also, like don't be afraid to use ai brennan said you're supposed to use ai like, um
+[15:44] steveisfrench3744: think we can do more than than what like, like a lot in this first print. Yeah.
+[15:47] kovendanraman: Yeah, because the models keep dancing. Yeah
+[15:49] drax9207: That's a good question actually to what extent like is it are we supposed to use it?
+[15:53] kovendanraman: You You can vibe code
+[15:55] drax9207: Like how much could you use it?
+[15:57] kovendanraman: Basic like we use it a lot
+[15:57] drax9207: It's just bad coding
+[15:59] kovendanraman: Like I don't think I coded except for like changing lines in e and v. I don't think I coded like by and
+[15:59] drax9207: Okay, so I feel like there needs to be some nuance though. So what shouldn't be vodka it basically
+[16:06] steveisfrench3744: Awesome. Everything can be vibe coded. There's no new ones. Just put in the API
+[16:12] drax9207: just like
+[16:15] kovendanraman: Basically everything can be vibe coded Maybe actually look through your db schema. See if it looks good. That's fine and Your env's but I'm sure it'll just give you like an env.example and then you write in your actual env
+[16:30] steveisfrench3744: keys and stuff and then it should be fun. Yeah.
+[16:31] kovendanraman: Yeah, and then what else is there? Uh Just watch out. Don't make it too purple because like purple is like the ai color
+[16:43] drax9207: Okay, no purple it's got holding and stuff
+[16:45] kovendanraman: Uh, yeah But I think brennan does like machine learning models because we when we spoke to him about it last year Uh, he said like he'll be really impressed with a machine learning model. So like by sprint You realistically you'll probably only get it like implemented working nicely how you wanted by sprint three And if it's not working out nicely then then It's going to be a rush to get it in before your final submission for sprint four But don't worry about it now for sprints one sprints one is just setting up the basic like your infrastructure
+[17:21] pace_runner: I think we only have three Sprints.
+[17:24] drax9207: Okay
+[17:25] kovendanraman: You guys only have three sprints
+[17:28] drax9207: Yeah, the fourth one is like, I don't know what the fourth one is something else. Yeah
+[17:31] kovendanraman: this submission Yeah
+[17:34] drax9207: So it's technically for but it's only like seven days for the fourth one as well very short
+[17:40] pace_runner: Yeah, but I only saw the river covering three.
+[17:40] drax9207: That'll be basically touch-ups. We have to get done by
+[17:44] kovendanraman: Yeah, it says milestone fours project submission
+[17:50] pace_runner: Yeah, so I guess that's just the touch up stuff.
+[17:52] drax9207: number three Well, I want you mate is stuck in traffic right now. So he didn't show up. I don't know about the other one
+[17:54] kovendanraman: Yeah, then ai is good at writing test cases Like your word testing using vite test or whatever you guys are using
+[18:05] kovendanraman: There's nothing for testing on sprints one. So it's okay um Then also any valid fake excuses or wait not fake because it's recorded Any valid real excuses for your teammates like even if they're dog ate their laptop is fine
+[18:32] steveisfrench3744: One is a wall.
+[18:35] kovendanraman: Or the other ones internet's okay, great
+[18:36] drax9207: Daniels intact. Yeah, okay great insane
+[18:40] kovendanraman: Uh Yeah, so Yeah, I'm happy. Um anything else
+[18:46] steveisfrench3744: Hello. You guys there?
+[18:48] kovendanraman: Yeah
+[18:50] pace_runner: Are we like showing our project every week then? Oh, yeah, probably.
+[18:54] kovendanraman: Yeah, you can I think that'll be best Like four weekly sprints To show me not even the whole project. I just watch you're implementing What you're struggling with That'll be good um Be and then also get you to work like proactively and not like one week before the sprint Because like most groups did that like I remember last year some groups didn't have like their website hosted by like sprint three
+[19:21] steveisfrench3744: Yo, I think we we normally are pretty good at like getting things done. So
+[19:23] kovendanraman: so Yeah
+[19:39] pace_runner: Yeah, I'm working on it right now.
+[19:39] steveisfrench3744: hopefully that
+[19:40] drax9207: This is a team of people who get things done
+[19:42] pace_runner: I'm connecting the API. And as I'm updating the UI,
+[19:48] drax9207: Yeah, I guess
+[19:48] pace_runner: like, you know that picture that someone sends to the group, and I'm making it more horizontal than a vertical, like a website. There's, you know, right now tabs on the like side, it's better at the top.
+[20:03] kovendanraman: Yeah, okay, but that's all
+[20:04] drax9207: Thank you so much. What do we call you? So what do we call you?
+[20:05] kovendanraman: and stuff like As long as the core features are working the design stuff the tutors shouldn't mark you down on Like if it looks pretty or not Obviously sprint three you want us to look nice But for now, even if you like decide to scrap the design, it's okay
+[20:23] steveisfrench3744: Okay, cool.
+[20:25] kovendanraman: Yeah, okay
+[20:25] steveisfrench3744: I think just has a pretty good job at UI anyways. So cool. Thank you so much.
+[20:30] kovendanraman: Yeah Okay, yeah, um Then read on you Okay What's up? Oh, um coven then but my middle name is jason if it's easier
+[20:47] steveisfrench3744: No, we'll go. Yeah, I don't know who wanted to do that. Cool. Yeah.
+[20:49] drax9207: Covendin, thank you covendin
+[20:52] kovendanraman: Okay, great. Uh, good luck for this. Um last year my group had the highest mark for stp Like overall, so hopefully you guys can get the highest mark as well. It seems good. This is a nice topic to have
+[21:03] drax9207: Yes
+[21:06] kovendanraman: It's not something stupid like Whatever notebook as a damn
+[21:11] pace_runner: Yeah, dude, that one was crazy. I was like, how do you even get all the requirements for that? Like, you don't even need an API for that.
+[21:15] kovendanraman: Yeah, and also like even That fla project is also a bit crazy
+[21:18] pace_runner: Like, I think it's more just because, you know,
+[21:23] drax9207: People dead dude
+[21:24] kovendanraman: Yeah
+[21:25] drax9207: Shock. All right
+[21:25] kovendanraman: Some people good. Yeah, like one of the other groups. It was their fourth choice and they still got it
+[21:29] pace_runner: it's Brendan, dude.
+[21:31] kovendanraman: He has the same one Brendan made
+[21:32] pace_runner: Of course you would want an affiliate one.
+[21:36] kovendanraman: Uh, cool. Uh, see you guys next week
+[21:41] drax9207: Cool. Bye. Bye Covendin and bye. Bye you guys Yeah, I'm gonna go home
+[21:51] sanele_h_62233: Uh, I finished putting up all the issues for this print that are mostly just documentation and set up on what get the issues or projects. They're all up. I just need to start assigning them. And I know who chose you all this history.
+[22:11] pace_runner: Honestly, I think we just do it and then assign them afterwards when we're done. I think we can do that.
+[22:16] sanele_h_62233: I mean, they have to be assigned first. His friend didn't mention that he's going to check, like, when, when
+[22:23] pace_runner: Yeah, but how's he going to know when you assigned it?
+[22:25] sanele_h_62233: issues are assigned, when they, when people started working on them and when they closed them.
+[22:30] pace_runner: But how's he going to know? That's the question.
+[22:34] sanele_h_62233: It's a good question.
+[22:35] pace_runner: So my thinking is just we do what we did last time. You just do what you kind of feel and allocate them afterwards.
+[22:46] sanele_h_62233: Yeah, as long as we don't close them like 30 minutes before like presenting or something, okay, I guess.
+[22:53] pace_runner: Can you see when you close them?
+[22:56] sanele_h_62233: Yeah, you can, you can.
+[22:57] pace_runner: Oh, okay, that's a different story because now we're going to have to do that kind of along the way, kind of.
+[23:03] sanele_h_62233: Yeah, okay.
+[23:06] pace_runner: Can you send the link to this thing? Or does it do work?
+[23:14] sanele_h_62233: Wait, no.
+[23:31] steveisfrench3744: So what's everybody got planned for this weekend?
+[23:38] drax9207: Been long enough and then we'll I don't know. I wonder bro. This guy Craig bro
+[23:43] steveisfrench3744: What does Craig have this weekend? I wonder what does Craig have planned?
+[23:43] pace_runner: Because the detail won't let me like sign in.
+[23:51] drax9207: I don't know how to download the audio properly Like it'll download and then at the last second like it'll freeze And I just don't know why it just does it every time I
+[24:05] steveisfrench3744: I don't even know where you found Craig. The goat Craig. I love it when AI and
+[24:10] drax9207: Googled like how to record a discord like thing I was I was expecting to get a screen recorder or something and then I was like not use Craig bot the best version the best alternative Google Craig Heard that Craig. Yeah, you know Claude is a actually an ode to
+[24:30] steveisfrench3744: stuff is named after like an actual human, Ray and Claude and a method. Yeah,
+[24:41] drax9207: Like like an actual AI guy from the past. I don't know who it was Okay, well, um, I want to say goodbye if possible and then I'll stop the recording
+[24:50] pace_runner: Like, I know my details are corrected.
+[24:54] sanele_h_62233: Sorry, what?
+[24:55] pace_runner: Let me in.
+[25:11] drax9207: Okay, sure much love guys. Let's stop this recording now
+[25:12] steveisfrench3744: you go do what you need to do. Much love. Bye.
+[25:20] drax9207: Let's stop
+
+--- 206 entries | 5 speakers | transcribed in 729.0s ---

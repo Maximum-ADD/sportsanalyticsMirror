@@ -5,6 +5,16 @@ brief's AI attribution requirement (§1.4).
 
 | Date | Author | Tool | Model | Purpose | Files/Docs Affected | Link | Transcript |
 |---|---|---|---|---|---|---|---|
+| 2026-08-06 | Josh | Claude Code | Claude Sonnet 5    | Initial project scaffold: monorepo structure, Express+Prisma API (auth, players/teams/stats endpoints), mock NBA seed data, React+Vite+Tailwind frontend (player list + profile pages), Docker Compose for local Postgres, root README | `apps/api/**`, `apps/web/**`, `docker-compose.yml`, `README.md`, `.gitignore` |
+| 2026-08-06 | Owen | Claude Code | Claude Sonnet 5    | Migrated the API backend from Express to NestJS (modules/controllers/guards/global exception filter), preserving existing auth, players, and teams behaviour exactly; step 1 of moving the stack to the agreed tech choices | `apps/api/**`, `README.md` |
+| 2026-08-14 | Adrian | Claude.ai | Claude Sonnet 5 | Scaffolded MkDocs site, debugged GitHub Pages deploy, drafted meeting-doc structure | mkdocs.yml, docs/meetings/, docs/ai-usage.md | [link](https://claude.ai/share/598eee84-8e5d-41eb-9677-f31ea341246f) |[2026-08-14-adrian-claude-doc-website.txt](transcripts/2026-08-14-adrian-claude-doc-website.txt) |
+| 2026-08-14 | Adrian | ChatGPT | GPT-5.6 Luna | Generated MkDocs meeting minutes from a client/standup transcript, refined the meeting template and LLM summarisation prompt, and added collapsible meeting formatting | mkdocs.yml, docs/ai-usage.md, docs/meetings/_template.md, docs/meetings/client/index.md, docs/meetings/how-to-summarize.md, docs/meetings/index.md, docs/meetings/standups/index.md, docs/transcripts/2026-08-12-standup.txt, docs/transcripts/2026-08-13-client.txt | [link](https://chatgpt.com/share/6a8018bb-a464-83ea-a664-a6ecb475ff47) | [2026-08-14-adrian-chatgpt-meeting-summaries.txt](transcripts/2026-08-14-adrian-meeting-summaries.txt) |# AI Usage Ledger
+
+Every use of AI tooling on this project is logged here, per the COMS3011A
+brief's AI attribution requirement (§1.4).
+
+| Date | Author | Tool | Model | Purpose | Files/Docs Affected | Link | Transcript |
+|---|---|---|---|---|---|---|---|
 | 2026-08-06 | Josh | Claude Code | Claude Sonnet 5 | Initial project scaffold: monorepo structure, Express+Prisma API (auth, players/teams/stats endpoints), mock NBA seed data, React+Vite+Tailwind frontend (player list + profile pages), Docker Compose for local Postgres, root README | `apps/api/**`, `apps/web/**`, `docker-compose.yml`, `README.md`, `.gitignore` | | |
 | 2026-08-06 | Owen | Claude Code | Claude Sonnet 5 | Migrated the API backend from Express to NestJS (modules/controllers/guards/global exception filter), preserving existing auth, players, and teams behaviour exactly; step 1 of moving the stack to the agreed tech choices | `apps/api/**`, `README.md` | | [OwenPace_01.txt](../AI%20Chat%20Docs/OwenPace_01.txt) |
 | 2026-08-06 | Owen | Claude Code | Claude Sonnet 5 | Replaced Passport local-strategy auth with BetterAuth (Google OAuth): new Prisma User/Session/Account/Verification schema, BetterAuth handler mounted ahead of Nest's router in main.ts, SessionAuthGuard rewritten against BetterAuth sessions; step 2 of the stack migration | `apps/api/**`, `README.md` | | [OwenPace_01.txt](../AI%20Chat%20Docs/OwenPace_01.txt) |
