@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     environment:
       - GITEA_INSTANCE_URL=https://sdp.ms.wits.ac.za
-      - GITEA_RUNNER_REGISTRATION_TOKEN=nAkHJiq3m5rnMkoU8qhsp9vsy31zZpuZdBMoGpFp
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${GITEA_RUNNER_REGISTRATION_TOKEN}
       - GITEA_RUNNER_NAME=sportsanalytics-runner
       - GITEA_RUNNER_LABELS=default:docker://gitea/runner-images:ubuntu-latest,ubuntu-latest:docker://gitea/runner-images:ubuntu-latest
     volumes:
