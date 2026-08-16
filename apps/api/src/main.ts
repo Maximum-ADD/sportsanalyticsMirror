@@ -2,6 +2,7 @@ import "reflect-metadata";
 import "dotenv/config";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import session from "express-session";
 import helmet from "helmet";
 import passport from "passport";
