@@ -11,6 +11,19 @@ services:
       - "55432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-
+  runner:
+    image: gitea/act_runner:latest
+    container_name: sportsanalytics-runner
+    restart: unless-stopped
+    environment:
+      - GITEA_INSTANCE_URL=https://sdp.ms.wits.ac.za
+      - GITEA_RUNNER_REGISTRATION_TOKEN=nAkHJiq3m5rnMkoU8qhsp9vsy31zZpuZdBMoGpFp
+      - GITEA_RUNNER_NAME=sportsanalytics-runner
+      - GITEA_RUNNER_LABELS=default:docker://gitea/runner-images:ubuntu-latest,ubuntu-latest:docker://gitea/runner-images:ubuntu-latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-data:/data
 volumes:
   postgres-data:
+  runner-data:
+  

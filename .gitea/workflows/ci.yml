@@ -12,7 +12,7 @@ concurrency:
 jobs:
   api:
     name: API — lint, typecheck, test
-    runs-on: ubuntu-latest
+    runs-on: default
     timeout-minutes: 15
     defaults:
       run:
@@ -42,7 +42,7 @@ jobs:
 
       - name: Lint
         run: |
-          if ls eslint.config.* >/dev/null 2>&1; then
+          if ls eslint.config.* 2>/dev/null; then
             npm run lint
           else
             echo "::warning title=API lint skipped::apps/api has no eslint.config.js. ESLint 10 requires a flat config, so 'npm run lint' cannot run. Add apps/api/eslint.config.js and this step starts enforcing automatically."
@@ -58,7 +58,7 @@ jobs:
 
   web:
     name: Web — lint, typecheck, test
-    runs-on: ubuntu-latest
+    runs-on: default
     timeout-minutes: 15
     defaults:
       run:
