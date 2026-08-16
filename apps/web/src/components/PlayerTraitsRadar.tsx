@@ -6,7 +6,7 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
 } from "recharts";
-import type { SeasonAverages } from "@/types/nba";
+import type { SeasonAverages } from "../types/nba";
 
 interface PlayerTraitsRadarProps {
   seasonAverages: SeasonAverages;

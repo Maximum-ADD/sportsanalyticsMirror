@@ -12,23 +12,5 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  # Disposable database for `npm test` in apps/api — kept separate from the
-  # `postgres` dev database above so running the test suite locally never
-  # touches your seeded dev data. Not persisted (no volume): tests run
-  # `prisma migrate deploy` and truncate tables between specs, so it starts
-  # empty every time you bring it up.
-  postgres-test:
-    image: postgres:16-alpine
-    container_name: nba-analytics-postgres-test
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: nba_analytics_test
-    ports:
-      - "55433:5432"
-    tmpfs:
-      - /var/lib/postgresql/data
-
 volumes:
   postgres-data:

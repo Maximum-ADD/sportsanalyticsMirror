@@ -4,14 +4,10 @@
   "description": "COMS3011A Sport Analytics Tool — NBA. See README.md for setup.",
   "scripts": {
     "db:up": "docker compose up -d postgres",
-    "db:up:test": "docker compose up -d postgres-test",
     "db:down": "docker compose down",
     "api:install": "npm install --prefix apps/api",
     "api:dev": "npm run dev --prefix apps/api",
     "web:install": "npm install --prefix apps/web",
-    "web:dev": "npm run dev --prefix apps/web",
-    "test": "npm run test --prefix apps/api && npm run test --prefix apps/web",
-    "test:cov": "npm run test:cov --prefix apps/api && npm run test:cov --prefix apps/web",
-    "coverage:report": "node scripts/build-coverage-report.mjs"
+    "web:dev": "npm run dev --prefix apps/web"
   }
 }

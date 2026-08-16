@@ -49,14 +49,6 @@ front and back end.
    npm run dev              # starts on http://localhost:4000
    ```
 
-   Sign-in uses Google OAuth via BetterAuth, which needs a client set up at
-   the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-   (authorized redirect URI: `http://localhost:4000/auth/callback/google`) —
-   put its ID/secret in `.env` as `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
-   Without them the API still runs (everything except signing in works, and
-   `/v1/*` currently doesn't require a session anyway), it just logs a
-   startup warning.
-
 3. **Set up the frontend** (in a separate terminal):
 
    ```bash
@@ -76,15 +68,12 @@ front and back end.
 
 This is a base scaffold, not the finished product. What's wired up:
 
-- **Auth**: Google OAuth via [BetterAuth](https://better-auth.com), mounted
-  at `/auth/*` directly on the Express instance (ahead of Nest's own
-  routing — see `apps/api/src/main.ts`) so it owns session cookies and the
-  OAuth redirect flow. A Nest `SessionAuthGuard` looks up the current
-  BetterAuth session on protected routes; RBAC roles (`PUBLIC`, `USER`,
-  `ANALYST`, `ADMIN`) live on the `User` model as a custom BetterAuth field
-  (not settable via sign-up/OAuth profile) and are enforced by a Nest
-  `RolesGuard`, not the database. No route currently requires a role above
-  the default `USER`.
+- **Auth**: sign up, sign in, sign out, password reset, delete account —
+  via Passport.js (local strategy, wired through `@nestjs/passport`) +
+  bcrypt + server-side sessions. RBAC roles (`PUBLIC`, `USER`, `ANALYST`,
+  `ADMIN`) exist on the `User` model and are enforced via a Nest `RolesGuard`,
+  not the database. (Passport local auth is a placeholder — see "not done
+  yet" below for the planned move to BetterAuth + Google OAuth.)
 - **API**: versioned under `/v1/`, with pagination, a consistent JSON error
   envelope (`{ error: { code, message } }`) via a global Nest exception
   filter, and routes for players, teams, and derived per-player season
@@ -105,51 +94,22 @@ This is a base scaffold, not the finished product. What's wired up:
 
 ## What's not done yet (follow-up tasks for the team)
 
-- Frontend: wire up the Google sign-in button/flow against BetterAuth (the
-  backend is ready — see Auth above — but no UI calls it yet); adopt
-  TanStack Query for data fetching and shadcn/ui for components (currently
-  plain `fetch` + hand-rolled UI).
+- Auth: swap Passport local-strategy for BetterAuth + Google OAuth.
+- Frontend: adopt TanStack Query for data fetching and shadcn/ui for
+  components (currently plain `fetch` + hand-rolled UI).
 - Real `nba_api` ingestion pipeline (Python) writing into Postgres.
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
 - Documentation site (Docusaurus/MkDocs on GitHub Pages).
-- CI/CD: tests + coverage run on every push (see Testing below); linting,
-  typechecking, and a deploy stage are still not wired into CI.
+- CI/CD (lint, typecheck, test, deploy on PR/merge).
+- Automated tests (this scaffold has no test suite yet — `vitest` and
+  `supertest` are installed in `apps/api` but unused).
 - Responsiveness/accessibility pass (axe-core, keyboard nav).
 - Production deployment.
 
-## Testing
-
-Both apps use Vitest. The backend's tests run against a real (disposable)
-Postgres database rather than a mocked Prisma client, so they exercise
-actual queries.
-
-```bash
-# one-off: start the disposable test database
-npm run db:up:test
-
-# backend — unit tests (pagination, derived-stats math, guards, exception
-# filter) plus supertest e2e tests against a real Postgres instance
-cd apps/api
-cp .env.test.example .env.test   # only needed once
-npm test              # or: npm run test:cov for coverage
-
-# frontend — component/page tests with React Testing Library
-cd apps/web
-npm test               # or: npm run test:cov for coverage
-```
-
-CI (`.gitlab-ci.yml`) runs both suites with coverage on every push against a
-Postgres service container, then merges both apps' coverage into one HTML
-dashboard (`scripts/build-coverage-report.mjs`) — published to GitLab Pages
-on the default branch, and posted as a comment on merge requests. Note: this
-targets **GitLab CI** (matching this repo's `sdp.ms.wits.ac.za` remote), not
-GitHub Actions, and GitLab Pages must be enabled on the project for the
-published dashboard link to work.
-
 ## AI usage
 
-See `docs/ai-usage.md` for the attribution ledger. This scaffold (backend,
+See `docs/AI_USAGE.md` for the attribution ledger. This scaffold (backend,
 schema, seed data, frontend, and this README) was generated with
 Claude Code [Claude Sonnet 5], per the brief's AI attribution requirement.
 Log any further AI-assisted changes there as you make them.

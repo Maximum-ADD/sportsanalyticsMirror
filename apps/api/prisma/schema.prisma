@@ -18,65 +18,13 @@ enum Role {
   ADMIN
 }
 
-// User/Session/Account/Verification below follow BetterAuth's required core
-// schema (https://better-auth.com/docs/concepts/database) — field names and
-// types must match what its Prisma adapter expects. `role` is a
-// project-specific addition layered on top for RBAC (see RolesGuard),
-// defaulted here and marked non-writable in the BetterAuth config so a
-// Google profile can never grant itself elevated access.
 model User {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  emailVerified Boolean  @default(false)
-  image         String?
-  role          Role     @default(USER)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  sessions Session[]
-  accounts Account[]
-}
-
-model Session {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// One row per linked sign-in method (e.g. Google) for a user.
-model Account {
-  id                    String    @id @default(uuid())
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accountId             String
-  providerId            String
-  accessToken           String?
-  refreshToken          String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  idToken               String?
-  password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-}
-
-// Short-lived tokens for flows like email verification (unused while the
-// only sign-in method is Google OAuth, but part of BetterAuth's core schema).
-model Verification {
-  id         String   @id @default(uuid())
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Team {
@@ -107,9 +55,7 @@ model Player {
   teamId       String?
   team         Team?    @relation(fields: [teamId], references: [id])
 
-  gameStats   PlayerGameStat[]
-  predictions PlayerPrediction[]
-  lineupSlots LineupSlot[]
+  gameStats PlayerGameStat[]
 }
 
 model Game {
@@ -167,46 +113,4 @@ model PlayerGameStat {
   freeThrowsAttempted Int
 
   @@unique([playerId, gameId])
-}
-
-// Below models support the fantasy-lineup optimizer: a small Python service
-// (apps/optimizer) predicts each player's next-game fantasy points and
-// picks an optimal lineup under a salary cap, writing its output here.
-// NestJS only ever reads these tables — nothing under /v1 writes to them.
-
-// One row per player per optimizer run. `salary` is a synthetic DFS-style
-// cost derived from the same prediction (there's no public API for real
-// DraftKings/FanDuel pricing), not a real market price — see
-// apps/optimizer/predict.py.
-model PlayerPrediction {
-  id                     String   @id @default(uuid())
-  playerId               String
-  player                 Player   @relation(fields: [playerId], references: [id])
-  predictedFantasyPoints Float
-  salary                 Int
-  asOf                   DateTime @default(now())
-
-  @@index([playerId, asOf])
-}
-
-// A single optimizer run's chosen lineup (MILP solve over the latest
-// PlayerPrediction rows) — see apps/optimizer/optimize.py.
-model Lineup {
-  id                   String   @id @default(uuid())
-  totalPredictedPoints Float
-  totalSalary          Int
-  budget               Int
-  createdAt            DateTime @default(now())
-
-  slots LineupSlot[]
-}
-
-model LineupSlot {
-  id       String @id @default(uuid())
-  lineupId String
-  lineup   Lineup @relation(fields: [lineupId], references: [id], onDelete: Cascade)
-  playerId String
-  player   Player @relation(fields: [playerId], references: [id])
-
-  @@unique([lineupId, playerId])
 }
