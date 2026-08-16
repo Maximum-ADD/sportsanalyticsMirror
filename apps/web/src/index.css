@@ -39,9 +39,9 @@
   /* Hero accent panels — a warm light/mid/dark progression distinct from the
      brand-accent orange used elsewhere, so the panels read as decoration
      rather than competing with real orange UI (buttons, active nav links). */
-  --color-accent-panel-light: #f2b3a8;
-  --color-accent-panel-mid: #e0453b;
-  --color-accent-panel-dark: #4a1f16;
+  --color-accent-panel-light: #f1b9b0;
+  --color-accent-panel-mid: #ff5a4d;
+  --color-accent-panel-dark: #76281f;
 
   --color-brand-accent: #f97316;
   --color-brand-accent-soft: #ea580c;
