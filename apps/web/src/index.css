@@ -32,6 +32,17 @@
   --color-surface-card: #241a10;
   --color-border-subtle: #3a2a19;
 
+  /* Deliberately lighter than surface-raised — the navbar needs to read as
+     its own band against the near-black strip above and hero below it. */
+  --color-surface-nav: #2b2015;
+
+  /* Hero accent panels — a warm light/mid/dark progression distinct from the
+     brand-accent orange used elsewhere, so the panels read as decoration
+     rather than competing with real orange UI (buttons, active nav links). */
+  --color-accent-panel-light: #f2b3a8;
+  --color-accent-panel-mid: #e0453b;
+  --color-accent-panel-dark: #4a1f16;
+
   --color-brand-accent: #f97316;
   --color-brand-accent-soft: #ea580c;
   /* Text/icon color for content sitting on top of a solid brand-accent fill

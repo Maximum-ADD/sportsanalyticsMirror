@@ -96,13 +96,13 @@ export function HomePage() {
         </div>
 
         {/* Geometric accent panels on the right, echoing the reference design's stacked shapes. */}
-        <div className="relative hidden h-72 lg:block">
-          <div aria-hidden className="absolute right-4 top-4 size-40 rounded-2xl bg-brand-accent/20 backdrop-blur-sm" />
-          <div aria-hidden className="absolute right-16 top-20 size-36 rounded-2xl bg-brand-accent/35 backdrop-blur-sm" />
+        <div className="relative hidden h-96 lg:block">
+          <div aria-hidden className="absolute right-0 top-0 size-56 rounded-xl bg-accent-panel-light" />
           <div
             aria-hidden
-            className="absolute bottom-0 right-0 size-44 rounded-2xl bg-brand-accent-soft/50 backdrop-blur-sm"
+            className="absolute left-0 top-28 size-52 rounded-xl bg-accent-panel-mid shadow-2xl shadow-black/40"
           />
+          <div aria-hidden className="absolute bottom-0 right-6 size-60 rounded-xl bg-accent-panel-dark" />
         </div>
       </div>
 
