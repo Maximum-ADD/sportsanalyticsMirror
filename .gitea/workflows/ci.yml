@@ -20,9 +20,15 @@ jobs:
 
     # The e2e suite (apps/api/test/**) needs a real, disposable Postgres —
     # test/global-setup.ts runs `prisma migrate deploy` against it and throws
-    # immediately if DATABASE_URL isn't set. Random host port (`5432/tcp`,
-    # no fixed mapping) avoids colliding with anything else already bound to
-    # 5432 on the runner host.
+    # immediately if DATABASE_URL isn't set. This runner executes jobs inside
+    # their own container (GITEA_RUNNER_LABELS points at
+    # docker://gitea/runner-images:ubuntu-latest — see docker-compose.yml),
+    # so the job can't reach a service container via `localhost`, only via
+    # the service's own name on its normal internal port. (First attempt at
+    # this used `localhost:${{ job.services.postgres.ports['5432'] }}`, the
+    # pattern for jobs running directly on a bare runner host — wrong mode
+    # for this runner, confirmed by the resulting P1001 "can't reach
+    # localhost:5432" failure.)
     services:
       postgres:
         image: postgres:16-alpine
@@ -30,8 +36,6 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: nba_analytics_test
-        ports:
-          - 5432/tcp
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -39,7 +43,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:${{ job.services.postgres.ports['5432'] }}/nba_analytics_test?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nba_analytics_test?schema=public
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
       WEB_ORIGIN: http://localhost:5173
