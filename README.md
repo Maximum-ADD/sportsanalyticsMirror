@@ -139,13 +139,14 @@ cd apps/web
 npm test               # or: npm run test:cov for coverage
 ```
 
-CI (`.gitlab-ci.yml`) runs both suites with coverage on every push against a
-Postgres service container, then merges both apps' coverage into one HTML
-dashboard (`scripts/build-coverage-report.mjs`) — published to GitLab Pages
-on the default branch, and posted as a comment on merge requests. Note: this
-targets **GitLab CI** (matching this repo's `sdp.ms.wits.ac.za` remote), not
-GitHub Actions, and GitLab Pages must be enabled on the project for the
-published dashboard link to work.
+CI is **Gitea Actions** (`.gitea/workflows/ci.yml` on `main`, run via a
+self-hosted `act_runner`), matching this repo's `sdp.ms.wits.ac.za` remote —
+not GitHub Actions or GitLab CI. It currently runs lint/typecheck/test for
+both apps on every push and PR; it does not yet run against a real Postgres
+instance or merge coverage into a dashboard the way the steps above do
+locally. `scripts/build-coverage-report.mjs` (merges both apps' coverage
+into one HTML dashboard) is still available as a manual command —
+`npm run coverage:report` from the repo root — but isn't wired into CI yet.
 
 ## AI usage
 

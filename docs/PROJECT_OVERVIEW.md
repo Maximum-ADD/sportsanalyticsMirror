@@ -59,8 +59,8 @@ Next.js/SvelteKit), so there's no framework-level coupling between them.
 
 **Infra**
 - Docker Compose — local Postgres (dev + a separate disposable test DB)
-- GitLab CI — test + coverage pipeline (this repo's remote is
-  `sdp.ms.wits.ac.za`, i.e. GitLab, not GitHub)
+- Gitea Actions — lint/typecheck/test pipeline via a self-hosted runner
+  (this repo's remote is `sdp.ms.wits.ac.za`, i.e. Gitea, not GitHub)
 
 ## Backend architecture (`apps/api`)
 
@@ -271,26 +271,34 @@ cd apps/web
 npm test                        # or npm run test:cov
 ```
 
-## CI/CD (`.gitlab-ci.yml`)
+## CI/CD (`.gitea/workflows/ci.yml`)
 
-Targets **GitLab CI** (this repo's remote is `sdp.ms.wits.ac.za`), not
-GitHub Actions. On every push:
+Targets **Gitea Actions** (this repo's remote is `sdp.ms.wits.ac.za`), run
+via a self-hosted `act_runner` Docker container (see `docker-compose.yml`),
+not GitHub Actions or GitLab CI. On every push and PR:
 
-1. `test-api` — runs the API suite with coverage against a `postgres:16`
-   service container.
-2. `test-web` — runs the frontend suite with coverage.
-3. `coverage-report` — merges both apps' `coverage-summary.json`/
-   `test-report.json` into one HTML dashboard
-   (`scripts/build-coverage-report.mjs`).
-4. `pages` — publishes that dashboard to GitLab Pages, but only on the
-   default branch (GitLab Pages must be enabled on the project for the
-   link to resolve).
-5. `mr-coverage-comment` — posts/updates a coverage summary comment on the
-   merge request (`scripts/post-mr-coverage-comment.mjs`); never fails the
-   pipeline if it can't (e.g. missing token permissions).
+1. `api` — lint (once `apps/api/eslint.config.js` exists — flat-config
+   ESLint 10 needs it, so this step currently just warns and skips),
+   typecheck, and test.
+2. `web` — lint, typecheck, and test (`--if-present`, since no test script
+   is wired into `apps/web/package.json` yet on `main`).
 
-Linting, typechecking, and a deploy stage are **not** wired into CI yet —
-currently run manually before every commit (see `GIT_METHODOLOGY.md`'s
+Neither job currently runs against a real Postgres instance, merges
+coverage, or publishes a dashboard — the Postgres-backed test suite, the
+coverage-merging pipeline, and `scripts/build-coverage-report.mjs`
+described above/below are real and runnable **locally**, but wiring them
+into Gitea Actions (a real DB service container, a coverage-dashboard
+publish step) is still open work. An earlier `.gitlab-ci.yml` attempted
+exactly this against a different platform (GitLab) before the team
+settled on Gitea for hosting; it's been removed as dead weight rather than
+kept as a stale reference. `scripts/post-mr-coverage-comment.mjs` (which
+posted coverage summaries as GitLab merge-request comments) was removed
+alongside it — it hardcoded GitLab's API and had no working equivalent
+under Gitea.
+
+Linting, typechecking are only partly wired into CI (see above), and a
+deploy stage isn't wired in at all — still mostly run manually before
+every commit (see `GIT_METHODOLOGY.md`'s
 merge requirements).
 
 ## Known gaps
