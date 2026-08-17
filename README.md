@@ -105,18 +105,26 @@ This is a base scaffold, not the finished product. What's wired up:
 
 ## What's not done yet (follow-up tasks for the team)
 
-- Frontend: wire up the Google sign-in button/flow against BetterAuth (the
-  backend is ready — see Auth above — but no UI calls it yet); adopt
-  TanStack Query for data fetching and shadcn/ui for components (currently
-  plain `fetch` + hand-rolled UI).
-- Real `nba_api` ingestion pipeline (Python) writing into Postgres.
+- Real `nba_api` ingestion pipeline (Python) writing into Postgres — all
+  current data is mock-seeded. `apps/optimizer` establishes the intended
+  pattern (a separate Python process writing straight into Postgres,
+  NestJS only reading) but doesn't pull real league data.
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
-- Documentation site (Docusaurus/MkDocs on GitHub Pages).
-- CI/CD: tests + coverage run on every push (see Testing below); linting,
-  typechecking, and a deploy stage are still not wired into CI.
-- Responsiveness/accessibility pass (axe-core, keyboard nav).
-- Production deployment.
+- Self-service account deletion — the brief requires users be able to
+  delete their account; no route currently exists for it (see
+  `docs/PROJECT_OVERVIEW.md`'s Auth section). Password reset doesn't apply
+  under Google-OAuth-only sign-in, but this needs a decision either way
+  before Milestone 4.
+- `axe-core` automated accessibility checks — not wired in anywhere yet,
+  despite being listed as done in an earlier draft of this file. Some
+  responsive breakpoints and keyboard/focus handling exist (`Navbar.tsx`,
+  `App.tsx`, `RecentResultWidget.tsx`) but haven't had a real audit pass.
+- A deploy stage in CI, and production deployment/hosting generally — not
+  decided (see the docs site's ADR-003, still a stub).
+- Coverage merging/dashboard (`scripts/build-coverage-report.mjs`) is
+  built and runnable manually (`npm run coverage:report`) but not wired
+  into CI.
 
 ## Testing
 
