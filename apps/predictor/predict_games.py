@@ -3,10 +3,11 @@ probabilities with four_factors.py's predicted margins.
 
 Both completed and upcoming games get a row: completed games use the Elo/
 Four Factors state as it stood right before that game was played (no
-outcome leakage — see elo.py's pre_game_state), so a prediction always
-reflects what was knowable beforehand. This also means a freshly seeded
-database (which currently has no unplayed games at all) still produces
-visible predictions rather than an empty table.
+outcome leakage — see elo.py's pre_game_state and four_factors.py's
+compute_running_season_averages), so a prediction always reflects what was
+knowable beforehand. This also means a freshly seeded database (which
+currently has no unplayed games at all) still produces visible predictions
+rather than an empty table.
 
 One script, not a predict/optimize two-step like apps/optimizer: Elo and
 Four Factors don't depend on each other's output the way optimize.py
@@ -20,7 +21,7 @@ import uuid
 from db import get_connection
 from elo import compute_elo_ratings, fetch_completed_games_chronological, fetch_upcoming_games, predict_upcoming_games
 from four_factors import (
-    average_season_four_factors,
+    compute_running_season_averages,
     compute_team_game_four_factors,
     fetch_team_game_boxscores,
     fit_or_fallback_margin_model,
@@ -37,30 +38,42 @@ def build_predictions(cursor) -> tuple[list[dict], str]:
 
     boxscores = fetch_team_game_boxscores(cursor)
     team_game_factors = [compute_team_game_four_factors(row) for row in boxscores]
-    season_averages = average_season_four_factors(team_game_factors)
-    margin_method, margin_weights = fit_or_fallback_margin_model(team_game_factors, season_averages)
+    running_averages = compute_running_season_averages(team_game_factors)
+    margin_method, margin_weights = fit_or_fallback_margin_model(team_game_factors, running_averages)
 
     predictions = []
     for game in completed_games:
+        # Each team's *pre-game* snapshot for this specific game — not a
+        # single season-wide average reused everywhere, which is exactly
+        # the future-data leak this function used to have (a team's later
+        # games silently informing an earlier game's prediction).
+        home_factors = running_averages.get(game["home_team_id"], {}).get(game["game_id"])
+        away_factors = running_averages.get(game["away_team_id"], {}).get(game["game_id"])
         predictions.append(
             _build_prediction_row(
                 game["game_id"],
-                game["home_team_id"],
-                game["away_team_id"],
                 pre_game_state[game["game_id"]],
-                season_averages,
+                home_factors,
+                away_factors,
                 margin_method,
                 margin_weights,
             )
         )
     for game in upcoming_games:
+        # An upcoming game has no row of its own in running_averages (it
+        # was never in team_game_factors — there's no boxscore for a game
+        # that hasn't been played), so it uses each team's "_final"
+        # snapshot: the running average across all of that team's games
+        # played so far, which is the correct (and only) pre-game state
+        # for a game that hasn't happened yet.
+        home_factors = running_averages.get(game["home_team_id"], {}).get("_final")
+        away_factors = running_averages.get(game["away_team_id"], {}).get("_final")
         predictions.append(
             _build_prediction_row(
                 game["game_id"],
-                game["home_team_id"],
-                game["away_team_id"],
                 upcoming_state[game["game_id"]],
-                season_averages,
+                home_factors,
+                away_factors,
                 margin_method,
                 margin_weights,
             )
@@ -70,17 +83,14 @@ def build_predictions(cursor) -> tuple[list[dict], str]:
 
 def _build_prediction_row(
     game_id: str,
-    home_team_id: str,
-    away_team_id: str,
     elo_state: dict,
-    season_averages: dict[str, dict],
+    home_factors: dict | None,
+    away_factors: dict | None,
     margin_method: str,
     margin_weights,
 ) -> dict:
     """Assembles one GamePrediction row from an Elo state dict and the margin model."""
-    predicted_margin = predict_margin(
-        season_averages.get(home_team_id), season_averages.get(away_team_id), margin_weights
-    )
+    predicted_margin = predict_margin(home_factors, away_factors, margin_weights)
     return {
         "game_id": game_id,
         "home_win_probability": round(elo_state["home_win_probability"], 4),
