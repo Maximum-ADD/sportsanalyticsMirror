@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { getTeamLogoUrl } from "@/lib/nbaMedia";
 import type { Team } from "@/types/nba";
 
 interface TeamColors {
@@ -7,10 +9,11 @@ interface TeamColors {
 }
 
 // Real primary/secondary colors for the teams in the current mock dataset —
-// authentic rather than generic. Any team not listed here (i.e. everything
-// pending the real nba_api ingestion pipeline) still gets a distinct,
-// consistent color via a hash of its abbreviation, so this never falls back
-// to a single flat placeholder color as the roster grows.
+// authentic rather than generic. Any team not listed here still gets a
+// distinct, consistent color via a hash of its abbreviation, so this never
+// falls back to a single flat placeholder color as the roster grows. Also
+// this component's fallback when a real logo (see nbaMedia.ts) fails to
+// load or isn't available for a team.
 const KNOWN_TEAM_COLORS: Record<string, TeamColors> = {
   LAL: { primary: "#552583", secondary: "#FDB927" },
   BOS: { primary: "#007A33", secondary: "#BA9653" },
@@ -44,20 +47,30 @@ function resolveTeamColors(abbreviation: string): TeamColors {
 }
 
 interface TeamBadgeProps {
-  team: Pick<Team, "abbreviation">;
+  team: Pick<Team, "abbreviation"> & Partial<Pick<Team, "nbaTeamId">>;
   size?: "sm" | "md";
   className?: string;
 }
 
 export function TeamBadge({ team, size = "md", className }: TeamBadgeProps) {
+  const [logoFailed, setLogoFailed] = useState(false);
   const { primary, secondary } = resolveTeamColors(team.abbreviation);
+  const sizeClass = size === "sm" ? "size-6 text-[10px]" : "size-10 text-xs";
+
+  if (team.nbaTeamId && !logoFailed) {
+    return (
+      <img
+        src={getTeamLogoUrl(team.nbaTeamId)}
+        alt={`${team.abbreviation} logo`}
+        className={cn("inline-block shrink-0 rounded-full object-contain", sizeClass, className)}
+        onError={() => setLogoFailed(true)}
+      />
+    );
+  }
+
   return (
     <span
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full font-bold",
-        size === "sm" ? "size-6 text-[10px]" : "size-10 text-xs",
-        className
-      )}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-bold", sizeClass, className)}
       style={{ backgroundColor: primary, color: secondary }}
     >
       {team.abbreviation}

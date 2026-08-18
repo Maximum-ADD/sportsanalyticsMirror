@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
+import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import type { PlayerStatsResponse } from "@/types/nba";
 
 function formatHeight(heightInches: number | null): string {
@@ -68,10 +69,7 @@ export function PlayerProfilePage() {
       <Card className="xl:col-span-2">
         <CardContent className="p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-surface-raised text-2xl font-semibold text-text-secondary">
-              {player.firstName[0]}
-              {player.lastName[0]}
-            </div>
+            <PlayerHeadshot player={player} size="lg" />
             <div>
               <h1 className="text-xl font-semibold text-text-primary">
                 {player.firstName} {player.lastName}
