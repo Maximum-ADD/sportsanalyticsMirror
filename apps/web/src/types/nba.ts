@@ -91,6 +91,16 @@ export interface PagedResult<T> {
   total: number;
 }
 
+export interface PredictedScorer {
+  player: Player;
+  predictedPoints: number;
+  gamesConsidered: number;
+}
+
+export interface GameDetail extends Game {
+  predictedScorers: PredictedScorer[];
+}
+
 export interface GamePrediction {
   id: string;
   gameId: string;

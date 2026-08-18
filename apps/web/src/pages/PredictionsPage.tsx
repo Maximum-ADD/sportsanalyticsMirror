@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { fetchGames } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -27,36 +28,40 @@ interface GamePredictionRowProps {
 
 function GamePredictionRow({ game, prediction }: GamePredictionRowProps) {
   return (
-    <Card>
-      <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-          <TeamBadge team={game.homeTeam} size="sm" />
-          <span>{game.homeTeam.abbreviation}</span>
-          <span className="text-text-muted">vs</span>
-          <TeamBadge team={game.awayTeam} size="sm" />
-          <span>{game.awayTeam.abbreviation}</span>
-        </div>
-
-        {!prediction ? (
-          <span className="text-sm text-text-muted">No prediction yet</span>
-        ) : (
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-text-secondary">{formatWinProbability(prediction.homeWinProbability, game.homeTeam)} win</span>
-            <span className="text-text-secondary">
-              {formatMargin(prediction.predictedMarginHome, game.homeTeam, game.awayTeam)}
-            </span>
-            {prediction.marginMethod === "heuristic" && (
-              <span
-                className="rounded-full border border-border-subtle px-2 py-0.5 text-xs text-text-muted"
-                title="Not enough game history yet to fit a reliable regression — using fixed literature-informed weights instead."
-              >
-                heuristic
-              </span>
-            )}
+    <Link to={`/games/${game.id}`} className="block">
+      <Card className="transition-colors hover:border-brand-accent/60">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+            <TeamBadge team={game.homeTeam} size="sm" />
+            <span>{game.homeTeam.abbreviation}</span>
+            <span className="text-text-muted">vs</span>
+            <TeamBadge team={game.awayTeam} size="sm" />
+            <span>{game.awayTeam.abbreviation}</span>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {!prediction ? (
+            <span className="text-sm text-text-muted">No prediction yet</span>
+          ) : (
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-text-secondary">
+                {formatWinProbability(prediction.homeWinProbability, game.homeTeam)} win
+              </span>
+              <span className="text-text-secondary">
+                {formatMargin(prediction.predictedMarginHome, game.homeTeam, game.awayTeam)}
+              </span>
+              {prediction.marginMethod === "heuristic" && (
+                <span
+                  className="rounded-full border border-border-subtle px-2 py-0.5 text-xs text-text-muted"
+                  title="Not enough game history yet to fit a reliable regression — using fixed literature-informed weights instead."
+                >
+                  heuristic
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
