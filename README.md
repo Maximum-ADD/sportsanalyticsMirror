@@ -122,9 +122,8 @@ This is a base scaffold, not the finished product. What's wired up:
   `App.tsx`, `RecentResultWidget.tsx`) but haven't had a real audit pass.
 - A deploy stage in CI, and production deployment/hosting generally — not
   decided (see the docs site's ADR-003, still a stub).
-- Coverage merging/dashboard (`scripts/build-coverage-report.mjs`) is
-  built and runnable manually (`npm run coverage:report`) but not wired
-  into CI.
+- Coverage thresholds are not enforced yet. CI reports the current API and
+  Web coverage without failing builds for a minimum percentage.
 
 ## Testing
 
@@ -149,12 +148,18 @@ npm test               # or: npm run test:cov for coverage
 
 CI is **Gitea Actions** (`.gitea/workflows/ci.yml` on `main`, run via a
 self-hosted `act_runner`), matching this repo's `sdp.ms.wits.ac.za` remote —
-not GitHub Actions or GitLab CI. It currently runs lint/typecheck/test for
-both apps on every push and PR; it does not yet run against a real Postgres
-instance or merge coverage into a dashboard the way the steps above do
-locally. `scripts/build-coverage-report.mjs` (merges both apps' coverage
-into one HTML dashboard) is still available as a manual command —
-`npm run coverage:report` from the repo root — but isn't wired into CI yet.
+not GitHub Actions or GitLab CI. On every push and PR it lints and typechecks
+both apps, runs both test suites with coverage, and tests the API against a
+disposable PostgreSQL service. It then uses `scripts/build-coverage-report.mjs`
+to merge the API and Web results into a downloadable `coverage-report`
+artifact. After downloading and extracting the artifact, open `index.html`
+to view the combined dashboard and links to each app's detailed HTML report.
+
+The same dashboard can be built locally after both coverage suites have run:
+
+```bash
+npm run coverage:report
+```
 
 ## AI usage
 
