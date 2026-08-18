@@ -59,6 +59,11 @@ export interface Game {
   awayTeam: Team;
   homeScore: number | null;
   awayScore: number | null;
+  // Present on list/detail endpoints that join it in (GET /v1/games,
+  // GET /v1/games/:id) — undefined, not just null, on any endpoint that
+  // doesn't include the relation, so callers can tell "not fetched" apart
+  // from "fetched, but this game has no prediction yet".
+  prediction?: GamePrediction | null;
 }
 
 export interface LineupSlot {

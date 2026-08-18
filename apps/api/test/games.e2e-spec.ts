@@ -81,6 +81,53 @@ describe("Games API", () => {
       expect(response.body.data[0].awayTeam.abbreviation).toBe("LAL");
     });
 
+    it("includes each game's prediction (or null) in the same response, without a separate request per game", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+
+      const predictedGame = await testPrisma.game.create({
+        data: {
+          nbaGameId: "PREDICTED-GAME",
+          gameDate: new Date("2026-02-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 110,
+          awayScore: 105,
+        },
+      });
+      await testPrisma.gamePrediction.create({
+        data: {
+          gameId: predictedGame.id,
+          homeWinProbability: 0.58,
+          homeTeamEloPre: 1505,
+          awayTeamEloPre: 1495,
+          predictedMarginHome: 2.1,
+          marginMethod: "heuristic",
+        },
+      });
+      await testPrisma.game.create({
+        data: {
+          nbaGameId: "UNPREDICTED-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: celtics.id,
+          awayTeamId: lakers.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/games");
+
+      expect(response.status).toBe(200);
+      const byNbaGameId = Object.fromEntries(
+        response.body.data.map((game: { nbaGameId: string; prediction: unknown }) => [game.nbaGameId, game.prediction])
+      );
+      expect(byNbaGameId["PREDICTED-GAME"]).toMatchObject({ homeWinProbability: 0.58, marginMethod: "heuristic" });
+      expect(byNbaGameId["UNPREDICTED-GAME"]).toBeNull();
+    });
+
     it("respects page and pageSize query params", async () => {
       const lakers = await createTeam({ nbaTeamId: 1 });
       const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });

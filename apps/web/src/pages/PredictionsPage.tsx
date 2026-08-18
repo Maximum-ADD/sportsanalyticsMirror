@@ -1,16 +1,12 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { fetchGamePrediction, fetchGames } from "@/lib/nbaApi";
-import { ApiError } from "@/lib/apiClient";
+import { useQuery } from "@tanstack/react-query";
+import { fetchGames } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Game, GamePrediction } from "@/types/nba";
 
-// How many recent games to show predictions for. Accepting one request per
-// game (rather than adding a bulk-predictions endpoint) is fine at this
-// data volume — see apps/predictor/README.md's note on seed data size;
-// revisit if game volume grows enough to make N+1 requests actually slow.
+// How many recent games to show predictions for.
 const GAMES_TO_SHOW = 25;
 
 function formatWinProbability(homeWinProbability: number, homeTeam: Game["homeTeam"]): string {
@@ -26,12 +22,10 @@ function formatMargin(predictedMarginHome: number | null, homeTeam: Game["homeTe
 
 interface GamePredictionRowProps {
   game: Game;
-  prediction: GamePrediction | undefined;
-  isPending: boolean;
-  isError: boolean;
+  prediction: GamePrediction | null | undefined;
 }
 
-function GamePredictionRow({ game, prediction, isPending, isError }: GamePredictionRowProps) {
+function GamePredictionRow({ game, prediction }: GamePredictionRowProps) {
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
@@ -43,9 +37,7 @@ function GamePredictionRow({ game, prediction, isPending, isError }: GamePredict
           <span>{game.awayTeam.abbreviation}</span>
         </div>
 
-        {isPending ? (
-          <Skeleton className="h-6 w-40" />
-        ) : isError || !prediction ? (
+        {!prediction ? (
           <span className="text-sm text-text-muted">No prediction yet</span>
         ) : (
           <div className="flex items-center gap-4 text-sm">
@@ -74,16 +66,6 @@ export function PredictionsPage() {
     queryFn: () => fetchGames({ pageSize: GAMES_TO_SHOW }),
   });
 
-  const games = gamesQuery.data?.data ?? [];
-  const predictionQueries = useQueries({
-    queries: games.map((game) => ({
-      queryKey: ["gamePrediction", game.id],
-      queryFn: () => fetchGamePrediction(game.id),
-      enabled: gamesQuery.isSuccess,
-      retry: (_failureCount: number, error: unknown) => !(error instanceof ApiError && error.status === 404),
-    })),
-  });
-
   if (gamesQuery.isPending) {
     return (
       <div className="p-6">
@@ -104,6 +86,8 @@ export function PredictionsPage() {
     return <ErrorState message="Could not load games." onRetry={() => gamesQuery.refetch()} />;
   }
 
+  const games = gamesQuery.data.data;
+
   return (
     <div className="p-6">
       <h1 className="mb-1 text-xl font-semibold text-text-primary">Predictions</h1>
@@ -115,14 +99,8 @@ export function PredictionsPage() {
       </p>
 
       <div className="flex flex-col gap-3">
-        {games.map((game, index) => (
-          <GamePredictionRow
-            key={game.id}
-            game={game}
-            prediction={predictionQueries[index]?.data}
-            isPending={predictionQueries[index]?.isPending ?? true}
-            isError={predictionQueries[index]?.isError ?? false}
-          />
+        {games.map((game) => (
+          <GamePredictionRow key={game.id} game={game} prediction={game.prediction} />
         ))}
       </div>
     </div>
