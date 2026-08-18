@@ -10,7 +10,11 @@ from datetime import date
 
 import numpy as np
 
-from four_factors import compute_running_season_averages, fit_regression_weights, predict_margin
+from four_factors import (
+    build_regression_training_data,
+    compute_running_season_averages,
+    predict_margin,
+)
 
 
 def make_team_game(game_id: str, game_date: date, team_id: str, effective_fg_pct: float, margin: float) -> dict:
@@ -97,11 +101,10 @@ def test_appending_a_later_game_does_not_change_an_earlier_games_prediction():
     assert margin_before == margin_after
 
 
-def test_regression_training_row_uses_opponents_pre_game_average_not_a_global_one():
-    # Two teams, two games each, interleaved by date. If the regression
-    # training pulled a global season average (the bug) rather than the
-    # opponent's average as of that specific game, this would silently use
-    # data from a game that hadn't happened yet relative to the training row.
+def test_regression_inputs_ignore_both_teams_current_game_factors():
+    # Two teams play twice. Game 2 is trainable because both teams have a
+    # pre-game snapshot from game 1. Changing either team's realized game-2
+    # factors must not change game 2's regression feature row.
     games = [
         make_team_game("g1", date(2026, 1, 1), "home", 0.50, margin=5),
         make_team_game("g1", date(2026, 1, 1), "away", 0.30, margin=-5),
@@ -109,19 +112,21 @@ def test_regression_training_row_uses_opponents_pre_game_average_not_a_global_on
         make_team_game("g2", date(2026, 1, 3), "away", 0.70, margin=-5),
     ]
     running_averages = compute_running_season_averages(games)
+    feature_rows_before, margins_before = build_regression_training_data(games, running_averages)
 
-    # g1 has no trainable row: neither team has a prior game yet, so
-    # opponent_pre_game is None for both sides and it's skipped entirely —
-    # confirmed by construction, not asserted directly here since
-    # fit_regression_weights doesn't expose skipped rows; the real
-    # assertion is that g2's row uses away's g1-only average (0.30), not
-    # an average that includes away's g2 performance (0.70).
-    away_snapshot_for_g2 = running_averages["away"]["g2"]
-    assert away_snapshot_for_g2["effective_fg_pct"] == 0.30
+    np.testing.assert_array_equal(feature_rows_before, np.array([[0.20, 0.0, 0.0]]))
 
-    weights = fit_regression_weights(games, running_averages)
-    # Not asserting exact fitted values (2 training points is degenerate
-    # for a 3-feature fit) — the property under test is that
-    # fit_regression_weights runs without error and used the pre-game
-    # snapshot above, verified separately.
-    assert weights.shape == (3,)
+    changed_factors_by_row_index = {
+        2: {"effective_fg_pct": 0.99, "turnover_rate": 0.45, "free_throw_rate": 0.60},
+        3: {"effective_fg_pct": 0.05, "turnover_rate": 0.50, "free_throw_rate": 0.01},
+    }
+    for row_index, changed_factors in changed_factors_by_row_index.items():
+        games_with_one_team_changed = [dict(game) for game in games]
+        games_with_one_team_changed[row_index].update(changed_factors)
+        changed_running_averages = compute_running_season_averages(games_with_one_team_changed)
+        feature_rows_after, margins_after = build_regression_training_data(
+            games_with_one_team_changed, changed_running_averages
+        )
+
+        np.testing.assert_array_equal(feature_rows_before, feature_rows_after)
+        np.testing.assert_array_equal(margins_before, margins_after)

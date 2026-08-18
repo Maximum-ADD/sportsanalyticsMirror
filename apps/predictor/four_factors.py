@@ -192,17 +192,16 @@ def compute_running_season_averages(team_game_factors: list[dict]) -> dict[str, 
     return snapshots
 
 
-def fit_regression_weights(team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]) -> np.ndarray:
-    """Fits margin = w1*eFG_diff + w2*TOV_diff + w3*FTR_diff via ordinary least squares.
+def build_regression_training_data(
+    team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Builds pre-game feature differences and realized-margin targets.
 
-    Each team-game row's Four Factors are differenced against that same
-    game's *opponent pre-game running average* (their form coming into
-    this specific game, not a season-long average that would include
-    games played after it) — see compute_running_season_averages. A team's
-    own row already only exists once its own history has accumulated to
-    that point; rows where the opponent has no pre-game snapshot yet
-    (opponent's first game in the dataset) are skipped, same as
-    predict_margin's None-handling.
+    Both sides of every feature difference come from snapshots taken before
+    the target game. The current game's team rows supply only team identity
+    and the realized margin target; their Four Factors must never enter the
+    feature matrix. Games where either team has no pre-game history are
+    skipped because they cannot produce a leak-free feature row.
     """
     games_by_id: dict[str, list[dict]] = {}
     for row in team_game_factors:
@@ -214,20 +213,27 @@ def fit_regression_weights(team_game_factors: list[dict], running_averages: dict
         if len(rows) != 2:
             continue
         team_row, opponent_row = rows
+        team_pre_game = running_averages.get(team_row["team_id"], {}).get(team_row["game_id"])
         opponent_pre_game = running_averages.get(opponent_row["team_id"], {}).get(opponent_row["game_id"])
-        if opponent_pre_game is None:
+        if team_pre_game is None or opponent_pre_game is None:
             continue
         feature_rows.append(
             [
-                team_row["effective_fg_pct"] - opponent_pre_game["effective_fg_pct"],
-                team_row["turnover_rate"] - opponent_pre_game["turnover_rate"],
-                team_row["free_throw_rate"] - opponent_pre_game["free_throw_rate"],
+                team_pre_game["effective_fg_pct"] - opponent_pre_game["effective_fg_pct"],
+                team_pre_game["turnover_rate"] - opponent_pre_game["turnover_rate"],
+                team_pre_game["free_throw_rate"] - opponent_pre_game["free_throw_rate"],
             ]
         )
         margins.append(team_row["margin"])
 
+    return np.array(feature_rows), np.array(margins)
+
+
+def fit_regression_weights(team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]) -> np.ndarray:
+    """Fits margin from leak-free pre-game feature differences via ordinary least squares."""
+    feature_rows, margins = build_regression_training_data(team_game_factors, running_averages)
     weights, _residuals, _rank, _singular_values = np.linalg.lstsq(
-        np.array(feature_rows), np.array(margins), rcond=None
+        feature_rows, margins, rcond=None
     )
     return weights
 
