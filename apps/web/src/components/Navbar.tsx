@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { to: "/players", label: "Players" },
   { to: "/teams", label: "Teams" },
   { to: "/optimizer", label: "Optimizer" },
+  { to: "/predictions", label: "Predictions" },
 ];
 
 export function Navbar() {
@@ -48,11 +49,17 @@ export function Navbar() {
           ))}
         </nav>
 
-        <div className="absolute left-1/2 top-1 z-10 hidden -translate-x-1/2 md:block">
+        {/* Was absolutely centered on the full header (left-1/2), independent
+            of the nav's actual width — that overlapped the nav once a 5th
+            link (Predictions) made the nav wide enough to reach the header's
+            midpoint. Placing it in the normal flex flow, pushed to the right
+            alongside the auth button, can't overlap the nav regardless of
+            how many links it has. */}
+        <div className="ml-auto hidden items-center gap-8 md:flex">
           <RecentResultWidget />
+          <AuthStatus />
         </div>
-
-        <div className="ml-auto flex items-center gap-8">
+        <div className="flex items-center gap-8 md:hidden">
           <AuthStatus />
         </div>
       </header>

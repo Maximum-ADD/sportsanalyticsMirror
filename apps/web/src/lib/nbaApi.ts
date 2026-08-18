@@ -1,5 +1,5 @@
 import { fetchJson } from "./apiClient";
-import type { Game, Lineup, Player, PlayerStatsResponse, PagedResult, Team } from "@/types/nba";
+import type { Game, GameDetail, GamePrediction, Lineup, Player, PlayerStatsResponse, PagedResult, Team } from "@/types/nba";
 
 function toQueryString(params: object): string {
   const entries = Object.entries(params).filter(
@@ -52,4 +52,12 @@ export function fetchGames(params: FetchGamesParams = {}): Promise<PagedResult<G
 
 export function fetchLatestLineup(): Promise<Lineup> {
   return fetchJson<Lineup>("/v1/optimizer/lineup");
+}
+
+export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {
+  return fetchJson<GamePrediction>(`/v1/games/${gameId}/prediction`);
+}
+
+export function fetchGameDetail(gameId: string): Promise<GameDetail> {
+  return fetchJson<GameDetail>(`/v1/games/${gameId}`);
 }

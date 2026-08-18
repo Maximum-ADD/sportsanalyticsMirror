@@ -19,6 +19,10 @@ apps/optimizer/.venv/
 apps/optimizer/__pycache__/
 apps/optimizer/**/__pycache__/
 
+apps/predictor/.venv/
+apps/predictor/__pycache__/
+apps/predictor/**/__pycache__/
+
 apps/ingestion/.venv/
 apps/ingestion/__pycache__/
 apps/ingestion/**/__pycache__/

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { getTeamLogoUrl } from "@/lib/nbaMedia";
 import type { Team } from "@/types/nba";
 
-interface TeamColors {
+export interface TeamColors {
   primary: string;
   secondary: string;
 }
@@ -35,7 +35,7 @@ function hashToHue(value: string): number {
   return Math.abs(hash) % HUE_WHEEL_DEGREES;
 }
 
-function resolveTeamColors(abbreviation: string): TeamColors {
+export function resolveTeamColors(abbreviation: string): TeamColors {
   const known = KNOWN_TEAM_COLORS[abbreviation];
   if (known) return known;
 

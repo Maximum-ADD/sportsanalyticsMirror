@@ -126,6 +126,7 @@ model Game {
 
   playerStats  PlayerGameStat[]
   events       GameEvent[]
+  prediction   GamePrediction?
 }
 
 // Raw play-by-play events — the source of truth every derived stat traces back to.
@@ -209,4 +210,47 @@ model LineupSlot {
   player   Player @relation(fields: [playerId], references: [id])
 
   @@unique([lineupId, playerId])
+}
+
+// Below model supports game-outcome prediction: a small Python service
+// (apps/predictor) computes an Elo-based home win probability and a Four
+// Factors-based predicted score margin for each game, writing its output
+// here. NestJS only ever reads this table — nothing under /v1 writes to it.
+//
+// One row per Game (@@unique([gameId]), upserted on rerun) rather than
+// PlayerPrediction's append-and-take-latest-by-asOf shape: nothing here
+// wants "what did we predict for this game last Tuesday vs today" the way
+// fantasy-point predictions do, so a single row keeps reads a direct
+// `game.prediction` relation instead of a DISTINCT ON query.
+model GamePrediction {
+  id String @id @default(uuid())
+
+  gameId String @unique
+  game   Game   @relation(fields: [gameId], references: [id])
+
+  // Elo-based win probability for the home team, in [0, 1]. See
+  // apps/predictor/elo.py.
+  homeWinProbability Float
+
+  // Elo ratings each team carried into this game, before it was played —
+  // kept alongside the derived probability so a caller can see why it came
+  // out the way it did, not just the number itself.
+  homeTeamEloPre Float
+  awayTeamEloPre Float
+
+  // Four Factors-based predicted margin, home minus away, in points. See
+  // apps/predictor/four_factors.py. Null when either team has no completed
+  // games yet to average Four Factors from.
+  predictedMarginHome Float?
+
+  // Which method produced predictedMarginHome: "regression" (fitted OLS)
+  // or "heuristic" (fixed literature-informed weights, used when there
+  // isn't enough game history to fit a regression reliably — see
+  // four_factors.py's MINIMUM_GAMES_FOR_REGRESSION). Null alongside a null
+  // predictedMarginHome.
+  marginMethod String?
+
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
 }
