@@ -26,4 +26,11 @@ export class GamesService {
 
     return { data, page, pageSize, total };
   }
+
+  getGameById(gameId: string): Promise<GameWithTeams | null> {
+    return this.prisma.game.findUnique({
+      where: { id: gameId },
+      include: { homeTeam: true, awayTeam: true },
+    });
+  }
 }
