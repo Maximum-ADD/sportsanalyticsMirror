@@ -18,7 +18,6 @@ hide:
     - Stakeholder/tutor interaction and weekly check-ins
     - Project methodology and team workflow
     - Feature implementation strategy and Sprint 1 scope
-    - Game project ideas and constraints
 
     ## Decisions
 
@@ -32,7 +31,6 @@ hide:
     - The team agreed that the first sprint should establish the project foundations and remove the largest blockers, while also beginning the core features.
     - The main Sprint 1 goal is to get the core pipeline, a solid prediction model, the optimisation component, the mobile core, and a coherent project in place. The project scope has also been changed to include all teams.
     - The main feature work is expected to begin the following week.
-    - For the game component, the team established that the project must be 3D. Non-turn-based boss combat was considered too difficult for the project scope, so boss-fighting mechanics were ruled out.
 
     ## Actions
 
@@ -63,7 +61,6 @@ hide:
     - The tutor is reportedly available on Friday before 15:00. If team members cannot attend in person, questions can be collected and asked on their behalf, with Discord as an alternative.
     - Daniel expressed uncertainty about his role; the team clarified that everyone is expected to document their own feature work and contribute to the actual project.
     - The team expressed some uncertainty about exactly what the project currently entails. The immediate approach is to establish the core system first and build on it.
-    - For the game component, possible ideas discussed included a house/area-based concept, a card-based concept, and a medieval/dungeon-crawler concept. The card idea was questioned because the project requires three levels. A dungeon-crawler was discussed, but boss AI was identified as too difficult for the scope.
 
     ####note "Raw transcript (Craig):"
     [2026-08-12-standup.txt](../../transcripts/2026-08-12-standup.txt)

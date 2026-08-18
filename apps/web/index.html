@@ -4,7 +4,24 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web</title>
+    <meta
+      name="description"
+      content="NBA team and player analytics, with every published statistic derived from per-game event data."
+    />
+
+    <!-- This is a client-rendered SPA, so the font isn't in the served HTML.
+         Preloading starts the fetch before the bundle parses. The hero photo
+         itself isn't preloaded here — it's served from Unsplash's CDN at a
+         URL only the HomePage component knows, not a stable local path. -->
+    <link
+      rel="preload"
+      href="/fonts/oswald-latin-var.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <title>NBA Analytics Platform</title>
   </head>
   <body>
     <div id="root"></div>

@@ -11,19 +11,24 @@ services:
       - "55432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-  runner:
-    image: gitea/act_runner:latest
-    container_name: sportsanalytics-runner
+
+  # Disposable database for `npm test` in apps/api — kept separate from the
+  # `postgres` dev database above so running the test suite locally never
+  # touches your seeded dev data. Not persisted (no volume): tests run
+  # `prisma migrate deploy` and truncate tables between specs, so it starts
+  # empty every time you bring it up.
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: nba-analytics-postgres-test
     restart: unless-stopped
     environment:
-      - GITEA_INSTANCE_URL=https://sdp.ms.wits.ac.za
-      - GITEA_RUNNER_REGISTRATION_TOKEN=nAkHJiq3m5rnMkoU8qhsp9vsy31zZpuZdBMoGpFp
-      - GITEA_RUNNER_NAME=sportsanalytics-runner
-      - GITEA_RUNNER_LABELS=default:docker://gitea/runner-images:ubuntu-latest,ubuntu-latest:docker://gitea/runner-images:ubuntu-latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - runner-data:/data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nba_analytics_test
+    ports:
+      - "55433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+
 volumes:
   postgres-data:
-  runner-data:
-  

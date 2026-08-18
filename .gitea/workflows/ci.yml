@@ -18,6 +18,36 @@ jobs:
       run:
         working-directory: apps/api
 
+    # The e2e suite (apps/api/test/**) needs a real, disposable Postgres —
+    # test/global-setup.ts runs `prisma migrate deploy` against it and throws
+    # immediately if DATABASE_URL isn't set. This runner executes jobs inside
+    # their own container (GITEA_RUNNER_LABELS points at
+    # docker://gitea/runner-images:ubuntu-latest — see docker-compose.yml),
+    # so the job can't reach a service container via `localhost`, only via
+    # the service's own name on its normal internal port. (First attempt at
+    # this used `localhost:${{ job.services.postgres.ports['5432'] }}`, the
+    # pattern for jobs running directly on a bare runner host — wrong mode
+    # for this runner, confirmed by the resulting P1001 "can't reach
+    # localhost:5432" failure.)
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nba_analytics_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nba_analytics_test?schema=public
+      BETTER_AUTH_SECRET: ci-secret-not-for-production-use
+      BETTER_AUTH_URL: http://localhost:4000
+      WEB_ORIGIN: http://localhost:5173
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,10 +81,12 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.json
 
-      # --passWithNoTests: the suite is empty today. Drop the flag once real
-      # tests land, so an accidentally-empty run fails instead of passing.
+      # DATABASE_URL etc. come from the job-level `env:` above, read directly
+      # from process.env — vitest.config.ts's dotenv call only fills in vars
+      # that aren't already set, so it's a no-op here (no .env.test file
+      # exists in a fresh CI checkout, which is fine).
       - name: Test
-        run: npm test -- --passWithNoTests
+        run: npm test
 
   web:
     name: Web — lint, typecheck, test
