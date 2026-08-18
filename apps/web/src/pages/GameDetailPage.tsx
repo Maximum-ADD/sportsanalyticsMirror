@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { fetchGameDetail } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
+import { CourtView } from "@/components/CourtView";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -126,24 +127,44 @@ export function GameDetailPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border-subtle">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Player</TableHead>
-                <TableHead>Team</TableHead>
-                <TableHead>Position</TableHead>
-                <TableHead>Predicted Points</TableHead>
-                <TableHead>Games Used</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody className="bg-surface-card">
-              {predictedScorers.map((scorer) => (
-                <ScorerRow key={scorer.player.id} scorer={scorer} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          <Card className="mb-6">
+            <CardContent className="p-4">
+              {/* A predicted starting five isn't tracked positional data —
+                  see CourtView's own docstring. This is a schematic,
+                  illustrative formation by role, not a claim about where
+                  anyone will actually stand. */}
+              <CourtView
+                homeTeam={game.homeTeam}
+                awayTeam={game.awayTeam}
+                homeScorers={predictedScorers.filter((scorer) => scorer.player.teamId === game.homeTeamId)}
+                awayScorers={predictedScorers.filter((scorer) => scorer.player.teamId === game.awayTeamId)}
+              />
+              <p className="mt-3 text-center text-xs text-text-muted">
+                Illustrative formation by predicted top scorers&apos; position — not tracked player positioning.
+              </p>
+            </CardContent>
+          </Card>
+
+          <div className="overflow-hidden rounded-xl border border-border-subtle">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Player</TableHead>
+                  <TableHead>Team</TableHead>
+                  <TableHead>Position</TableHead>
+                  <TableHead>Predicted Points</TableHead>
+                  <TableHead>Games Used</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="bg-surface-card">
+                {predictedScorers.map((scorer) => (
+                  <ScorerRow key={scorer.player.id} scorer={scorer} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </div>
   );

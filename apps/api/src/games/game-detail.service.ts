@@ -24,7 +24,7 @@ export interface GameDetail extends GameWithTeamsAndPrediction {
 // way Elo ratings or Four Factors weights do.
 const RECENCY_DECAY = 0.8;
 const MOST_RECENT_GAMES_CONSIDERED = 10;
-const TOP_SCORERS_COUNT = 5;
+const TOP_SCORERS_PER_TEAM_COUNT = 5;
 const PREDICTED_POINTS_DECIMAL_PLACES = 1;
 
 function predictPointsFromRecentGames(gameStats: PlayerGameStat[]): number {
@@ -99,10 +99,18 @@ export class GameDetailService {
       };
     });
 
-    const topScorers = predictedScorers
-      .filter((scorer) => scorer.gamesConsidered > 0)
-      .sort((a, b) => b.predictedPoints - a.predictedPoints)
-      .slice(0, TOP_SCORERS_COUNT);
+    // Top scorers per team, not top-N across both rosters combined — a
+    // combined list could easily be 4 players from one team and 1 from
+    // the other (whichever roster happens to run hotter), which isn't
+    // useful for comparing the two sides or for the court view, which
+    // needs both teams represented.
+    const topScorersByTeam = (teamId: string) =>
+      predictedScorers
+        .filter((scorer) => scorer.player.teamId === teamId && scorer.gamesConsidered > 0)
+        .sort((a, b) => b.predictedPoints - a.predictedPoints)
+        .slice(0, TOP_SCORERS_PER_TEAM_COUNT);
+
+    const topScorers = [...topScorersByTeam(game.homeTeamId), ...topScorersByTeam(game.awayTeamId)];
 
     return { ...game, predictedScorers: topScorers };
   }
