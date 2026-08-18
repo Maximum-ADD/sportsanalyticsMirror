@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { to: "/players", label: "Players" },
   { to: "/teams", label: "Teams" },
   { to: "/optimizer", label: "Optimizer" },
+  { to: "/predictions", label: "Predictions" },
 ];
 
 export function Navbar() {

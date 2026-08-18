@@ -85,3 +85,14 @@ export interface PagedResult<T> {
   pageSize: number;
   total: number;
 }
+
+export interface GamePrediction {
+  id: string;
+  gameId: string;
+  homeWinProbability: number;
+  homeTeamEloPre: number;
+  awayTeamEloPre: number;
+  predictedMarginHome: number | null;
+  marginMethod: "regression" | "heuristic" | null;
+  createdAt: string;
+}
