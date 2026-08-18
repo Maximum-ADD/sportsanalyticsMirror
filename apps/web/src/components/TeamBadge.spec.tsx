@@ -1,10 +1,27 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { TeamBadge } from "./TeamBadge";
 
 describe("TeamBadge", () => {
-  it("renders the team abbreviation as its text", () => {
+  it("renders an img pointing at the nba.com logo CDN when nbaTeamId is known", () => {
+    render(<TeamBadge team={{ abbreviation: "LAL", nbaTeamId: 1610612747 }} />);
+    const img = screen.getByRole("img", { name: "LAL logo" });
+    expect(img).toHaveAttribute("src", "https://cdn.nba.com/logos/nba/1610612747/global/L/logo.svg");
+  });
+
+  it("falls back to the colored abbreviation badge when the logo image fails to load", () => {
+    render(<TeamBadge team={{ abbreviation: "LAL", nbaTeamId: 1610612747 }} />);
+    const img = screen.getByRole("img", { name: "LAL logo" });
+
+    fireEvent.error(img);
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByText("LAL")).toHaveStyle({ backgroundColor: "#552583" });
+  });
+
+  it("renders the abbreviation badge directly when no nbaTeamId is given", () => {
     render(<TeamBadge team={{ abbreviation: "LAL" }} />);
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.getByText("LAL")).toBeInTheDocument();
   });
 
