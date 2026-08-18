@@ -107,4 +107,70 @@ describe("Games API", () => {
       expect(response.body.data).toHaveLength(1);
     });
   });
+
+  describe("GET /v1/games/:id/prediction", () => {
+    it("returns a 404 with the standard error envelope for a game that doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/games/does-not-exist/prediction");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+      expect(response.body.error.message).toBe("Game not found");
+    });
+
+    it("returns a 404 with a predict_games.py hint for a game that exists but has no prediction yet", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "UNPREDICTED-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction`);
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+      expect(response.body.error.message).toContain("predict_games.py");
+    });
+
+    it("returns the prediction for a game that has one", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "PREDICTED-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      await testPrisma.gamePrediction.create({
+        data: {
+          gameId: game.id,
+          homeWinProbability: 0.62,
+          homeTeamEloPre: 1512.5,
+          awayTeamEloPre: 1487.5,
+          predictedMarginHome: 3.68,
+          marginMethod: "heuristic",
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.gameId).toBe(game.id);
+      expect(response.body.homeWinProbability).toBe(0.62);
+      expect(response.body.predictedMarginHome).toBe(3.68);
+      expect(response.body.marginMethod).toBe("heuristic");
+    });
+  });
 });
