@@ -18,3 +18,7 @@ test-report.json
 apps/optimizer/.venv/
 apps/optimizer/__pycache__/
 apps/optimizer/**/__pycache__/
+
+apps/predictor/.venv/
+apps/predictor/__pycache__/
+apps/predictor/**/__pycache__/
