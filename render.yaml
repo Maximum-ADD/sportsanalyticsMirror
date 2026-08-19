@@ -11,8 +11,8 @@ services:
     rootDir: apps/api
     buildCommand: npm ci && npx prisma generate && npm run build
     startCommand: npm start
-    # Run pending Prisma migrations before the new deploy takes traffic.
-    preDeployCommand: npx prisma migrate deploy
+    # Note: preDeployCommand is not supported on Render's free tier.
+    # Run `npx prisma migrate deploy` manually (or from CI) before deploying.
     envVars:
       - key: PORT
         value: 4000

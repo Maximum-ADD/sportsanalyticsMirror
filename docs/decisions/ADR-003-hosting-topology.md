@@ -104,7 +104,7 @@ data, per the brief.
 | Layer | Service | Why this service |
 |---|---|---|
 | Frontend SPA | Cloudflare Pages | `apps/web` builds to static `dist/`. Cloudflare Pages gives a global CDN, managed TLS, custom domain support, and a generous free tier. The repo is on Gitea, so deploy is a local build followed by Wrangler CLI upload or dashboard drag-and-drop — no Git-provider integration required. |
-| NestJS API | Render Web Service (Node.js runtime, free plan) | Render's free plan spins the API down after 15 minutes of inactivity; the team has accepted the resulting ~30-second cold start. BetterAuth sessions are stored in Supabase, so they survive a cold start. Render's Blueprint ([`render.yaml`](../../render.yaml)) declares the service, build/start commands, and Prisma migrations as a `preDeployCommand`. |
+| NestJS API | Render Web Service (Node.js runtime, free plan) | Render's free plan spins the API down after 15 minutes of inactivity; the team has accepted the resulting ~30-second cold start. BetterAuth sessions are stored in Supabase, so they survive a cold start. Render's Blueprint ([`render.yaml`](../../render.yaml)) declares the service and build/start commands. Prisma migrations must be run manually (or from CI) because `preDeployCommand` is not available on Render's free tier. |
 | Postgres | Supabase (managed Postgres) | Managed Postgres with a generous free tier and built-in connection pooling. Supabase's auto REST/Auth/Storage APIs are deliberately unused — the NestJS API stays the only HTTP path to the data, per the brief. Reached over TLS via the pooled connection string. |
 | Python batch apps | Render Cron Job or Background Worker | `apps/ingestion`/`optimizer`/`predictor` are scripts that write straight to Postgres. They run on a schedule (Render Cron) or as an always-on/off Worker — no long-running web server needed, and they stay off the API's HTTP path as the brief requires. |
 | Secrets | Render env vars + Cloudflare Pages env vars | `DATABASE_URL`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and `WEB_ORIGIN` are set in the Render Dashboard for the API and via the Cloudflare Pages dashboard for the build-time `VITE_API_BASE_URL`. They are never in the repo or the image. |
@@ -204,6 +204,9 @@ benefits with a simpler Gitea-compatible deploy path, so Vercel was not chosen.
 - Production env/secrets mapping (`DATABASE_URL`, `WEB_ORIGIN`,
   `GOOGLE_CLIENT_*`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `PORT`,
   `VITE_API_BASE_URL`).
+- Prisma migrations: on the free tier Render does not run `preDeployCommand`,
+  so `npx prisma migrate deploy` must be run manually or from a Gitea Actions
+  workflow before the API deploy.
 - Updating [`PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md) "Known gaps" and
   [`README.md`](../../README.md) to mark hosting as decided once accepted.
 
