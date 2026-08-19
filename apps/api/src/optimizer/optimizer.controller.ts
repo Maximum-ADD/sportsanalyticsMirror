@@ -1,8 +1,10 @@
-import { Controller, Get, HttpStatus } from "@nestjs/common";
+import { Controller, Get, HttpStatus, UseGuards } from "@nestjs/common";
 import { ApiException } from "../common/api-exception.js";
+import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { OptimizerService } from "./optimizer.service.js";
 
 @Controller("v1/optimizer")
+@UseGuards(SessionAuthGuard)
 export class OptimizerController {
   constructor(private readonly optimizerService: OptimizerService) {}
 

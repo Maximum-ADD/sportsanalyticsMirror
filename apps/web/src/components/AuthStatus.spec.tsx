@@ -2,13 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStatus } from "./AuthStatus";
-import { authClient, useSession } from "@/lib/authClient";
+import { authClient, signInWithGoogle, useSession } from "@/lib/authClient";
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {
-    signIn: { social: vi.fn() },
     signOut: vi.fn(),
   },
+  signInWithGoogle: vi.fn(),
   useSession: vi.fn(),
 }));
 
@@ -40,9 +40,7 @@ describe("AuthStatus", () => {
     render(<AuthStatus />);
     await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
 
-    expect(authClient.signIn.social).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "google" })
-    );
+    expect(signInWithGoogle).toHaveBeenCalledTimes(1);
   });
 
   it("shows the signed-in user's email and a sign-out button when a session exists", () => {

@@ -53,9 +53,9 @@ front and back end.
    the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    (authorized redirect URI: `http://localhost:4000/auth/callback/google`) —
    put its ID/secret in `.env` as `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
-   Without them the API still runs (everything except signing in works, and
-   `/v1/*` currently doesn't require a session anyway), it just logs a
-   startup warning.
+   Without them the API still runs and public player/team pages work, but
+   protected games, predictions, and optimizer features cannot be used. A
+   startup warning is logged when the Google credentials are absent.
 
 3. **Set up the frontend** (in a separate terminal):
 

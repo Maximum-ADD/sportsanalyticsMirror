@@ -1,9 +1,14 @@
 import type { INestApplication } from "@nestjs/common";
 import type { Player, Team } from "@prisma/client";
 import request from "supertest";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./create-test-app.js";
 import { resetDatabase, testPrisma } from "./test-db.js";
+import { auth } from "../src/auth/auth.config.js";
+
+vi.mock("../src/auth/auth.config.js", () => ({
+  auth: { api: { getSession: vi.fn() } },
+}));
 
 async function createTeam(overrides: Partial<Team> = {}): Promise<Team> {
   return testPrisma.team.create({
@@ -37,6 +42,12 @@ describe("Optimizer API", () => {
     app = await createTestApp();
   });
 
+  beforeEach(() => {
+    vi.mocked(auth.api.getSession).mockResolvedValue({
+      user: { id: "user-1", email: "player@example.com" },
+    } as never);
+  });
+
   afterEach(async () => {
     await resetDatabase();
   });
@@ -47,6 +58,15 @@ describe("Optimizer API", () => {
   });
 
   describe("GET /v1/optimizer/lineup", () => {
+    it("requires a signed-in session", async () => {
+      vi.mocked(auth.api.getSession).mockResolvedValueOnce(null);
+
+      const response = await request(app.getHttpServer()).get("/v1/optimizer/lineup");
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({ code: "UNAUTHENTICATED", message: "Sign in required" });
+    });
+
     it("returns a 404 with the standard error envelope when no lineup exists yet", async () => {
       const response = await request(app.getHttpServer()).get("/v1/optimizer/lineup");
 

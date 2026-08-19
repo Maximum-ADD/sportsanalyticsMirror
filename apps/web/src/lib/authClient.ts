@@ -10,3 +10,7 @@ export const authClient = createAuthClient({
 });
 
 export const { useSession } = authClient;
+
+export function signInWithGoogle(callbackURL = window.location.href) {
+  return authClient.signIn.social({ provider: "google", callbackURL });
+}
