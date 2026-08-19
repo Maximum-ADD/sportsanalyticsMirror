@@ -4,6 +4,9 @@
   implement until the team has signed off (see
   [`GIT_METHODOLOGY.md`](../GIT_METHODOLOGY.md), "Requirements for merging").
 - **Date:** 2026-08-19
+- **Updated:** 2026-08-19 — database moved from Azure PostgreSQL Flexible
+  Server to Supabase (managed Postgres; Supabase's HTTP/Auth/Storage APIs
+  deliberately unused, so the NestJS API stays the only HTTP path to the DB).
 - **Fills:** the `ADR-003` stub referenced in [`README.md`](../../README.md)
   ("production deployment/hosting generally — not decided") and on the public
   docs site's *Decisions* section.
@@ -49,8 +52,11 @@ can actually be hosted.
 
 ## Decision
 
-**Host the whole stack on Microsoft Azure**, split across three Azure services
-that map one-to-one onto the three runtime shapes the platform already has.
+**Host the stack on Microsoft Azure, with the database on Supabase**
+(managed Postgres — Supabase's auto REST/Auth/Storage APIs deliberately
+unused), split across services that map one-to-one onto the three runtime
+shapes the platform already has. Keeping Supabase's HTTP API off means the
+NestJS API stays the only HTTP path to the data, per the brief.
 
 ### Topology
 
@@ -72,12 +78,12 @@ that map one-to-one onto the three runtime shapes the platform already has.
                 +---------+---------+
                 |                   |
         +---------------+   +-----------------------------+
-        | PostgreSQL    |   | Batch jobs                  |
-        | Flexible      |   | Azure Container Apps         |
-        | Server        |   | (scheduled) — ingestion,    |
-        | (managed,     |   | optimizer, predictor        |
-        |  PITR, VNet   |   | (write straight to Postgres)|
-        |  integration) |   +-----------------------------+
+        | Supabase      |   | Batch jobs                  |
+        | Postgres      |   | Azure Container Apps         |
+        | (managed;     |   | (scheduled) — ingestion,    |
+        | REST APIs     |   | optimizer, predictor        |
+        | unused;       |   | (write straight to Postgres)|
+        | pooled+TLS)   |   +-----------------------------+
         +---------------+              |
                 |                      |
                 +----------+-----------+
@@ -96,7 +102,7 @@ that map one-to-one onto the three runtime shapes the platform already has.
 |---|---|---|
 | Frontend SPA | Azure Static Web Apps | `apps/web` builds to static `dist/`. SWA gives CDN, managed TLS, custom domain, and a free tier. The Python batch apps can optionally piggy-back on SWA's managed functions, but the SPA itself is just static files. |
 | NestJS API | Azure App Service (Linux, Node 20 runtime, or container) | App Service runs a **persistent Node process** — exactly what the `main.ts` bootstrap expects. No cold-start re-init of Express/BetterAuth/Prisma, no per-request execution timeout, and the BetterAuth Express mounting works unmodified. |
-| Postgres | Azure Database for PostgreSQL — Flexible Server | Managed Postgres 16 with automated backups, point-in-time restore, and VNet/private-endpoint integration so the DB is reachable only from the App Service and Container Apps, not the public internet. |
+| Postgres | Supabase (managed Postgres) | Managed Postgres with a generous free tier and built-in connection pooling. Supabase's auto REST/Auth/Storage APIs are deliberately unused — the NestJS API stays the only HTTP path to the data, per the brief. Reached over TLS via the pooled connection string. |
 | Python batch apps | Azure Container Apps (scheduled) | `apps/ingestion`/`optimizer`/`predictor` are scripts that write straight to Postgres. Container Apps runs them on a schedule (cron) or on-demand as separate containers — no long-running web server needed, and they stay off the API's HTTP path as the brief requires. |
 | Secrets | Azure Key Vault + App Service app settings | `DATABASE_URL`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `BETTER_AUTH_SECRET`, `WEB_ORIGIN` are stored as Key Vault secrets referenced by App Service and Container Apps app settings — never in the repo or the image. |
 | Container images | Azure Container Registry (ACR) | If the API and Python apps are containerised, images push to ACR and deploy to App Service / Container Apps from there. Gitea Actions builds and pushes; deploy uses the Azure CLI from the self-hosted runner. |
@@ -109,8 +115,10 @@ that map one-to-one onto the three runtime shapes the platform already has.
   `http://localhost:4000/auth/callback/google`).
 - Session cookies → `Secure` + `SameSite=None` so they survive the
   cross-origin (web-domain ↔ api-domain) `credentials: true` flow.
-- DB access → private endpoint/VNet; the App Service and Container Apps sit in
-  the same region and reach Postgres privately, the public internet does not.
+- DB access → Supabase pooled connection string (PgBouncer, transaction mode)
+  over TLS; the API and Container Apps reach Supabase over the public internet
+  (Supabase IP allow-list optional). No private endpoint/VNet to Azure because
+  the DB is a separate provider — see Consequences.
 - Local dev is unchanged — Docker Compose Postgres on `55432`/`55433`, `npm
   run dev` for both apps. Production is a parallel set of managed services, not
   a replacement for the local setup.
@@ -143,9 +151,20 @@ the scheduled Python jobs.
 
 ### Self-hosted Postgres on a VM
 
-Rejected. Managed Flexible Server gives backups, PITR, and patching for a
-student project where nobody is on call. The DB is the one piece where
-"managed" is worth the (small) cost.
+Rejected. Managed Postgres gives backups, PITR, and patching for a student
+project where nobody is on call. The DB is the one piece where "managed" is
+worth the (small) cost.
+
+### Azure Database for PostgreSQL — Flexible Server (for the DB)
+
+Was the original choice in this ADR. Superseded by Supabase for the database:
+Supabase's managed Postgres free tier and built-in pooling are simpler to
+stand up for a student project than provisioning a Flexible Server + VNet +
+private endpoint, and the brief's "API is the only HTTP path to the DB" rule
+is preserved by simply not turning on Supabase's REST API. Tradeoff: the DB is
+now a separate provider from the rest of the stack (reached over TLS on the
+public internet rather than a private VNet), so the "one provider" benefit
+in Consequences no longer applies to the database.
 
 ### Render / Railway / Fly.io
 
@@ -161,21 +180,27 @@ Azure credits run out before the course ends.
 
 - The API runs as the long-running process `main.ts` was written to be — no
   serverless rewrites, no cold-start auth latency.
-- Postgres is managed and backed up; the DB is off the public internet.
-- One provider, one identity, one networking boundary (VNet + Key Vault + ACR).
+- Postgres is managed and backed up on Supabase, with built-in connection
+  pooling and a free tier.
+- One provider (Azure) for compute + secrets + images; the database is the one
+  cross-provider piece (Supabase), accepted for its free tier and pooling.
 - Local development stays exactly as it is; production is a parallel managed
   set, not a replacement.
 
 **Negative**
 
-- Cost: Azure's free tiers are thinner than Vercel's hobby tier (App Service F1
-  is limited, Flexible Server free is 3 months). Mitigated by Azure for
-  Students credits; flagged as the main cost risk.
-- More moving parts to configure than "deploy to Vercel" — VNet, private
-  endpoint, Key Vault references, ACR, a Gitea Actions deploy step (the GitHub-
-  Actions-only SWA deploy action can't be used as-is against the Gitea remote).
-- Cross-origin cookies need `SameSite=None; Secure`, which must be set correctly
-  or sign-in silently breaks in production.
+- Cost: Azure for Students credits cover App Service / SWA / Container Apps;
+  the DB is on Supabase's free tier (~500 MB, pauses after inactivity) — fine
+  for mock/small data, likely needs a paid plan for full league data. The old
+  project still hosted on the Azure account may be consuming credits — check
+  the balance and which subscription it's on.
+- More moving parts to configure than "deploy to Vercel" — Key Vault
+  references, ACR, a cross-provider DB connection (Supabase over TLS), and a
+  Gitea Actions deploy step (the GitHub-Actions-only SWA deploy action can't
+  be used as-is against the Gitea remote). No VNet/private endpoint for the DB
+  anymore (Supabase is the one piece off the Azure VNet).
+- Cross-origin cookies need `SameSite=None; Secure`, which must be set
+  correctly or sign-in silently breaks in production.
 
 **Neutral / follow-ups (out of scope for this ADR)**
 
@@ -196,6 +221,9 @@ Azure credits run out before the course ends.
    Dockerfile/deploy step can be written.
 3. Domain: a custom domain for both apps, or `*.azurewebsites.net` /
    `*.staticweb.dev` for now?
+4. Supabase free tier caps the DB at ~500 MB and pauses after inactivity —
+   enough for the demo/mock data, but does real full-league ingestion need a
+   paid Supabase plan (or a move back to Azure Flexible Server)?
 
 ## References
 
