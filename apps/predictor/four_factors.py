@@ -28,6 +28,17 @@ if it were reliable. This is the same call predict.py makes for its own
 reasons (see its module docstring) — honest "not enough data yet" over fake
 sophistication. Revisit MINIMUM_GAMES_FOR_REGRESSION once the real nba_api
 ingestion pipeline provides a full season per team.
+
+Chronology: every average used to predict a game (or to train a row of the
+regression) is computed only from that team's games strictly before the
+game being predicted — never from that game itself, and never from games
+that happened afterwards. Mirrors elo.py's compute_elo_ratings, which
+builds pre_game_state as a single forward pass so a team's rating going
+into a game only ever reflects earlier results. A first version of this
+module used a single average-over-everything computed once and reused for
+every game regardless of date, which let a team's April form quietly
+influence its predicted October margin — a real future-data leak, caught
+in review, not a hypothetical one.
 """
 
 import numpy as np
@@ -94,7 +105,9 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
     player on that team in that game, plus that team's score and its
     opponent's score in that game. Two rows come out of every completed
     game (one per team) since Four Factors are computed per team, not per
-    matchup.
+    matchup. Ordering by date is load-bearing here, not cosmetic — every
+    chronological computation downstream (running averages, regression
+    training rows) depends on processing games oldest-first.
     """
     cursor.execute(
         """
@@ -120,6 +133,7 @@ def compute_team_game_four_factors(boxscore_row: dict) -> dict:
     """Computes the 3 offensive Four Factors (see module docstring) for one team-game row."""
     return {
         "game_id": boxscore_row["game_id"],
+        "game_date": boxscore_row["game_date"],
         "team_id": boxscore_row["team_id"],
         "effective_fg_pct": calculate_effective_field_goal_pct(
             boxscore_row["fgm"], boxscore_row["tpm"], boxscore_row["fga"]
@@ -130,37 +144,64 @@ def compute_team_game_four_factors(boxscore_row: dict) -> dict:
     }
 
 
-def average_season_four_factors(team_game_factors: list[dict]) -> dict[str, dict]:
-    """Averages each team's per-game Four Factors across all its completed games.
+def compute_running_season_averages(team_game_factors: list[dict]) -> dict[str, dict[str, dict]]:
+    """Computes each team's Four Factors average as it stood before each of its games.
 
-    Returns teamId -> {effective_fg_pct, turnover_rate, free_throw_rate}
-    season averages. A team with zero completed games is simply absent from
-    the result — predict_margin treats that absence as "not enough data,"
-    returning None rather than guessing at a league-average default.
+    team_game_factors must already be sorted oldest-first (see
+    fetch_team_game_boxscores). Single forward pass per team, same shape as
+    elo.py's compute_elo_ratings: a running per-team accumulator, snapshotted
+    *before* folding in the current game, so a team's game-42 snapshot only
+    ever reflects games 1-41 — never game 42 itself, and never game 43+.
+
+    Returns teamId -> gameId -> {effective_fg_pct, turnover_rate,
+    free_throw_rate} (the pre-game running average), plus a special
+    "_final" gameId per team holding the average across all of that team's
+    games, for predicting a team's next (not-yet-played) game.
     """
-    factors_by_team: dict[str, list[dict]] = {}
+    running_by_team: dict[str, list[dict]] = {}
+    snapshots: dict[str, dict[str, dict]] = {}
+
     for row in team_game_factors:
-        factors_by_team.setdefault(row["team_id"], []).append(row)
+        team_id = row["team_id"]
+        history = running_by_team.setdefault(team_id, [])
+        team_snapshots = snapshots.setdefault(team_id, {})
 
-    averages: dict[str, dict] = {}
-    for team_id, rows in factors_by_team.items():
-        game_count = len(rows)
-        averages[team_id] = {
-            "effective_fg_pct": sum(r["effective_fg_pct"] for r in rows) / game_count,
-            "turnover_rate": sum(r["turnover_rate"] for r in rows) / game_count,
-            "free_throw_rate": sum(r["free_throw_rate"] for r in rows) / game_count,
+        if history:
+            game_count = len(history)
+            team_snapshots[row["game_id"]] = {
+                "effective_fg_pct": sum(r["effective_fg_pct"] for r in history) / game_count,
+                "turnover_rate": sum(r["turnover_rate"] for r in history) / game_count,
+                "free_throw_rate": sum(r["free_throw_rate"] for r in history) / game_count,
+            }
+        # else: this is the team's first game in the dataset — no prior
+        # games to average, so it gets no pre-game snapshot at all (not a
+        # zeroed/default one, which would be indistinguishable from a real
+        # 0.0 factor value). predict_margin's None-propagation already
+        # treats a missing snapshot as "not enough data" correctly.
+
+        history.append(row)
+
+    for team_id, history in running_by_team.items():
+        game_count = len(history)
+        snapshots[team_id]["_final"] = {
+            "effective_fg_pct": sum(r["effective_fg_pct"] for r in history) / game_count,
+            "turnover_rate": sum(r["turnover_rate"] for r in history) / game_count,
+            "free_throw_rate": sum(r["free_throw_rate"] for r in history) / game_count,
         }
-    return averages
+
+    return snapshots
 
 
-def fit_regression_weights(team_game_factors: list[dict], season_averages: dict[str, dict]) -> np.ndarray:
-    """Fits margin = w1*eFG_diff + w2*TOV_diff + w3*FTR_diff via ordinary least squares.
+def build_regression_training_data(
+    team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Builds pre-game feature differences and realized-margin targets.
 
-    Each team-game row's Four Factors are differenced against that game's
-    opponent's *season-average* factors (not the opponent's same-game
-    factors, which would leak the very game being predicted into its own
-    training row). Returns the 3 fitted weights, in
-    (effective_fg_pct, turnover_rate, free_throw_rate) order.
+    Both sides of every feature difference come from snapshots taken before
+    the target game. The current game's team rows supply only team identity
+    and the realized margin target; their Four Factors must never enter the
+    feature matrix. Games where either team has no pre-game history are
+    skipped because they cannot produce a leak-free feature row.
     """
     games_by_id: dict[str, list[dict]] = {}
     for row in team_game_factors:
@@ -172,26 +213,33 @@ def fit_regression_weights(team_game_factors: list[dict], season_averages: dict[
         if len(rows) != 2:
             continue
         team_row, opponent_row = rows
-        opponent_season = season_averages.get(opponent_row["team_id"])
-        if opponent_season is None:
+        team_pre_game = running_averages.get(team_row["team_id"], {}).get(team_row["game_id"])
+        opponent_pre_game = running_averages.get(opponent_row["team_id"], {}).get(opponent_row["game_id"])
+        if team_pre_game is None or opponent_pre_game is None:
             continue
         feature_rows.append(
             [
-                team_row["effective_fg_pct"] - opponent_season["effective_fg_pct"],
-                team_row["turnover_rate"] - opponent_season["turnover_rate"],
-                team_row["free_throw_rate"] - opponent_season["free_throw_rate"],
+                team_pre_game["effective_fg_pct"] - opponent_pre_game["effective_fg_pct"],
+                team_pre_game["turnover_rate"] - opponent_pre_game["turnover_rate"],
+                team_pre_game["free_throw_rate"] - opponent_pre_game["free_throw_rate"],
             ]
         )
         margins.append(team_row["margin"])
 
+    return np.array(feature_rows), np.array(margins)
+
+
+def fit_regression_weights(team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]) -> np.ndarray:
+    """Fits margin from leak-free pre-game feature differences via ordinary least squares."""
+    feature_rows, margins = build_regression_training_data(team_game_factors, running_averages)
     weights, _residuals, _rank, _singular_values = np.linalg.lstsq(
-        np.array(feature_rows), np.array(margins), rcond=None
+        feature_rows, margins, rcond=None
     )
     return weights
 
 
 def fit_or_fallback_margin_model(
-    team_game_factors: list[dict], season_averages: dict[str, dict]
+    team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]
 ) -> tuple[str, np.ndarray]:
     """Picks regression vs. heuristic based on MINIMUM_GAMES_FOR_REGRESSION.
 
@@ -201,15 +249,16 @@ def fit_or_fallback_margin_model(
     either the same way regardless of which path produced them.
     """
     if len(team_game_factors) >= MINIMUM_GAMES_FOR_REGRESSION:
-        return "regression", fit_regression_weights(team_game_factors, season_averages)
+        return "regression", fit_regression_weights(team_game_factors, running_averages)
     return "heuristic", np.array([EFG_WEIGHT, TURNOVER_WEIGHT, FREE_THROW_RATE_WEIGHT])
 
 
 def predict_margin(home_factors: dict | None, away_factors: dict | None, weights: np.ndarray) -> float | None:
-    """Predicts home-minus-away margin from each team's season Four Factors averages.
+    """Predicts home-minus-away margin from each team's pre-game Four Factors snapshot.
 
-    Returns None if either team has no completed games yet (nothing to
-    average) — matches GamePrediction.predictedMarginHome's nullable field.
+    Returns None if either team has no qualifying history yet (their first
+    game in the dataset has no prior games to average) — matches
+    GamePrediction.predictedMarginHome's nullable field.
     """
     if home_factors is None or away_factors is None:
         return None

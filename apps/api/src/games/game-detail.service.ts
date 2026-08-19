@@ -76,11 +76,21 @@ export class GameDetailService {
     // network hop between the API and Postgres instead of localhost; a
     // 15-20 player roster pair doing individual round trips is the same
     // mistake at a smaller scale.
-    // Excludes this game itself from every player's history — predicting
-    // a game from its own boxscore would be leaking the answer, same
-    // principle apps/predictor/elo.py applies to pre-game Elo state.
+    // Restricted to games strictly before this game's date, not just
+    // "not this game" — excluding only gameId still let a player's stats
+    // from games *after* the one being predicted leak into their
+    // "predicted" points for it (caught in review: for a historical game,
+    // gameId:{not} alone doesn't stop a later game's boxscore from
+    // influencing an earlier prediction). Two games on the exact same date
+    // are treated as unordered relative to each other — a strict "<", not
+    // "<=", so neither can inform the other. Same principle
+    // apps/predictor/elo.py and four_factors.py apply via their
+    // chronological forward-pass/pre-game-snapshot construction.
     const allPriorGameStats = await this.prisma.playerGameStat.findMany({
-      where: { playerId: { in: rosterPlayers.map((player) => player.id) }, gameId: { not: gameId } },
+      where: {
+        playerId: { in: rosterPlayers.map((player) => player.id) },
+        game: { gameDate: { lt: game.gameDate } },
+      },
       orderBy: { game: { gameDate: "desc" } },
     });
     const priorGameStatsByPlayerId = new Map<string, PlayerGameStat[]>();

@@ -342,5 +342,100 @@ describe("Games API", () => {
       expect(response.body.predictedScorers[0].predictedPoints).toBe(30);
       expect(response.body.predictedScorers[0].gamesConsidered).toBe(1);
     });
+
+    it("does not let a game played after the target game affect its predicted scorers", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const lebron = await createPlayer(lakers.id, { nbaPlayerId: 1, lastName: "James" });
+
+      const priorGame = await testPrisma.game.create({
+        data: {
+          nbaGameId: "LEAK-PRIOR-GAME",
+          gameDate: new Date("2025-12-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 110,
+          awayScore: 100,
+        },
+      });
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: lebron.id,
+          gameId: priorGame.id,
+          minutes: 34,
+          points: 20,
+          rebounds: 8,
+          assists: 7,
+          steals: 1,
+          blocks: 0,
+          turnovers: 2,
+          fieldGoalsMade: 8,
+          fieldGoalsAttempted: 16,
+          threesMade: 1,
+          threesAttempted: 3,
+          freeThrowsMade: 3,
+          freeThrowsAttempted: 4,
+        },
+      });
+
+      const targetGame = await testPrisma.game.create({
+        data: {
+          nbaGameId: "LEAK-TARGET-GAME",
+          gameDate: new Date("2026-01-05"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 105,
+          awayScore: 95,
+        },
+      });
+
+      const responseBeforeFutureGameExists = await request(app.getHttpServer()).get(`/v1/games/${targetGame.id}`);
+      expect(responseBeforeFutureGameExists.status).toBe(200);
+      expect(responseBeforeFutureGameExists.body.predictedScorers[0].predictedPoints).toBe(20);
+
+      // A game dated *after* the target game, with a wildly different
+      // points total — if the query filtered only on gameId (the actual
+      // bug this test guards against) rather than on gameDate, this would
+      // pull the target game's prediction toward 50, since a naive
+      // recency-weighted average over both rows would blend it in.
+      const futureGame = await testPrisma.game.create({
+        data: {
+          nbaGameId: "LEAK-FUTURE-GAME",
+          gameDate: new Date("2026-02-14"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 130,
+          awayScore: 90,
+        },
+      });
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: lebron.id,
+          gameId: futureGame.id,
+          minutes: 38,
+          points: 50,
+          rebounds: 10,
+          assists: 5,
+          steals: 2,
+          blocks: 1,
+          turnovers: 1,
+          fieldGoalsMade: 18,
+          fieldGoalsAttempted: 25,
+          threesMade: 4,
+          threesAttempted: 7,
+          freeThrowsMade: 10,
+          freeThrowsAttempted: 10,
+        },
+      });
+
+      const responseAfterFutureGameExists = await request(app.getHttpServer()).get(`/v1/games/${targetGame.id}`);
+
+      expect(responseAfterFutureGameExists.status).toBe(200);
+      expect(responseAfterFutureGameExists.body.predictedScorers[0].predictedPoints).toBe(20);
+      expect(responseAfterFutureGameExists.body.predictedScorers[0].gamesConsidered).toBe(1);
+    });
   });
 });
