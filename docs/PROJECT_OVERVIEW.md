@@ -274,32 +274,28 @@ npm test                        # or npm run test:cov
 ## CI/CD (`.gitea/workflows/ci.yml`)
 
 Targets **Gitea Actions** (this repo's remote is `sdp.ms.wits.ac.za`), run
-via a self-hosted `act_runner` Docker container (see `docker-compose.yml`),
-not GitHub Actions or GitLab CI. On every push and PR:
+via a self-hosted `act_runner`, not GitHub Actions or GitLab CI. On every
+push and PR:
 
-1. `api` — lint (once `apps/api/eslint.config.js` exists — flat-config
-   ESLint 10 needs it, so this step currently just warns and skips),
-   typecheck, and test.
-2. `web` — lint, typecheck, and test (`--if-present`, since no test script
-   is wired into `apps/web/package.json` yet on `main`).
+1. `api` — lint and typecheck.
+2. `web` — lint and typecheck.
+3. `coverage` — run the API suite against a disposable PostgreSQL service,
+   run the Web suite, and generate coverage for both without rerunning the
+   suites separately.
 
-Neither job currently runs against a real Postgres instance, merges
-coverage, or publishes a dashboard — the Postgres-backed test suite, the
-coverage-merging pipeline, and `scripts/build-coverage-report.mjs`
-described above/below are real and runnable **locally**, but wiring them
-into Gitea Actions (a real DB service container, a coverage-dashboard
-publish step) is still open work. An earlier `.gitlab-ci.yml` attempted
-exactly this against a different platform (GitLab) before the team
-settled on Gitea for hosting; it's been removed as dead weight rather than
-kept as a stale reference. `scripts/post-mr-coverage-comment.mjs` (which
-posted coverage summaries as GitLab merge-request comments) was removed
-alongside it — it hardcoded GitLab's API and had no working equivalent
-under Gitea.
+The coverage job builds `scripts/build-coverage-report.mjs`'s combined HTML
+dashboard and uploads it as a downloadable `coverage-report` Gitea Actions
+artifact. The dashboard contains overall API/Web metrics and links to each
+app's detailed HTML report. Coverage is reported but no minimum thresholds
+are enforced yet.
 
-Linting, typechecking are only partly wired into CI (see above), and a
-deploy stage isn't wired in at all — still mostly run manually before
-every commit (see `GIT_METHODOLOGY.md`'s
-merge requirements).
+An earlier `.gitlab-ci.yml` attempted similar reporting against a different
+platform before the team settled on Gitea; it was removed rather than kept
+as a stale reference. The GitLab-specific merge-request comment script was
+also removed because it has no working equivalent under Gitea.
+
+A deploy stage isn't wired into CI yet. See `GIT_METHODOLOGY.md` for the
+checks and review required before merging.
 
 ## Known gaps
 
