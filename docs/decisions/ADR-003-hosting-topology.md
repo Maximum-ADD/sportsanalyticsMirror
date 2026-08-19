@@ -79,7 +79,7 @@ data, per the brief.
         |                                         |
   +-----------+                          +-----------------+
   | Web SPA   |  Cloudflare Pages        | API             |  Render
-  | (Vite ->  |  (global static CDN,     | (NestJS/Express |  (Starter
+  | (Vite ->  |  (global static CDN,     | (NestJS/Express |  (free
   |  dist/)   |   managed TLS,           |  +BetterAuth)   |   web service)
   +-----------+   custom domain)         +-----------------+
         |                                         |
@@ -104,7 +104,7 @@ data, per the brief.
 | Layer | Service | Why this service |
 |---|---|---|
 | Frontend SPA | Cloudflare Pages | `apps/web` builds to static `dist/`. Cloudflare Pages gives a global CDN, managed TLS, custom domain support, and a generous free tier. The repo is on Gitea, so deploy is a local build followed by Wrangler CLI upload or dashboard drag-and-drop — no Git-provider integration required. |
-| NestJS API | Render Web Service (Node.js runtime, Starter plan) | Render's Starter plan keeps the API always-on with no cold starts, which is exactly what the Express/BetterAuth bootstrap in `main.ts` needs. Render's Blueprint ([`render.yaml`](../../render.yaml)) declares the service, build/start commands, and Prisma migrations as a `preDeployCommand`. |
+| NestJS API | Render Web Service (Node.js runtime, free plan) | Render's free plan spins the API down after 15 minutes of inactivity; the team has accepted the resulting ~30-second cold start. BetterAuth sessions are stored in Supabase, so they survive a cold start. Render's Blueprint ([`render.yaml`](../../render.yaml)) declares the service, build/start commands, and Prisma migrations as a `preDeployCommand`. |
 | Postgres | Supabase (managed Postgres) | Managed Postgres with a generous free tier and built-in connection pooling. Supabase's auto REST/Auth/Storage APIs are deliberately unused — the NestJS API stays the only HTTP path to the data, per the brief. Reached over TLS via the pooled connection string. |
 | Python batch apps | Render Cron Job or Background Worker | `apps/ingestion`/`optimizer`/`predictor` are scripts that write straight to Postgres. They run on a schedule (Render Cron) or as an always-on/off Worker — no long-running web server needed, and they stay off the API's HTTP path as the brief requires. |
 | Secrets | Render env vars + Cloudflare Pages env vars | `DATABASE_URL`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and `WEB_ORIGIN` are set in the Render Dashboard for the API and via the Cloudflare Pages dashboard for the build-time `VITE_API_BASE_URL`. They are never in the repo or the image. |
@@ -149,15 +149,15 @@ Considered for the API and batch jobs because its Machines can be configured
 to stay always-on. However, Fly.io's free tier is an allowance, not a
 guaranteed permanent free always-on compute tier; for a project that must stay
 online longer than the free allowance covers, it would incur billing. The team
-wanted a predictable, affordable fixed cost rather than usage-based uncertainty,
-so Render Starter was chosen for the API.
+preferred Render's free tier and has accepted the ~30-second cold start after
+15 minutes of inactivity.
 
 ### Render free tier
 
 Render's free Web Service tier spins down after 15 minutes of inactivity and
-takes ~30 seconds to cold-start on the next request. That cold-start latency is
-bad for BetterAuth session UX, so the free tier was rejected for the API. The
-Starter plan ($7/month) is kept always-on.
+takes ~30 seconds to cold-start on the next request. The team has accepted
+this cold-start latency to keep the API hosting free. The Starter plan
+($7/month) would eliminate cold starts but was not chosen.
 
 ### Vercel
 
@@ -170,7 +170,9 @@ benefits with a simpler Gitea-compatible deploy path, so Vercel was not chosen.
 
 **Positive**
 
-- No cold starts: the API runs on Render's Starter plan, which is always-on.
+- The API is free to host on Render's free tier; the team has accepted the
+  ~30-second cold start after 15 minutes of inactivity. BetterAuth sessions
+  are stored in Supabase, so they survive a cold start.
 - The API runs as the long-running process `main.ts` was written to be — no
   serverless rewrites.
 - Postgres is managed and backed up on Supabase, with built-in connection
@@ -182,9 +184,9 @@ benefits with a simpler Gitea-compatible deploy path, so Vercel was not chosen.
 
 **Negative**
 
-- Cost: Render Starter for the API is ~$7/month. Batch jobs may add cost if
-  they run as Render Cron Jobs / Background Workers. The frontend (Cloudflare
-  Pages) and database (Supabase free tier) remain free.
+- Cost: the API is on Render's free tier. Batch jobs may add cost if they run
+  as Render Cron Jobs / Background Workers. The frontend (Cloudflare Pages)
+  and database (Supabase free tier) remain free.
 - Multi-provider stack (Cloudflare + Render + Supabase) means three dashboards
   and three secret stores instead of one.
 - No Git-provider auto-deploy because the repo is on Gitea — deploys need a
