@@ -7,7 +7,7 @@ services:
     name: sportsanalytics-api
     runtime: node
     plan: free
-    branch: main
+    branch: hosting-topology
     rootDir: apps/api
     buildCommand: npm ci && npx prisma generate && npm run build
     startCommand: npm start
