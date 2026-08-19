@@ -126,6 +126,55 @@ describe("Players API", () => {
       expect(response.body.data[0].lastName).toBe("Center");
     });
 
+    it("searches partial player names case-insensitively", async () => {
+      await createPlayer({ firstName: "LeBron", lastName: "James" });
+      await createPlayer({ firstName: "Stephen", lastName: "Curry" });
+
+      const firstNameResponse = await request(app.getHttpServer()).get("/v1/players?search=EBR");
+      const lastNameResponse = await request(app.getHttpServer()).get("/v1/players?search=ame");
+
+      expect(firstNameResponse.body.data.map((player: { lastName: string }) => player.lastName)).toEqual(["James"]);
+      expect(lastNameResponse.body.data.map((player: { lastName: string }) => player.lastName)).toEqual(["James"]);
+    });
+
+    it("matches full names across first and last name fields", async () => {
+      await createPlayer({ firstName: "LeBron", lastName: "James" });
+      await createPlayer({ firstName: "LeBron", lastName: "Smith" });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?search=bron%20jam");
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0]).toMatchObject({ firstName: "LeBron", lastName: "James" });
+    });
+
+    it("combines search with team and position filters", async () => {
+      const lakers = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      await createPlayer({ teamId: lakers.id, firstName: "LeBron", lastName: "James", position: "F" });
+      await createPlayer({ teamId: lakers.id, firstName: "LeBron", lastName: "Guard", position: "G" });
+      await createPlayer({ teamId: celtics.id, firstName: "LeBron", lastName: "Forward", position: "F" });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players?search=lebron&teamId=${lakers.id}&position=F`
+      );
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].lastName).toBe("James");
+    });
+
+    it("paginates the filtered player results and ignores blank search", async () => {
+      await createPlayer({ firstName: "Alex", lastName: "Alpha" });
+      await createPlayer({ firstName: "Alex", lastName: "Bravo" });
+      await createPlayer({ firstName: "Alex", lastName: "Charlie" });
+
+      const filteredResponse = await request(app.getHttpServer()).get("/v1/players?search=alex&page=2&pageSize=2");
+      const blankResponse = await request(app.getHttpServer()).get("/v1/players?search=%20%20");
+
+      expect(filteredResponse.body).toMatchObject({ page: 2, pageSize: 2, total: 3 });
+      expect(filteredResponse.body.data).toHaveLength(1);
+      expect(blankResponse.body.total).toBe(3);
+    });
+
     it("returns a player with no team as team: null rather than omitting the field", async () => {
       await createPlayer({ teamId: null, lastName: "FreeAgent" });
 

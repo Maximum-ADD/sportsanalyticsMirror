@@ -10,7 +10,7 @@ export class PlayersController {
     private readonly statsService: StatsService
   ) {}
 
-  // GET /v1/players?teamId=&position=&page=&pageSize= — paginated player list.
+  // GET /v1/players?teamId=&position=&search=&page=&pageSize= — paginated player list.
   @Get()
   listPlayers(@Query() query: Record<string, unknown>) {
     return this.playersService.getPlayers(query);
