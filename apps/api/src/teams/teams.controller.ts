@@ -6,6 +6,7 @@ import { TeamsService } from "./teams.service.js";
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
+  // GET /v1/teams?search=&page=&pageSize= — paginated team list.
   @Get()
   listTeams(@Query() query: Record<string, unknown>) {
     return this.teamsService.getTeams(query);

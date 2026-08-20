@@ -102,4 +102,40 @@ describe("PlayersListPage", () => {
       );
     });
   });
+
+  it("debounces player search and combines it with existing filters", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()], 20));
+    const user = userEvent.setup();
+
+    renderWithProviders(<PlayersListPage />);
+    await screen.findByText("LeBron James");
+
+    await user.selectOptions(screen.getByDisplayValue("All teams"), LAKERS.id);
+    await user.selectOptions(screen.getByDisplayValue("All positions"), "F");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(fetchPlayers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
+    await user.type(screen.getByRole("searchbox", { name: "Search players" }), "  LeBron James  ");
+
+    expect(fetchPlayers).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "LeBron James" }));
+
+    await waitFor(() => {
+      expect(fetchPlayers).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+        teamId: LAKERS.id,
+        position: "F",
+        search: "LeBron James",
+      });
+    });
+  });
+
+  it("shows a clear message when no players match", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [], page: 1, pageSize: 100, total: 0 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([]));
+
+    renderWithProviders(<PlayersListPage />);
+
+    expect(await screen.findByText("No players found.")).toBeInTheDocument();
+  });
 });

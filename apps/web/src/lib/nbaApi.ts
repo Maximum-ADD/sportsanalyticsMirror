@@ -12,6 +12,7 @@ function toQueryString(params: object): string {
 export interface FetchPlayersParams {
   teamId?: string;
   position?: string;
+  search?: string;
   page?: number;
   pageSize?: number;
 }
@@ -29,6 +30,7 @@ export function fetchPlayerStats(playerId: string): Promise<PlayerStatsResponse>
 }
 
 export interface FetchTeamsParams {
+  search?: string;
   page?: number;
   pageSize?: number;
 }
