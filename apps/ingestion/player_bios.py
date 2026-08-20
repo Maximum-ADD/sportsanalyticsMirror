@@ -22,9 +22,15 @@ from throttle import call_with_rate_limit
 def fetch_player_bio(nba_player_id: int) -> dict:
     """Fetches one player's bio fields from CommonPlayerInfo.
 
-    Returns a dict with nba_player_id/birth_date/school/country/
-    last_affiliation/season_exp/roster_status/draft_year/draft_round/
-    draft_number — everything upsert_player_bio needs.
+    Returns a dict with nba_player_id/first_name/last_name/birth_date/
+    school/country/last_affiliation/season_exp/roster_status/draft_year/
+    draft_round/draft_number — everything upsert_player_bio needs, plus
+    first_name/last_name so callers can cross-check the returned player
+    actually matches who they expected to fetch. This caught a real,
+    pre-existing nbaPlayerId/name mismatch in seed.ts's MOCK_PLAYERS
+    (two entries pointed at the wrong real player's id) during development
+    of this feature — blindly trusting an id without checking the name it
+    resolves to is what let that go unnoticed until now.
     """
     info = call_with_rate_limit(
         lambda: commonplayerinfo.CommonPlayerInfo(player_id=nba_player_id)
@@ -33,6 +39,8 @@ def fetch_player_bio(nba_player_id: int) -> dict:
 
     return {
         "nba_player_id": row["PERSON_ID"],
+        "first_name": row["FIRST_NAME"],
+        "last_name": row["LAST_NAME"],
         "birth_date": _parse_birthdate(row["BIRTHDATE"]),
         "school": row["SCHOOL"] or None,
         "country": row["COUNTRY"] or None,
