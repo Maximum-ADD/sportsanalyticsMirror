@@ -9,7 +9,7 @@ services:
     plan: free
     branch: hosting-topology
     rootDir: apps/api
-    buildCommand: npm ci && npx prisma generate && npm run build
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
     startCommand: npm start
     # Note: preDeployCommand is not supported on Render's free tier.
     # Run `npx prisma migrate deploy` manually (or from CI) before deploying.
