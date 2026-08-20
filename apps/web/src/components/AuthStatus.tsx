@@ -1,4 +1,4 @@
-import { authClient, useSession } from "@/lib/authClient";
+import { authClient, signInWithGoogle, useSession } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -13,7 +13,7 @@ export function AuthStatus() {
     return (
       <Button
         type="button"
-        onClick={() => authClient.signIn.social({ provider: "google", callbackURL: window.location.href })}
+        onClick={() => signInWithGoogle()}
       >
         Sign in with Google
       </Button>

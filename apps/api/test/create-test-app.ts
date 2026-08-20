@@ -11,9 +11,9 @@ import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
 // That distinction matters: NotFoundController's catch-all route uses
 // Express 5's "*splat" wildcard syntax (see its own comment for why), which
 // silently fails to match anything under Express 4 — a mismatch that only
-// showed up once these specs were actually wired into the test run. None of
-// the routes under test require a session, so BetterAuth's own HTTP
-// handlers aren't part of what these specs exercise.
+// showed up once these specs were actually wired into the test run.
+// BetterAuth's own HTTP handlers aren't needed here: protected endpoint
+// specs mock the guard's session lookup directly.
 export async function createTestApp(): Promise<INestApplication> {
   const server = expressFactory();
   server.use(expressFactory.json());

@@ -1,10 +1,12 @@
-import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Param, Query, UseGuards } from "@nestjs/common";
 import { ApiException } from "../common/api-exception.js";
+import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { PredictionsService } from "../predictions/predictions.service.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
 @Controller("v1/games")
+@UseGuards(SessionAuthGuard)
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
