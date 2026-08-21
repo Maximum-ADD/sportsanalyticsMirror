@@ -9,6 +9,14 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 // the standard, documented way to wire BetterAuth's Prisma adapter.
 const prisma = new PrismaClient();
 
+// WEB_ORIGIN can be a single URL or a comma-separated list
+// (e.g. "https://app.pages.dev,http://localhost:5173").
+// Both BetterAuth (trustedOrigins) and the Express CORS middleware in
+// main.ts read from this shared array so the two layers stay in sync.
+export const allowedOrigins = (process.env.WEB_ORIGIN ?? "http://localhost:5173")
+  .split(",")
+  .map((s) => s.trim());
+
 // Mounted at /auth (not the BetterAuth default /api/auth) to match this
 // project's existing routing convention — see main.ts for where the raw
 // handler is attached, and vite.config.ts's dev proxy strips a leading
@@ -18,7 +26,7 @@ export const auth = betterAuth({
   basePath: "/auth",
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:4000",
-  trustedOrigins: [process.env.WEB_ORIGIN ?? "http://localhost:5173"],
+  trustedOrigins: allowedOrigins,
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
