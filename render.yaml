@@ -1,0 +1,34 @@
+# Render Blueprint for the NBA Analytics Platform API.
+# Deploys apps/api as a long-running Node.js web service on Render.
+# The frontend stays on Cloudflare Pages (static hosting, free global CDN).
+
+services:
+  - type: web
+    name: sportsanalytics-api
+    runtime: node
+    plan: free
+    branch: main
+    rootDir: apps/api
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: npm start
+    # Note: preDeployCommand is not supported on Render's free tier.
+    # Run `npx prisma migrate deploy` manually (or from CI) before deploying.
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: NODE_ENV
+        value: production
+      # Set the secret values in the Render Dashboard (sync: false keeps the
+      # YAML from overwriting them). Never commit real values here.
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: BETTER_AUTH_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
