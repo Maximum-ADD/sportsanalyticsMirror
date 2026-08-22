@@ -6,7 +6,7 @@ import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
 import expressFactory from "express";
 import helmet from "helmet";
-import { auth } from "./auth/auth.config.js";
+import { auth, allowedOrigins } from "./auth/auth.config.js";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter.js";
 import { AppModule } from "./app.module.js";
 
@@ -23,7 +23,14 @@ async function bootstrap() {
   server.use(helmet());
   server.use(
     cors({
-      origin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
+      origin: (requestOrigin, callback) => {
+        // Allow requests with no Origin (server-to-server, curl, etc.)
+        if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin ${requestOrigin} not allowed by CORS`));
+        }
+      },
       credentials: true,
     })
   );

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayersListPage } from "./PlayersListPage";
@@ -115,7 +115,9 @@ describe("PlayersListPage", () => {
     await user.selectOptions(screen.getByDisplayValue("All positions"), "F");
     await user.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(fetchPlayers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
-    await user.type(screen.getByRole("searchbox", { name: "Search players" }), "  LeBron James  ");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search players" }), {
+      target: { value: "  LeBron James  " },
+    });
 
     expect(fetchPlayers).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "LeBron James" }));
 
