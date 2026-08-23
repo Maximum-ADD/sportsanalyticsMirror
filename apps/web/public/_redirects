@@ -1,0 +1,4 @@
+# Cloudflare Pages SPA routing fallback: every unmatched path serves index.html,
+# so client-side routes work on refresh/direct links. Static assets are still
+# served directly because exact files take precedence over this catch-all.
+/*    /index.html    200

@@ -32,8 +32,13 @@ jobs:
         with:
           node-version: 24
 
+      # The shared runner occasionally stalls a registry connection with no
+      # error output; npm's default per-request timeout is 5 minutes, so two
+      # stalled attempts silently burn 10+ minutes before the job dies. Bound
+      # each attempt to 60s so npm fails fast and retries instead of hanging.
       - name: Install dependencies
-        run: npm ci
+        timeout-minutes: 5
+        run: npm ci --fetch-timeout=60000 --fetch-retries=5 --fetch-retry-mintimeout=15000 --fetch-retry-maxtimeout=60000
 
       # The generated Prisma client is a typecheck dependency — src/ references
       # model fields, so tsc fails without it.
@@ -69,8 +74,12 @@ jobs:
         with:
           node-version: 24
 
+      # See the API job for the fetch timeout/retry tuning (stalled registry
+      # connections on this runner can otherwise hang a bare `npm ci` for
+      # 10+ minutes with no output before the job dies).
       - name: Install dependencies
-        run: npm ci
+        timeout-minutes: 5
+        run: npm ci --fetch-timeout=60000 --fetch-retries=5 --fetch-retry-mintimeout=15000 --fetch-retry-maxtimeout=60000
 
       - name: Lint
         run: npm run lint
@@ -115,11 +124,16 @@ jobs:
         with:
           node-version: 24
 
+      # See the API job for the fetch timeout/retry tuning (stalled registry
+      # connections on this runner can otherwise hang a bare `npm ci` for
+      # 10+ minutes with no output before the job dies).
       - name: Install API dependencies
-        run: npm ci --prefix apps/api
+        timeout-minutes: 5
+        run: npm ci --prefix apps/api --fetch-timeout=60000 --fetch-retries=5 --fetch-retry-mintimeout=15000 --fetch-retry-maxtimeout=60000
 
       - name: Install Web dependencies
-        run: npm ci --prefix apps/web
+        timeout-minutes: 5
+        run: npm ci --prefix apps/web --fetch-timeout=60000 --fetch-retries=5 --fetch-retry-mintimeout=15000 --fetch-retry-maxtimeout=60000
 
       - name: Generate Prisma client
         run: npm run prisma:generate --prefix apps/api

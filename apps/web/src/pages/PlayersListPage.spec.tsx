@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayersListPage } from "./PlayersListPage";
@@ -101,5 +101,43 @@ describe("PlayersListPage", () => {
         expect.objectContaining({ teamId: LAKERS.id, page: 1 })
       );
     });
+  });
+
+  it("debounces player search and combines it with existing filters", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()], 20));
+    const user = userEvent.setup();
+
+    renderWithProviders(<PlayersListPage />);
+    await screen.findByText("LeBron James");
+
+    await user.selectOptions(screen.getByDisplayValue("All teams"), LAKERS.id);
+    await user.selectOptions(screen.getByDisplayValue("All positions"), "F");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(fetchPlayers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search players" }), {
+      target: { value: "  LeBron James  " },
+    });
+
+    expect(fetchPlayers).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "LeBron James" }));
+
+    await waitFor(() => {
+      expect(fetchPlayers).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+        teamId: LAKERS.id,
+        position: "F",
+        search: "LeBron James",
+      });
+    });
+  });
+
+  it("shows a clear message when no players match", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [], page: 1, pageSize: 100, total: 0 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([]));
+
+    renderWithProviders(<PlayersListPage />);
+
+    expect(await screen.findByText("No players found.")).toBeInTheDocument();
   });
 });

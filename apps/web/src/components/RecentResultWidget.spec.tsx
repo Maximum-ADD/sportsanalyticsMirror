@@ -1,12 +1,17 @@
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentResultWidget } from "./RecentResultWidget";
 import { fetchGames } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { Game, Team } from "@/types/nba";
+import { useSession } from "@/lib/authClient";
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchGames: vi.fn(),
+}));
+
+vi.mock("@/lib/authClient", () => ({
+  useSession: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -45,6 +50,13 @@ const GAME: Game = {
 };
 
 describe("RecentResultWidget", () => {
+  beforeEach(() => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: "player@example.com" } },
+      isPending: false,
+    } as never);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -56,6 +68,15 @@ describe("RecentResultWidget", () => {
 
     expect(await screen.findByText("Recent Result")).toBeInTheDocument();
     expect(screen.queryByText(/live/i)).not.toBeInTheDocument();
+  });
+
+  it("does not request protected game data for a logged-out visitor", () => {
+    vi.mocked(useSession).mockReturnValue({ data: null, isPending: false } as never);
+
+    const { container } = renderWithProviders(<RecentResultWidget />);
+
+    expect(container).toBeEmptyDOMElement();
+    expect(fetchGames).not.toHaveBeenCalled();
   });
 
   it("exposes the score to screen readers as a sentence, grouped under the visible caption", async () => {

@@ -9,6 +9,7 @@ import { TeamProfilePage } from "./pages/TeamProfilePage";
 import { OptimizerPage } from "./pages/OptimizerPage";
 import { PredictionsPage } from "./pages/PredictionsPage";
 import { GameDetailPage } from "./pages/GameDetailPage";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 function App() {
   return (
@@ -21,9 +22,18 @@ function App() {
           <Route path="/players/:playerId" element={<PlayerProfilePage />} />
           <Route path="/teams" element={<TeamsListPage />} />
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
-          <Route path="/optimizer" element={<OptimizerPage />} />
-          <Route path="/predictions" element={<PredictionsPage />} />
-          <Route path="/games/:gameId" element={<GameDetailPage />} />
+          <Route
+            path="/optimizer"
+            element={<ProtectedRoute><OptimizerPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/predictions"
+            element={<ProtectedRoute><PredictionsPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/games/:gameId"
+            element={<ProtectedRoute><GameDetailPage /></ProtectedRoute>}
+          />
         </Route>
       </Routes>
     </BrowserRouter>

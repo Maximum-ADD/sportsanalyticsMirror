@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 function formatSalary(salary: number | null): string {
-  return salary === null ? "—" : `$${salary.toLocaleString()}`;
+  return salary === null ? "—" : `$${salary.toLocaleString("en-US")}`;
 }
 
 const INTRO = (
