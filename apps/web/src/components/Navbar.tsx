@@ -4,7 +4,7 @@ import { BasketballIcon } from "./BasketballIcon";
 import { RecentResultWidget } from "./RecentResultWidget";
 
 const NAV_LINKS = [
-  { to: "/", label: "Home" },
+  { to: "/home", label: "Home" },
   { to: "/players", label: "Players" },
   { to: "/teams", label: "Teams" },
   { to: "/optimizer", label: "Optimizer" },
@@ -16,7 +16,7 @@ export function Navbar() {
     <div className="relative">
       <div className="flex h-8 items-center border-b border-border-subtle/60 bg-surface-base px-6">
         <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">
-          Sport Analytics/Project Name
+          NBA Fantasy League Optimizer
         </span>
       </div>
 
@@ -28,7 +28,7 @@ export function Navbar() {
           Skip to content
         </a>
 
-        <Link to="/" className="flex shrink-0 items-center gap-2 text-text-primary">
+        <Link to="/home" className="flex shrink-0 items-center gap-2 text-text-primary">
           <BasketballIcon className="size-8 shrink-0" />
         </Link>
 
@@ -37,7 +37,7 @@ export function Navbar() {
             <NavLink
               key={link.to}
               to={link.to}
-              end={link.to === "/"}
+              end={link.to === "/home"}
               className={({ isActive }) =>
                 `text-sm font-bold uppercase tracking-[0.18em] transition-colors ${
                   isActive ? "text-brand-accent" : "text-text-primary hover:text-brand-accent"
