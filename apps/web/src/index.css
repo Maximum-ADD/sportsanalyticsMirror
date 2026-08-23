@@ -55,6 +55,23 @@
   --color-text-secondary: #baa88f;
   --color-text-muted: #8a7862;
 
+  --color-landing-hero: #cfcbc6;
+  --color-landing-dark: #412a22;
+  --color-landing-light: #a9a8a4;
+
+  --color-landing-placeholder: #9b9b9b;
+  --color-landing-placeholder-edge: #7c7c7c;
+
+  --color-landing-accent: #e04e34;
+  --color-landing-ink: #14100c;
+
+  --animate-marquee: marquee 32s linear infinite;
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
   /* Condensed display face for hero-scale headlines — regular system fonts
      read as generic at this size; a real display face is what makes a hero
      look designed rather than just "big text". Falls through to a
@@ -75,6 +92,13 @@ body {
   min-height: 100vh;
 }
 
+@utility leather-texture {
+  background-color: #a4441c;
+  background-image: url("/brand/ball-texture.webp");
+  background-size: cover;
+  background-position: center;
+}
+
 /* Outlined treatment for the headline's third line. A solid near-black
    measured 1.08:1 against the page — lighting only the glyph edges keeps
    the hollow look and measures 17.2:1. */
@@ -87,4 +111,37 @@ body {
   @supports not (-webkit-text-stroke: 1px black) {
     color: var(--color-text-muted);
   }
+}
+
+@utility reel-symbiote {
+  background-color: #0a0a10;
+  background-image:
+    repeating-linear-gradient(96deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 15px),
+    radial-gradient(120% 180% at 18% -60%, rgba(198, 205, 255, 0.16), transparent 62%),
+    radial-gradient(70% 160% at 72% 150%, rgba(122, 96, 190, 0.22), transparent 70%),
+    radial-gradient(45% 130% at 44% 130%, rgba(255, 255, 255, 0.05), transparent 72%),
+    linear-gradient(90deg, #06060a 0%, #13111c 44%, #0b0a12 100%);
+  color: #e9eaf5;
+  box-shadow:
+    inset 0 1px 0 rgba(226, 230, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.85);
+}
+
+@utility reel-crystal {
+  background-color: #06303a;
+  background-image:
+    repeating-linear-gradient(
+      72deg,
+      rgba(255, 255, 255, 0.065) 0 7px,
+      transparent 7px 26px,
+      rgba(0, 0, 0, 0.12) 26px 31px,
+      transparent 31px 52px
+    ),
+    repeating-linear-gradient(-24deg, rgba(190, 255, 246, 0.05) 0 14px, transparent 14px 58px),
+    radial-gradient(90% 200% at 12% -70%, rgba(150, 255, 240, 0.18), transparent 60%),
+    linear-gradient(96deg, #04262f 0%, #08444a 42%, #0a5850 74%, #063a42 100%);
+  color: #dff6f1;
+  box-shadow:
+    inset 0 1px 0 rgba(190, 255, 246, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 }

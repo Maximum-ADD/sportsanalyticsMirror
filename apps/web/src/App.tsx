@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Navbar } from "./components/Navbar";
+import { AppLayout } from "./components/AppLayout";
+import { LandingPage } from "./pages/LandingPage";
 import { HomePage } from "./pages/HomePage";
 import { PlayersListPage } from "./pages/PlayersListPage";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage";
@@ -13,31 +14,28 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 function App() {
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen flex-col bg-surface-base">
-        <Navbar />
-        {/* tabIndex={-1} is what lets the skip link move focus here, not just scroll to it. */}
-        <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/players" element={<PlayersListPage />} />
-            <Route path="/players/:playerId" element={<PlayerProfilePage />} />
-            <Route path="/teams" element={<TeamsListPage />} />
-            <Route path="/teams/:teamId" element={<TeamProfilePage />} />
-            <Route
-              path="/optimizer"
-              element={<ProtectedRoute><OptimizerPage /></ProtectedRoute>}
-            />
-            <Route
-              path="/predictions"
-              element={<ProtectedRoute><PredictionsPage /></ProtectedRoute>}
-            />
-            <Route
-              path="/games/:gameId"
-              element={<ProtectedRoute><GameDetailPage /></ProtectedRoute>}
-            />
-          </Routes>
-        </main>
-      </div>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route element={<AppLayout />}>
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/players" element={<PlayersListPage />} />
+          <Route path="/players/:playerId" element={<PlayerProfilePage />} />
+          <Route path="/teams" element={<TeamsListPage />} />
+          <Route path="/teams/:teamId" element={<TeamProfilePage />} />
+          <Route
+            path="/optimizer"
+            element={<ProtectedRoute><OptimizerPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/predictions"
+            element={<ProtectedRoute><PredictionsPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/games/:gameId"
+            element={<ProtectedRoute><GameDetailPage /></ProtectedRoute>}
+          />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }
