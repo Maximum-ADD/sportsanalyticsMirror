@@ -25,11 +25,11 @@ const MOCK_PLAYERS = [
 
   { nbaPlayerId: 1628369, firstName: "Jayson", lastName: "Tatum", position: "F", heightInches: 80, weightLbs: 210, jerseyNumber: "0", teamAbbreviation: "BOS" },
   { nbaPlayerId: 1627759, firstName: "Jaylen", lastName: "Brown", position: "G-F", heightInches: 78, weightLbs: 223, jerseyNumber: "7", teamAbbreviation: "BOS" },
-  { nbaPlayerId: 1629632, firstName: "Derrick", lastName: "White", position: "G", heightInches: 76, weightLbs: 190, jerseyNumber: "9", teamAbbreviation: "BOS" },
+  { nbaPlayerId: 1628401, firstName: "Derrick", lastName: "White", position: "G", heightInches: 76, weightLbs: 190, jerseyNumber: "9", teamAbbreviation: "BOS" },
 
   { nbaPlayerId: 201939, firstName: "Stephen", lastName: "Curry", position: "G", heightInches: 74, weightLbs: 185, jerseyNumber: "30", teamAbbreviation: "GSW" },
   { nbaPlayerId: 203110, firstName: "Draymond", lastName: "Green", position: "F", heightInches: 79, weightLbs: 230, jerseyNumber: "23", teamAbbreviation: "GSW" },
-  { nbaPlayerId: 1626172, firstName: "Buddy", lastName: "Hield", position: "G", heightInches: 76, weightLbs: 214, jerseyNumber: "7", teamAbbreviation: "GSW" },
+  { nbaPlayerId: 1627741, firstName: "Buddy", lastName: "Hield", position: "G", heightInches: 76, weightLbs: 214, jerseyNumber: "7", teamAbbreviation: "GSW" },
 
   { nbaPlayerId: 203507, firstName: "Giannis", lastName: "Antetokounmpo", position: "F", heightInches: 83, weightLbs: 243, jerseyNumber: "34", teamAbbreviation: "MIL" },
   { nbaPlayerId: 203081, firstName: "Damian", lastName: "Lillard", position: "G", heightInches: 74, weightLbs: 195, jerseyNumber: "0", teamAbbreviation: "MIL" },
