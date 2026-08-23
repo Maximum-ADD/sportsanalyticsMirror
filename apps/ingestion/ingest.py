@@ -6,18 +6,14 @@ Call budget (see README.md for the rate-limit/reliability background this
 was designed around):
   - Teams: 0 calls (nba_api.stats.static.teams is bundled, no network).
   - Rosters: 30 calls (one CommonTeamRoster per team).
-  - Player bios: one CommonPlayerInfo call per ingested player (~450-500
-    for the full league) — see player_bios.py's module docstring.
   - Recent games: 30 calls (one LeagueGameFinder per team, kept to each
     team's newest GAMES_PER_TEAM games — see games.py's module docstring).
   - Boxscores: up to 30 * GAMES_PER_TEAM calls, deduplicated by game id
     (two teams sharing a game only cost one boxscore call) — in practice
     well under that since most of a team's recent 15 games are against
     other teams whose own recent 15 also include that game.
-  - Total: roughly 800-950 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
-    plus retries, expect this to take on the order of 20-30 minutes —
-    roughly double the pre-player-bios estimate, since bios are now the
-    single largest phase by call count.
+  - Total: roughly 350-450 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
+    plus retries, expect this to take on the order of 10-15 minutes.
 
 Must run from a real residential network, not a cloud host — see
 README.md for why (stats.nba.com blocks cloud-provider IP ranges; this is
@@ -26,7 +22,6 @@ a documented, repeated community pain point, not a guess).
 
 from db import get_connection
 from games import fetch_game_boxscore, fetch_recent_games, upsert_game, upsert_period_bookend_events, upsert_player_game_stat
-from player_bios import fetch_player_bio, upsert_player_bio
 from rosters import fetch_team_roster, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
@@ -50,23 +45,6 @@ def ingest_rosters(cursor, team_id_by_nba_id: dict[int, str]) -> dict[int, str]:
         print(f"  Ingested {len(players)} players for team {nba_team_id}.")
     print(f"Ingested {len(player_id_by_nba_id)} players total.")
     return player_id_by_nba_id
-
-
-def ingest_player_bios(cursor, player_id_by_nba_id: dict[int, str]) -> None:
-    """Enriches every already-ingested player with CommonPlayerInfo bio fields.
-
-    One call per player - the most expensive phase by call count (~450-500
-    calls vs. 30 for rosters), so this runs after rosters/teams, not before,
-    in case an earlier phase fails first and this can be skipped on retry.
-    """
-    updated = 0
-    for nba_player_id in player_id_by_nba_id:
-        bio = fetch_player_bio(nba_player_id)
-        upsert_player_bio(cursor, bio)
-        updated += 1
-        if updated % 50 == 0:
-            print(f"  Enriched {updated}/{len(player_id_by_nba_id)} player bios so far.")
-    print(f"Enriched {updated} player bios.")
 
 
 def collect_recent_game_dates(team_id_by_nba_id: dict[int, str]) -> dict[str, str]:
@@ -140,10 +118,6 @@ def main() -> None:
 
         with connection.cursor() as cursor:
             player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id)
-        connection.commit()
-
-        with connection.cursor() as cursor:
-            ingest_player_bios(cursor, player_id_by_nba_id)
         connection.commit()
 
         game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id)

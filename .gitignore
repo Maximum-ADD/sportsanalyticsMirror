@@ -4,7 +4,6 @@ build/
 .env
 .env.local
 .env.test
-.vscode
 *.log
 .DS_Store
 

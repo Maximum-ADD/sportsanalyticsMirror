@@ -36,15 +36,6 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
     headshotUrl: null,
     teamId: LAKERS.id,
     team: LAKERS,
-    birthDate: null,
-    school: null,
-    country: null,
-    lastAffiliation: null,
-    seasonExp: null,
-    rosterStatus: null,
-    draftYear: null,
-    draftRound: null,
-    draftNumber: null,
     ...overrides,
   };
 }

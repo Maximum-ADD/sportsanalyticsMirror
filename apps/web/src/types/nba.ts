@@ -21,20 +21,6 @@ export interface Player {
   headshotUrl: string | null;
   teamId: string | null;
   team: Team | null;
-
-  // Bio fields from CommonPlayerInfo (see player_bios.py) — null for any
-  // player not yet enriched by that ingestion phase, not just genuinely
-  // missing data, so callers should render a "—" fallback, not assume null
-  // means "this player has no draft history".
-  birthDate: string | null;
-  school: string | null;
-  country: string | null;
-  lastAffiliation: string | null;
-  seasonExp: number | null;
-  rosterStatus: string | null;
-  draftYear: number | null;
-  draftRound: number | null;
-  draftNumber: number | null;
 }
 
 export interface SeasonAverages {
