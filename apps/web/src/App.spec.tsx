@@ -10,12 +10,12 @@ vi.mock("@/lib/nbaApi", () => ({
 }));
 
 vi.mock("@/lib/authClient", () => ({
-  authClient: { signIn: { social: vi.fn() }, signOut: vi.fn() },
+  authClient: { signIn: { social: vi.fn() }, signOut: vi.fn(), deleteUser: vi.fn() },
   signInWithGoogle: vi.fn(),
   useSession: vi.fn(),
 }));
 
-// The pages are stubbed, but the app shell and Navbar are left real: which
+// The pages are stubbed, but the app shell and shared header are left real: which
 // routes sit inside the shell (and which sit outside it, like the landing
 // page) is exactly what these tests are asserting.
 vi.mock("./pages/LandingPage", () => ({ LandingPage: () => <div>Landing page</div> }));
@@ -80,10 +80,12 @@ describe("App routes", () => {
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
   });
 
-  it("keeps the app navbar's Home link inside the app, not out on the landing page", () => {
+  it("keeps the shared header's Home link inside the app", () => {
     renderAt("/home");
 
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
+    expect(screen.getByRole("link", { name: "Optimizer" })).toHaveAttribute("href", "/optimizer");
+    expect(screen.getByRole("link", { name: "Predictions" })).toHaveAttribute("href", "/predictions");
   });
 
   it.each(PUBLIC_ROUTES)("keeps %s public", (path, pageText) => {

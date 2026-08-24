@@ -8,6 +8,12 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchGames: vi.fn(),
 }));
 
+vi.mock("@/lib/authClient", () => ({
+  authClient: { signOut: vi.fn(), deleteUser: vi.fn() },
+  signInWithGoogle: vi.fn(),
+  useSession: vi.fn(() => ({ data: null, isPending: false })),
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -45,25 +51,21 @@ describe("LandingPage", () => {
     expect(stack).toHaveTextContent("Gitea Actions");
   });
 
-  it("points every link at the app home", () => {
+  it("points the primary links at their matching routes", () => {
     renderLanding();
 
-    const links = screen
-      .getAllByRole("link")
-      .filter((link) => !link.getAttribute("href")?.startsWith("#"));
-    expect(links.length).toBeGreaterThan(0);
-
-    for (const link of links) {
-      expect(link).toHaveAttribute("href", "/home");
-    }
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/home");
+    expect(screen.getByRole("link", { name: "Players" })).toHaveAttribute("href", "/players");
+    expect(screen.getByRole("link", { name: "Teams" })).toHaveAttribute("href", "/teams");
   });
 
-  it("offers all five nav destinations plus the hero call to action", () => {
+  it("offers all app destinations and the existing Google sign-in flow", () => {
     renderLanding();
 
-    for (const label of ["Home", "Players", "Teams", "Register", "Login", "Get Started"]) {
+    for (const label of ["Home", "Players", "Teams", "Get Started"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
+    expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
   });
 
   it("reserves a box for each app screenshot that lands later", () => {
@@ -72,7 +74,7 @@ describe("LandingPage", () => {
     expect(screen.getAllByTestId("screenshot-placeholder")).toHaveLength(5);
   });
 
-  it("renders no app navbar — it is the public front door, not an app page", () => {
+  it("keeps feature-only destinations in the app header", () => {
     renderLanding();
 
     expect(screen.queryByRole("link", { name: "Optimizer" })).not.toBeInTheDocument();
