@@ -32,6 +32,25 @@ export const allowedOrigins = (process.env.WEB_ORIGIN ?? "http://localhost:5173"
 // URL we give it here, which AuthStatus reads to show a real message.
 const authErrorURL = allowedOrigins[0];
 
+// Locally, the web app (localhost:5173) and the API (localhost:4000) share
+// the registrable domain "localhost", so every BetterAuth cookie is set and
+// read in a same-site context and the library's SameSite=Lax default works
+// unmodified. In production the web app (Cloudflare Pages) and the API
+// (Render) are on two unrelated domains, and the very first cookie of the
+// OAuth flow — the "state" cookie paired with the Postgres verification row
+// (see the maxAge fix below) — is set as the response to a cross-origin
+// fetch from authClient.signIn.social(), not a top-level navigation. A
+// SameSite=Lax cookie set that way is exactly the case browsers (Safari ITP
+// in particular, increasingly Chrome) refuse to persist, so the browser
+// never has the state cookie to send back on Google's callback redirect —
+// a second, distinct cause of the same `state_mismatch` error as the
+// maxAge issue, present only in prod because only prod is genuinely
+// cross-site. SameSite=None (paired with Secure, which BetterAuth already
+// sets automatically once baseURL is https) is the standard fix; gating it
+// behind NODE_ENV keeps local dev untouched, since SameSite=None without
+// Secure is silently dropped by browsers and baseURL is http in dev.
+const isProduction = process.env.NODE_ENV === "production";
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   basePath: "/auth",
@@ -90,5 +109,28 @@ export const auth = betterAuth({
         attributes: { maxAge: 60 * 10 },
       },
     },
+    // See the isProduction comment above: only the deployed environment is
+    // genuinely cross-site, so only there do cookies need SameSite=None to
+    // survive the fetch-initiated sign-in call. `secure` is left alone
+    // rather than forced here — BetterAuth already derives it from
+    // baseURL's protocol (https in prod, http in dev), and SameSite=None
+    // without Secure is dropped by browsers outright, so hardcoding
+    // `secure: true` would silently break dev if this block ever ran with
+    // NODE_ENV=production against a non-https baseURL.
+    //
+    // Deliberately NOT using the `partitioned` (CHIPS) attribute some
+    // browsers now expect on third-party SameSite=None cookies: CHIPS
+    // partitions a cookie by the top-level site at the moment it's set —
+    // here that's pages.dev, since the state cookie is set from a fetch()
+    // called by a page on pages.dev. By the time it needs to be read back,
+    // on Google's redirect straight to the Render API domain, there's no
+    // pages.dev top-level context at all — it's a direct top-level
+    // navigation onto the API's own origin. A partitioned cookie's
+    // partition key wouldn't match at read time, so it would never be sent
+    // back, reintroducing the exact failure this fixes. CHIPS suits a
+    // fixed third party embedded under the same top-level site every time
+    // (e.g. a widget iframe), not a flow where the top-level site itself
+    // changes across the redirect chain.
+    ...(isProduction ? { defaultCookieAttributes: { sameSite: "none" as const } } : {}),
   },
 });
