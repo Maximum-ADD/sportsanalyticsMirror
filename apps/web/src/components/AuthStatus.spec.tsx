@@ -7,6 +7,7 @@ import { authClient, signInWithGoogle, useSession } from "@/lib/authClient";
 vi.mock("@/lib/authClient", () => ({
   authClient: {
     signOut: vi.fn(),
+    deleteUser: vi.fn(),
   },
   signInWithGoogle: vi.fn(),
   useSession: vi.fn(),
@@ -66,5 +67,66 @@ describe("AuthStatus", () => {
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(authClient.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("arms a confirmation before deleting the account", async () => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: "player@example.com" } },
+      isPending: false,
+    } as never);
+    const user = userEvent.setup();
+
+    render(<AuthStatus />);
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+
+    expect(screen.getByText("Delete your account? This can't be undone.")).toBeInTheDocument();
+    expect(authClient.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("cancels the delete confirmation without deleting", async () => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: "player@example.com" } },
+      isPending: false,
+    } as never);
+    const user = userEvent.setup();
+
+    render(<AuthStatus />);
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByRole("button", { name: "Delete account" })).toBeInTheDocument();
+    expect(authClient.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("deletes the account after confirmation", async () => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: "player@example.com" } },
+      isPending: false,
+    } as never);
+    vi.mocked(authClient.deleteUser).mockResolvedValue({ error: null } as never);
+    const user = userEvent.setup();
+
+    render(<AuthStatus />);
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete" }));
+
+    expect(authClient.deleteUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the server's message when the session isn't fresh enough to delete", async () => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: "player@example.com" } },
+      isPending: false,
+    } as never);
+    vi.mocked(authClient.deleteUser).mockResolvedValue({
+      error: { message: "Session expired. Re-authenticate to perform this action." },
+    } as never);
+    const user = userEvent.setup();
+
+    render(<AuthStatus />);
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    await user.click(screen.getByRole("button", { name: "Yes, delete" }));
+
+    expect(await screen.findByText("Session expired. Re-authenticate to perform this action.")).toBeInTheDocument();
   });
 });

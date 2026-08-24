@@ -6,6 +6,7 @@ build/
 .env.test
 *.log
 .DS_Store
+.vscode
 
 apps/api/prisma/dev.db
 apps/api/generated/
