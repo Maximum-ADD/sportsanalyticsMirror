@@ -35,7 +35,7 @@ const PANEL_WIDTH = "71%";
 export function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col bg-landing-hero">
-      <LandingHeader />
+      <LandingHeader overlaysContent />
       <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         <section className="relative overflow-hidden bg-landing-hero">
           <SectionPhoto name="court-player" narrowName="court-player-narrow" priority />

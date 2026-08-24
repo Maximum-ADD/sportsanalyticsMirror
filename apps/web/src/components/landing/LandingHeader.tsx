@@ -1,26 +1,32 @@
 import { Link } from "react-router-dom";
+import { AuthStatus } from "@/components/AuthStatus";
 import { FlameBallLogo } from "./FlameBallLogo";
 import { LandingMatchWidget } from "./LandingMatchWidget";
 
-const APP_HOME = "/home";
-
 const PRIMARY_LINKS = [
-  { label: "Home", to: APP_HOME },
-  { label: "Players", to: APP_HOME },
-  { label: "Teams", to: APP_HOME },
+  { label: "Home", to: "/home" },
+  { label: "Players", to: "/players" },
+  { label: "Teams", to: "/teams" },
 ];
 
-const ACCOUNT_LINKS = [
-  { label: "Register", to: APP_HOME },
-  { label: "Login", to: APP_HOME },
+const APP_LINKS = [
+  ...PRIMARY_LINKS,
+  { label: "Optimizer", to: "/optimizer" },
+  { label: "Predictions", to: "/predictions" },
 ];
 
 const LINK_CLASS =
   "text-[11px] font-medium tracking-[0.2em] whitespace-nowrap text-white uppercase transition-colors hover:text-brand-accent focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent";
 
-export function LandingHeader() {
+interface LandingHeaderProps {
+  overlaysContent?: boolean;
+}
+
+export function LandingHeader({ overlaysContent = false }: LandingHeaderProps) {
+  const navigationLinks = overlaysContent ? PRIMARY_LINKS : APP_LINKS;
+
   return (
-    <header className="absolute inset-x-0 top-0 z-20">
+    <header className={`${overlaysContent ? "absolute" : "relative"} inset-x-0 top-0 z-20 shrink-0`}>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-4 focus:z-30 focus:rounded-md focus:bg-brand-accent focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-brand-accent-foreground"
@@ -38,14 +44,14 @@ export function LandingHeader() {
           className="flex flex-wrap items-center gap-x-6 gap-y-3 px-6 lg:gap-x-10 lg:px-14"
         >
           <Link
-            to={APP_HOME}
+            to="/"
             aria-label="NBA Fantasy League Optimizer, home"
             className="shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
           >
             <FlameBallLogo className="h-11 lg:h-12" />
           </Link>
           <ul className="flex items-center gap-x-6 lg:gap-x-14 lg:pl-14">
-            {PRIMARY_LINKS.map((link) => (
+            {navigationLinks.map((link) => (
               <li key={link.label}>
                 <Link to={link.to} className={LINK_CLASS}>
                   {link.label}
@@ -53,20 +59,16 @@ export function LandingHeader() {
               </li>
             ))}
           </ul>
-          <ul className="ml-auto flex items-center gap-x-6 lg:gap-x-12">
-            {ACCOUNT_LINKS.map((link) => (
-              <li key={link.label}>
-                <Link to={link.to} className={LINK_CLASS}>
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="ml-auto flex items-center">
+            <AuthStatus />
+          </div>
         </nav>
       </div>
-      <div className="pointer-events-none absolute top-0 left-[67%] hidden -translate-x-1/2 md:block">
-        <LandingMatchWidget />
-      </div>
+      {overlaysContent && (
+        <div className="pointer-events-none absolute top-0 left-[67%] hidden -translate-x-1/2 md:block">
+          <LandingMatchWidget />
+        </div>
+      )}
     </header>
   );
 }

@@ -17,7 +17,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 // a Google sign-in that didn't complete in time. Read once on mount, then
 // stripped from the URL so refreshing or sharing the link doesn't re-show
 // it. Not wired through react-router's useSearchParams so this component
-// (mounted in the Navbar on every page) doesn't need a Router in tests.
+// (mounted in the shared header on every page) doesn't need a Router in tests.
 function useAuthErrorFromUrl(): string | null {
   const [message, setMessage] = useState<string | null>(null);
 
