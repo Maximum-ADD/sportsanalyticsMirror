@@ -239,4 +239,72 @@ describe("Players API", () => {
       expect(response.body.gameLog).toEqual([]);
     });
   });
+
+  describe("GET /v1/players/compare", () => {
+    it("returns each requested player with their team and derived season averages", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const first = await createPlayer({ teamId: home.id, lastName: "James" });
+      const second = await createPlayer({ teamId: away.id, lastName: "Tatum" });
+      const game = await createGame(home.id, away.id, new Date("2025-10-15"));
+      await createGameStat(first.id, game.id, { points: 30 });
+      await createGameStat(second.id, game.id, { points: 20 });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/compare?ids=${first.id},${second.id}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.players.map((entry: { player: { lastName: string } }) => entry.player.lastName)).toEqual([
+        "James",
+        "Tatum",
+      ]);
+      expect(response.body.players[0].player.team).toMatchObject({ id: home.id });
+      expect(response.body.players[0].seasonAverages.pointsPerGame).toBe(30);
+    });
+
+    it("de-duplicates repeated ids while preserving order", async () => {
+      const first = await createPlayer({ lastName: "James" });
+      const second = await createPlayer({ lastName: "Tatum" });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/compare?ids=${first.id},${second.id},${first.id}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.players).toHaveLength(2);
+    });
+
+    it("returns a 400 when fewer than two distinct players are requested", async () => {
+      const player = await createPlayer({ lastName: "Solo" });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/compare?ids=${player.id}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("returns a 400 when more than four players are requested", async () => {
+      const players = await Promise.all(
+        Array.from({ length: 5 }, (_, index) => createPlayer({ lastName: `P${index}` }))
+      );
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/compare?ids=${players.map((player) => player.id).join(",")}`
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("returns a 404 when a requested player does not exist", async () => {
+      const player = await createPlayer({ lastName: "Real" });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/compare?ids=${player.id},does-not-exist`
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+  });
 });
