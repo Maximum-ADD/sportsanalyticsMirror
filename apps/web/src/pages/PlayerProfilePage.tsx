@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { fetchPlayer, fetchPlayerStats } from "@/lib/nbaApi";
 import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
@@ -80,12 +80,19 @@ export function PlayerProfilePage() {
               </p>
               <p className="text-sm text-text-muted">Height {formatHeight(player.heightInches)}</p>
             </div>
+            <Link
+              to={`/compare?ids=${player.id}`}
+              className="ml-auto rounded-md border border-border-subtle px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-card hover:text-text-primary"
+            >
+              Compare
+            </Link>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <StatTile label="PPG" value={seasonAverages.pointsPerGame} />
             <StatTile label="RPG" value={seasonAverages.reboundsPerGame} />
             <StatTile label="APG" value={seasonAverages.assistsPerGame} />
+            <StatTile label="MPG" value={seasonAverages.minutesPerGame} />
             <StatTile label="Games" value={seasonAverages.gamesPlayed} />
           </div>
 
@@ -106,10 +113,11 @@ export function PlayerProfilePage() {
       <Card className="xl:col-span-3">
         <CardContent className="p-6">
           <h2 className="mb-4 text-sm font-medium text-text-secondary">Shooting splits</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatTile label="FG%" value={`${seasonAverages.fieldGoalPercentage}%`} />
             <StatTile label="3P%" value={`${seasonAverages.threePointPercentage}%`} />
             <StatTile label="FT%" value={`${seasonAverages.freeThrowPercentage}%`} />
+            <StatTile label="FTA/G" value={seasonAverages.freeThrowsAttemptedPerGame} />
           </div>
         </CardContent>
       </Card>
