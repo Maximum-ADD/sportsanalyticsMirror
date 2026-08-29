@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchPlayer, fetchPlayers, fetchPlayerStats, fetchTeam, fetchTeams } from "./nbaApi";
+import {
+  fetchPlayer,
+  fetchPlayerComparison,
+  fetchPlayers,
+  fetchPlayerStats,
+  fetchTeam,
+  fetchTeams,
+} from "./nbaApi";
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
   vi.stubGlobal(
@@ -52,6 +59,13 @@ describe("nbaApi", () => {
   it("fetchPlayerStats requests the stats sub-resource", async () => {
     await fetchPlayerStats("player-1");
     expect(fetch).toHaveBeenCalledWith("/api/v1/players/player-1/stats", { credentials: "include" });
+  });
+
+  it("fetchPlayerComparison passes the player ids as a comma-separated list", async () => {
+    await fetchPlayerComparison(["player-1", "player-2", "player-3"]);
+    expect(fetch).toHaveBeenCalledWith("/api/v1/players/compare?ids=player-1,player-2,player-3", {
+      credentials: "include",
+    });
   });
 
   it("fetchTeams requests /v1/teams with a query string", async () => {

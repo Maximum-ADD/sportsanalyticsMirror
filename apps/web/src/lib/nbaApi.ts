@@ -1,5 +1,15 @@
 import { fetchJson } from "./apiClient";
-import type { Game, GameDetail, GamePrediction, Lineup, Player, PlayerStatsResponse, PagedResult, Team } from "@/types/nba";
+import type {
+  Game,
+  GameDetail,
+  GamePrediction,
+  Lineup,
+  Player,
+  PlayerComparisonResponse,
+  PlayerStatsResponse,
+  PagedResult,
+  Team,
+} from "@/types/nba";
 
 function toQueryString(params: object): string {
   const entries = Object.entries(params).filter(
@@ -27,6 +37,12 @@ export function fetchPlayer(playerId: string): Promise<Player> {
 
 export function fetchPlayerStats(playerId: string): Promise<PlayerStatsResponse> {
   return fetchJson<PlayerStatsResponse>(`/v1/players/${playerId}/stats`);
+}
+
+// Season lines for 2-4 players in one request, for the compare page. Order
+// of `playerIds` is preserved in the response.
+export function fetchPlayerComparison(playerIds: string[]): Promise<PlayerComparisonResponse> {
+  return fetchJson<PlayerComparisonResponse>(`/v1/players/compare?ids=${playerIds.join(",")}`);
 }
 
 export interface FetchTeamsParams {

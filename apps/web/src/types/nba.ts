@@ -25,15 +25,33 @@ export interface Player {
 
 export interface SeasonAverages {
   gamesPlayed: number;
+  minutesPerGame: number;
   pointsPerGame: number;
   reboundsPerGame: number;
   assistsPerGame: number;
   stealsPerGame: number;
   blocksPerGame: number;
   turnoversPerGame: number;
+  fieldGoalsMadePerGame: number;
+  fieldGoalsAttemptedPerGame: number;
   fieldGoalPercentage: number;
+  threesMadePerGame: number;
+  threesAttemptedPerGame: number;
   threePointPercentage: number;
+  freeThrowsMadePerGame: number;
+  freeThrowsAttemptedPerGame: number;
   freeThrowPercentage: number;
+}
+
+// One player's identity plus their season line — the unit GET
+// /v1/players/compare returns, one per player in the comparison.
+export interface PlayerComparisonEntry {
+  player: Player;
+  seasonAverages: SeasonAverages;
+}
+
+export interface PlayerComparisonResponse {
+  players: PlayerComparisonEntry[];
 }
 
 export interface GameLogEntry {
