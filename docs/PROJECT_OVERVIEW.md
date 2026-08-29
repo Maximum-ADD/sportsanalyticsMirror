@@ -179,6 +179,7 @@ envelope `{ error: { code, message } }`.
 | GET | `/v1/players` | Query: `page`, `pageSize`, `teamId`, `position` |
 | GET | `/v1/players/:id` | |
 | GET | `/v1/players/:id/stats` | Derived season averages + game log |
+| GET | `/v1/players/compare` | Query: `ids` (comma-separated, 2–4). Each player + derived season averages |
 | GET | `/v1/teams` | Query: `page`, `pageSize` |
 | GET | `/v1/teams/:id` | |
 | GET | `/v1/games` | Auth required; paginated games and predictions |
@@ -201,6 +202,7 @@ routes remain public. No route currently requires a role above `USER`.
 | `/` | Public | `HomePage` | Hero + links into Players/Teams |
 | `/players` | Public | `PlayersListPage` | Filter (team/position) + sort (name/PPG) + paginated table |
 | `/players/:playerId` | Public | `PlayerProfilePage` | Stat tiles, traits radar, points trend chart, shooting splits |
+| `/compare` | Public | `ComparePage` | Side-by-side season averages for 2–4 players (`?ids=` in the URL); player tiles with add-by-search / remove |
 | `/teams` | Public | `TeamsListPage` | Paginated team cards |
 | `/teams/:teamId` | Public | `TeamProfilePage` | Team header + roster table |
 | `/optimizer` | Signed in | `OptimizerPage` | Latest optimized fantasy lineup |
