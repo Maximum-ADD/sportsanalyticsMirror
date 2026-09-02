@@ -56,14 +56,24 @@ const STATS: PlayerStatsResponse = {
   playerId: "player-1",
   seasonAverages: {
     gamesPlayed: 10,
+    minutesPerGame: 35.2,
     pointsPerGame: 27.1,
     reboundsPerGame: 7.4,
     assistsPerGame: 8.2,
     stealsPerGame: 1.3,
     blocksPerGame: 0.6,
     turnoversPerGame: 3.1,
+    // Made/attempted pairs are kept consistent with the percentage beside
+    // them (10.4/20 = 52%, 1.9/5 = 38%, 4.5/6 = 75%), so a test that starts
+    // asserting on a derived shooting figure doesn't read as a bug.
+    fieldGoalsMadePerGame: 10.4,
+    fieldGoalsAttemptedPerGame: 20,
     fieldGoalPercentage: 52,
+    threesMadePerGame: 1.9,
+    threesAttemptedPerGame: 5,
     threePointPercentage: 38,
+    freeThrowsMadePerGame: 4.5,
+    freeThrowsAttemptedPerGame: 6,
     freeThrowPercentage: 75,
   },
   gameLog: [{ gameId: "game-1", gameDate: "2026-01-01T00:00:00.000Z", points: 30 }],

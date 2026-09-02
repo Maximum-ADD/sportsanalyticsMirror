@@ -35,6 +35,18 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
       division: "Pacific",
       logoUrl: null,
     },
+    // Bio fields default to null — the compare page doesn't render any of
+    // them, but Player requires them, so a test that cares about one
+    // (e.g. draft details) passes it through `overrides` instead.
+    birthDate: null,
+    school: null,
+    country: null,
+    lastAffiliation: null,
+    seasonExp: null,
+    rosterStatus: null,
+    draftYear: null,
+    draftRound: null,
+    draftNumber: null,
     ...overrides,
   };
 }
