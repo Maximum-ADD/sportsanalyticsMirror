@@ -6,6 +6,7 @@ import { LandingMatchWidget } from "./LandingMatchWidget";
 const PRIMARY_LINKS = [
   { label: "Home", to: "/home" },
   { label: "Players", to: "/players" },
+  { label: "Compare", to: "/compare" },
   { label: "Teams", to: "/teams" },
 ];
 

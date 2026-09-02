@@ -4,6 +4,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { HomePage } from "./pages/HomePage";
 import { PlayersListPage } from "./pages/PlayersListPage";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage";
+import { ComparePage } from "./pages/ComparePage";
 import { TeamsListPage } from "./pages/TeamsListPage";
 import { TeamProfilePage } from "./pages/TeamProfilePage";
 import { OptimizerPage } from "./pages/OptimizerPage";
@@ -20,6 +21,7 @@ function App() {
           <Route path="/home" element={<HomePage />} />
           <Route path="/players" element={<PlayersListPage />} />
           <Route path="/players/:playerId" element={<PlayerProfilePage />} />
+          <Route path="/compare" element={<ComparePage />} />
           <Route path="/teams" element={<TeamsListPage />} />
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route
