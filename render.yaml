@@ -10,9 +10,14 @@ services:
     branch: main
     rootDir: apps/api
     buildCommand: npm ci --include=dev && npx prisma generate && npm run build
-    startCommand: npm start
-    # Note: preDeployCommand is not supported on Render's free tier.
-    # Run `npx prisma migrate deploy` manually (or from CI) before deploying.
+    # preDeployCommand is not supported on Render's free tier, so pending
+    # migrations are applied here on start instead. `prisma migrate deploy`
+    # only runs migrations already committed under prisma/migrations (never
+    # generates new ones) and is a no-op when the DB is up to date, so it is
+    # safe to run on every boot. If it fails the service won't start — which
+    # is the intended outcome, rather than serving code against a schema that
+    # is missing columns it queries.
+    startCommand: npx prisma migrate deploy && npm start
     envVars:
       - key: PORT
         value: 4000

@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
-import type { PlayerStatsResponse } from "@/types/nba";
+import type { Player, PlayerStatsResponse } from "@/types/nba";
 
 function formatHeight(heightInches: number | null): string {
   if (heightInches === null) return "—";
@@ -18,11 +18,88 @@ function formatHeight(heightInches: number | null): string {
   return `${feet}'${inches}"`;
 }
 
+function formatWeight(weightLbs: number | null): string {
+  if (weightLbs === null) return "—";
+  return `${weightLbs} lbs`;
+}
+
+function formatBirthdate(birthDate: string | null): string {
+  if (!birthDate) return "—";
+  return new Date(birthDate).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+// Age isn't stored anywhere - CommonPlayerInfo doesn't provide it directly,
+// and it would go stale the moment it was saved (unlike birthDate, which
+// never changes). Computed fresh on every render from birthDate instead.
+function calculateAge(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const birth = new Date(birthDate);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const hasHadBirthdayThisYear =
+    today.getMonth() > birth.getMonth() ||
+    (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return age;
+}
+
+// DRAFT_YEAR/DRAFT_ROUND/DRAFT_NUMBER are all-or-nothing from
+// CommonPlayerInfo (an undrafted player has none of the three, never a
+// partial combination) - see player_bios.py's _parse_draft_field.
+function formatDraft(player: Player): string {
+  if (player.draftYear === null) return "Undrafted";
+  return `${player.draftYear} · Round ${player.draftRound} · Pick ${player.draftNumber}`;
+}
+
+function formatSchoolCountry(player: Player): string {
+  const schoolOrAffiliation = player.school ?? player.lastAffiliation;
+  if (!schoolOrAffiliation) return "—";
+  return player.country ? `${schoolOrAffiliation} (${player.country})` : schoolOrAffiliation;
+}
+
+// Every player CommonPlayerInfo returns carries a BIRTHDATE, so a null
+// birthDate means this player hasn't been through the bio ingestion phase
+// yet (player_bios.py) - not that the data is genuinely absent. Without
+// this distinction an un-enriched player wrongly renders as "Undrafted"
+// and an empty birthdate, when the truth is the bio is still being loaded.
+function isBioLoaded(player: Player): boolean {
+  return player.birthDate !== null;
+}
+
 function toTrendData(gameLog: PlayerStatsResponse["gameLog"]): GamePointsDatum[] {
   return gameLog.map((entry, index) => ({
     gameLabel: `G${index + 1}`,
     points: entry.points,
   }));
+}
+
+// Mirrors StatTile's card styling so the Bio section reads as part of the
+// same page, but sizes its value for prose (dates, schools) rather than the
+// large numerals StatTile uses. When `isPending` is set the field shows a
+// muted "Loading…" instead of a real value or a misleading "—".
+function BioField({
+  label,
+  value,
+  isPending = false,
+}: {
+  label: string;
+  value: string;
+  isPending?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border-subtle bg-surface-card px-4 py-3">
+      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
+      <div
+        className={`mt-1 text-sm font-medium ${isPending ? "text-text-muted" : "text-text-primary"}`}
+      >
+        {isPending ? "Loading…" : value}
+      </div>
+    </div>
+  );
 }
 
 export function PlayerProfilePage() {
@@ -63,6 +140,8 @@ export function PlayerProfilePage() {
 
   const player = playerQuery.data;
   const { seasonAverages, gameLog } = statsQuery.data;
+  const age = calculateAge(player.birthDate);
+  const bioPending = !isBioLoaded(player);
 
   return (
     <div className="grid grid-cols-1 gap-6 p-6 xl:grid-cols-3">
@@ -78,7 +157,6 @@ export function PlayerProfilePage() {
                 {player.team && <TeamBadge team={player.team} size="sm" />}
                 {player.team?.city} {player.team?.name} · {player.position} · #{player.jerseyNumber}
               </p>
-              <p className="text-sm text-text-muted">Height {formatHeight(player.heightInches)}</p>
             </div>
           </div>
 
@@ -110,6 +188,37 @@ export function PlayerProfilePage() {
             <StatTile label="FG%" value={`${seasonAverages.fieldGoalPercentage}%`} />
             <StatTile label="3P%" value={`${seasonAverages.threePointPercentage}%`} />
             <StatTile label="FT%" value={`${seasonAverages.freeThrowPercentage}%`} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="xl:col-span-3">
+        <CardContent className="p-6">
+          <h2 className="mb-4 text-sm font-medium text-text-secondary">Bio</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <BioField label="Height" value={formatHeight(player.heightInches)} />
+            <BioField label="Weight" value={formatWeight(player.weightLbs)} />
+            <BioField
+              label="Born"
+              value={formatBirthdate(player.birthDate)}
+              isPending={bioPending}
+            />
+            <BioField
+              label="Age"
+              value={age === null ? "—" : `${age}`}
+              isPending={bioPending}
+            />
+            <BioField
+              label="School / Country"
+              value={formatSchoolCountry(player)}
+              isPending={bioPending}
+            />
+            <BioField
+              label="Experience"
+              value={player.seasonExp === null ? "—" : `${player.seasonExp} yrs`}
+              isPending={bioPending}
+            />
+            <BioField label="Draft" value={formatDraft(player)} isPending={bioPending} />
           </div>
         </CardContent>
       </Card>
