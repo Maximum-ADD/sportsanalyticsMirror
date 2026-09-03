@@ -6,7 +6,7 @@ import { fetchPlayer, fetchPlayerComparison, fetchPlayerStats } from "@/lib/nbaA
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { cn } from "@/lib/utils";
 import type { Player, PlayerComparisonEntry, SeasonAverages } from "@/types/nba";
@@ -316,7 +316,11 @@ function EmptySlotTile({
 }
 
 function LoadingSlotTile() {
-  return <Skeleton className="h-[186px] rounded-xl" />;
+  return (
+    <div className="flex h-[186px] items-center justify-center rounded-xl border border-border-subtle bg-surface-card">
+      <BasketballSpinner label="Loading player" />
+    </div>
+  );
 }
 
 export function ComparePage() {

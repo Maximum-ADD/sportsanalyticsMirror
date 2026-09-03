@@ -7,8 +7,8 @@ import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { LineupSlot, Player } from "@/types/nba";
 
@@ -106,12 +106,9 @@ export function OptimizerPage() {
     return (
       <div className="p-6">
         {INTRO}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Skeleton className="h-20" />
-          <Skeleton className="h-20" />
-          <Skeleton className="h-20" />
+        <div className="flex min-h-[20rem] items-center justify-center">
+          <BasketballSpinner size="lg" label="Loading optimized lineup" />
         </div>
-        <Skeleton className="h-64" />
       </div>
     );
   }
