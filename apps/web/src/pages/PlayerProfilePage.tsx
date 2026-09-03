@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { fetchPlayer, fetchPlayerStats } from "@/lib/nbaApi";
@@ -5,11 +6,12 @@ import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
-import type { Player, PlayerStatsResponse } from "@/types/nba";
+import type { Player, PlayerStatsResponse, SeasonAverages } from "@/types/nba";
 
 function formatHeight(heightInches: number | null): string {
   if (heightInches === null) return "—";
@@ -117,6 +119,21 @@ export function PlayerProfilePage() {
     enabled: !!playerId,
   });
 
+  // A local, never-persisted "what if" overlay on top of the real season
+  // averages — lets a visitor try out different numbers and watch the stat
+  // tiles/radar react, without touching the server or surviving a refresh.
+  const [isEditingStats, setIsEditingStats] = useState(false);
+  const [statOverrides, setStatOverrides] = useState<Partial<SeasonAverages>>({});
+
+  useEffect(() => {
+    setIsEditingStats(false);
+    setStatOverrides({});
+  }, [playerId]);
+
+  function setStatOverride(field: keyof SeasonAverages, value: number) {
+    setStatOverrides((previous) => ({ ...previous, [field]: value }));
+  }
+
   if (playerQuery.isError || statsQuery.isError) {
     return (
       <ErrorState
@@ -139,6 +156,8 @@ export function PlayerProfilePage() {
 
   const player = playerQuery.data;
   const { seasonAverages, gameLog } = statsQuery.data;
+  const effectiveAverages: SeasonAverages = { ...seasonAverages, ...statOverrides };
+  const hasStatOverrides = Object.keys(statOverrides).length > 0;
   const age = calculateAge(player.birthDate);
   const bioPending = !isBioLoaded(player);
 
@@ -157,20 +176,96 @@ export function PlayerProfilePage() {
                 {player.team?.city} {player.team?.name} · {player.position} · #{player.jerseyNumber}
               </p>
             </div>
-            <Link
-              to={`/compare?ids=${player.id}`}
-              className="ml-auto rounded-md border border-border-subtle px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-card hover:text-text-primary"
-            >
-              Compare
-            </Link>
+            <div className="ml-auto flex items-center gap-2">
+              {hasStatOverrides && (
+                <button
+                  type="button"
+                  onClick={() => setStatOverrides({})}
+                  className="text-xs text-text-muted hover:text-text-primary"
+                >
+                  Reset
+                </button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditingStats((previous) => !previous)}
+              >
+                {isEditingStats ? "Done editing" : "Edit stats"}
+              </Button>
+              <Link
+                to={`/compare?ids=${player.id}`}
+                className="rounded-md border border-border-subtle px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-card hover:text-text-primary"
+              >
+                Compare
+              </Link>
+            </div>
           </div>
 
+          {isEditingStats && (
+            <p className="mt-3 text-xs text-text-muted">
+              Editing locally — not saved, resets when you refresh or leave this page.
+            </p>
+          )}
+
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <StatTile label="PPG" value={seasonAverages.pointsPerGame} />
-            <StatTile label="RPG" value={seasonAverages.reboundsPerGame} />
-            <StatTile label="APG" value={seasonAverages.assistsPerGame} />
-            <StatTile label="MPG" value={seasonAverages.minutesPerGame} />
-            <StatTile label="Games" value={seasonAverages.gamesPlayed} />
+            <StatTile
+              label="PPG"
+              value={effectiveAverages.pointsPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.pointsPerGame}
+              onEditValueChange={(value) => setStatOverride("pointsPerGame", value)}
+            />
+            <StatTile
+              label="RPG"
+              value={effectiveAverages.reboundsPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.reboundsPerGame}
+              onEditValueChange={(value) => setStatOverride("reboundsPerGame", value)}
+            />
+            <StatTile
+              label="APG"
+              value={effectiveAverages.assistsPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.assistsPerGame}
+              onEditValueChange={(value) => setStatOverride("assistsPerGame", value)}
+            />
+            <StatTile
+              label="MPG"
+              value={effectiveAverages.minutesPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.minutesPerGame}
+              onEditValueChange={(value) => setStatOverride("minutesPerGame", value)}
+            />
+            <StatTile
+              label="Games"
+              value={effectiveAverages.gamesPlayed}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.gamesPlayed}
+              onEditValueChange={(value) => setStatOverride("gamesPlayed", value)}
+            />
+            <StatTile
+              label="STL"
+              value={effectiveAverages.stealsPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.stealsPerGame}
+              onEditValueChange={(value) => setStatOverride("stealsPerGame", value)}
+            />
+            <StatTile
+              label="BLK"
+              value={effectiveAverages.blocksPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.blocksPerGame}
+              onEditValueChange={(value) => setStatOverride("blocksPerGame", value)}
+            />
+            <StatTile
+              label="TOV"
+              value={effectiveAverages.turnoversPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.turnoversPerGame}
+              onEditValueChange={(value) => setStatOverride("turnoversPerGame", value)}
+            />
           </div>
 
           <div className="mt-6">
@@ -183,7 +278,7 @@ export function PlayerProfilePage() {
       <Card>
         <CardContent className="p-6">
           <h2 className="mb-2 text-sm font-medium text-text-secondary">Player traits</h2>
-          <PlayerTraitsRadar seasonAverages={seasonAverages} />
+          <PlayerTraitsRadar seasonAverages={effectiveAverages} />
         </CardContent>
       </Card>
 
@@ -191,10 +286,34 @@ export function PlayerProfilePage() {
         <CardContent className="p-6">
           <h2 className="mb-4 text-sm font-medium text-text-secondary">Shooting splits</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="FG%" value={`${seasonAverages.fieldGoalPercentage}%`} />
-            <StatTile label="3P%" value={`${seasonAverages.threePointPercentage}%`} />
-            <StatTile label="FT%" value={`${seasonAverages.freeThrowPercentage}%`} />
-            <StatTile label="FTA/G" value={seasonAverages.freeThrowsAttemptedPerGame} />
+            <StatTile
+              label="FG%"
+              value={`${effectiveAverages.fieldGoalPercentage}%`}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.fieldGoalPercentage}
+              onEditValueChange={(value) => setStatOverride("fieldGoalPercentage", value)}
+            />
+            <StatTile
+              label="3P%"
+              value={`${effectiveAverages.threePointPercentage}%`}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.threePointPercentage}
+              onEditValueChange={(value) => setStatOverride("threePointPercentage", value)}
+            />
+            <StatTile
+              label="FT%"
+              value={`${effectiveAverages.freeThrowPercentage}%`}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.freeThrowPercentage}
+              onEditValueChange={(value) => setStatOverride("freeThrowPercentage", value)}
+            />
+            <StatTile
+              label="FTA/G"
+              value={effectiveAverages.freeThrowsAttemptedPerGame}
+              isEditing={isEditingStats}
+              editValue={effectiveAverages.freeThrowsAttemptedPerGame}
+              onEditValueChange={(value) => setStatOverride("freeThrowsAttemptedPerGame", value)}
+            />
           </div>
         </CardContent>
       </Card>

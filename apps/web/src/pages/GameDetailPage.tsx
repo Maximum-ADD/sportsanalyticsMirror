@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { fetchGameDetail } from "@/lib/nbaApi";
@@ -5,6 +6,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { CourtView } from "@/components/CourtView";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Game, PredictedScorer } from "@/types/nba";
@@ -23,9 +25,11 @@ function formatMargin(predictedMarginHome: number | null, homeTeam: Game["homeTe
 
 interface ScorerRowProps {
   scorer: PredictedScorer;
+  isEditing: boolean;
+  onPointsChange: (playerId: string, points: number) => void;
 }
 
-function ScorerRow({ scorer }: ScorerRowProps) {
+function ScorerRow({ scorer, isEditing, onPointsChange }: ScorerRowProps) {
   return (
     <TableRow>
       <TableCell>
@@ -44,7 +48,19 @@ function ScorerRow({ scorer }: ScorerRowProps) {
         )}
       </TableCell>
       <TableCell className="text-text-secondary">{scorer.player.position}</TableCell>
-      <TableCell className="text-text-secondary">{scorer.predictedPoints}</TableCell>
+      <TableCell className="text-text-secondary">
+        {isEditing ? (
+          <input
+            aria-label={`Edit predicted points for ${scorer.player.firstName} ${scorer.player.lastName}`}
+            type="number"
+            value={scorer.predictedPoints}
+            onChange={(event) => onPointsChange(scorer.player.id, Number(event.target.value))}
+            className="w-20 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-accent/50"
+          />
+        ) : (
+          scorer.predictedPoints
+        )}
+      </TableCell>
       <TableCell className="text-text-muted">{scorer.gamesConsidered}</TableCell>
     </TableRow>
   );
@@ -58,6 +74,18 @@ export function GameDetailPage() {
     queryFn: () => fetchGameDetail(gameId!),
     enabled: !!gameId,
   });
+
+  // Local, never-persisted overrides for predicted scorer points — the only
+  // per-game number this app exposes to the client (win probability and
+  // predicted margin come from a separate model with no client-side
+  // formula, so they can't react to this and stay frozen).
+  const [isEditingScorers, setIsEditingScorers] = useState(false);
+  const [pointsOverrides, setPointsOverrides] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setIsEditingScorers(false);
+    setPointsOverrides({});
+  }, [gameId]);
 
   if (gameQuery.isPending) {
     return (
@@ -73,6 +101,15 @@ export function GameDetailPage() {
 
   const game = gameQuery.data;
   const { prediction, predictedScorers } = game;
+  const effectiveScorers = predictedScorers.map((scorer) => ({
+    ...scorer,
+    predictedPoints: pointsOverrides[scorer.player.id] ?? scorer.predictedPoints,
+  }));
+  const hasPointsOverrides = Object.keys(pointsOverrides).length > 0;
+
+  function setScorerPoints(playerId: string, points: number) {
+    setPointsOverrides((previous) => ({ ...previous, [playerId]: points }));
+  }
 
   return (
     <div className="p-6">
@@ -118,7 +155,36 @@ export function GameDetailPage() {
         </p>
       )}
 
-      <h2 className="mb-2 text-sm font-medium text-text-secondary">Predicted top scorers</h2>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-text-secondary">Predicted top scorers</h2>
+        {predictedScorers.length > 0 && (
+          <div className="flex items-center gap-2">
+            {hasPointsOverrides && (
+              <button
+                type="button"
+                onClick={() => setPointsOverrides({})}
+                className="text-xs text-text-muted hover:text-text-primary"
+              >
+                Reset
+              </button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditingScorers((previous) => !previous)}
+            >
+              {isEditingScorers ? "Done editing" : "Edit predicted points"}
+            </Button>
+          </div>
+        )}
+      </div>
+      {isEditingScorers && (
+        <p className="mb-4 text-xs text-text-muted">
+          Editing locally — not saved, resets when you refresh or leave this page. Win probability and predicted
+          margin above are based on the original data and won&apos;t change.
+        </p>
+      )}
       {predictedScorers.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-sm text-text-secondary">
@@ -136,8 +202,8 @@ export function GameDetailPage() {
               <CourtView
                 homeTeam={game.homeTeam}
                 awayTeam={game.awayTeam}
-                homeScorers={predictedScorers.filter((scorer) => scorer.player.teamId === game.homeTeamId)}
-                awayScorers={predictedScorers.filter((scorer) => scorer.player.teamId === game.awayTeamId)}
+                homeScorers={effectiveScorers.filter((scorer) => scorer.player.teamId === game.homeTeamId)}
+                awayScorers={effectiveScorers.filter((scorer) => scorer.player.teamId === game.awayTeamId)}
               />
               <p className="mt-3 text-center text-xs text-text-muted">
                 Illustrative formation by predicted top scorers&apos; position — not tracked player positioning.
@@ -157,8 +223,13 @@ export function GameDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody className="bg-surface-card">
-                {predictedScorers.map((scorer) => (
-                  <ScorerRow key={scorer.player.id} scorer={scorer} />
+                {effectiveScorers.map((scorer) => (
+                  <ScorerRow
+                    key={scorer.player.id}
+                    scorer={scorer}
+                    isEditing={isEditingScorers}
+                    onPointsChange={setScorerPoints}
+                  />
                 ))}
               </TableBody>
             </Table>

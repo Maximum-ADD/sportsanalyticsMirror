@@ -116,6 +116,14 @@ export interface Lineup {
   slots: LineupSlot[];
 }
 
+// A player's latest prediction looked up on its own, outside an existing
+// lineup — used to price up a hypothetical swap into a locally-edited
+// lineup. Null fields mean no prediction has been generated for this player.
+export interface PlayerPredictionSummary {
+  predictedFantasyPoints: number | null;
+  salary: number | null;
+}
+
 export interface PagedResult<T> {
   data: T[];
   page: number;
