@@ -12,7 +12,7 @@ concurrency:
 jobs:
   api:
     name: API — lint, typecheck
-    runs-on: default
+    runs-on: sdp-runner-1
     timeout-minutes: 15
     defaults:
       run:
@@ -58,7 +58,7 @@ jobs:
 
   web:
     name: Web — lint, typecheck
-    runs-on: default
+    runs-on: sdp-runner-1
     timeout-minutes: 15
     defaults:
       run:
@@ -90,7 +90,7 @@ jobs:
 
   coverage:
     name: API and Web — test coverage
-    runs-on: default
+    runs-on: sdp-runner-1
     timeout-minutes: 20
 
     # The API e2e suite needs a real, disposable Postgres database.
