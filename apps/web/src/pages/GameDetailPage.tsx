@@ -5,7 +5,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { CourtView } from "@/components/CourtView";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Game, PredictedScorer } from "@/types/nba";
 
@@ -61,9 +61,8 @@ export function GameDetailPage() {
 
   if (gameQuery.isPending) {
     return (
-      <div className="p-6">
-        <Skeleton className="mb-6 h-24" />
-        <Skeleton className="h-64" />
+      <div className="flex min-h-[28rem] items-center justify-center p-6">
+        <BasketballSpinner size="lg" label="Loading game" />
       </div>
     );
   }

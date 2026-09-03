@@ -17,9 +17,9 @@ describe("ProtectedRoute", () => {
   it("shows a loading placeholder while the session is pending", () => {
     vi.mocked(useSession).mockReturnValue({ data: null, isPending: true } as never);
 
-    const { container } = render(<ProtectedRoute>Protected content</ProtectedRoute>);
+    render(<ProtectedRoute>Protected content</ProtectedRoute>);
 
-    expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
   });
 

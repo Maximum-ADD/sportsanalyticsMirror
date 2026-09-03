@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -13,7 +13,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   if (isPending) {
     return (
       <div className="mx-auto flex min-h-80 max-w-lg items-center justify-center px-6">
-        <Skeleton className="h-32 w-full rounded-xl" />
+        <BasketballSpinner size="lg" label="Loading" />
       </div>
     );
   }
