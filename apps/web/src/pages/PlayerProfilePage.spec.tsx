@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayerProfilePage } from "./PlayerProfilePage";
 import { fetchPlayer, fetchPlayerStats } from "@/lib/nbaApi";
@@ -56,14 +57,21 @@ const STATS: PlayerStatsResponse = {
   playerId: "player-1",
   seasonAverages: {
     gamesPlayed: 10,
+    minutesPerGame: 34.5,
     pointsPerGame: 27.1,
     reboundsPerGame: 7.4,
     assistsPerGame: 8.2,
     stealsPerGame: 1.3,
     blocksPerGame: 0.6,
     turnoversPerGame: 3.1,
+    fieldGoalsMadePerGame: 9.9,
+    fieldGoalsAttemptedPerGame: 19,
     fieldGoalPercentage: 52,
+    threesMadePerGame: 2.1,
+    threesAttemptedPerGame: 5.5,
     threePointPercentage: 38,
+    freeThrowsMadePerGame: 5.4,
+    freeThrowsAttemptedPerGame: 7.2,
     freeThrowPercentage: 75,
   },
   gameLog: [{ gameId: "game-1", gameDate: "2026-01-01T00:00:00.000Z", points: 30 }],
@@ -107,5 +115,32 @@ describe("PlayerProfilePage bio section", () => {
 
     expect(await screen.findAllByText("Loading…")).not.toHaveLength(0);
     expect(screen.queryByText("Undrafted")).not.toBeInTheDocument();
+  });
+});
+
+describe("PlayerProfilePage local stat editing", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lets a visitor edit a stat locally, see it reflected, then reset back to the real value", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer({ birthDate: "1990-01-01" }));
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+
+    renderWithProviders(<PlayerProfilePage />);
+    await screen.findByText("Undrafted");
+
+    await user.click(screen.getByRole("button", { name: "Edit stats" }));
+    const ppgInput = screen.getByRole("spinbutton", { name: "Edit PPG" });
+    await user.clear(ppgInput);
+    await user.type(ppgInput, "99");
+    expect(ppgInput).toHaveValue(99);
+
+    await user.click(screen.getByRole("button", { name: "Done editing" }));
+    expect(screen.getByText("99")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("27.1")).toBeInTheDocument();
   });
 });

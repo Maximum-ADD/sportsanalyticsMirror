@@ -35,6 +35,15 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
       division: "Pacific",
       logoUrl: null,
     },
+    birthDate: null,
+    school: null,
+    country: null,
+    lastAffiliation: null,
+    seasonExp: null,
+    rosterStatus: null,
+    draftYear: null,
+    draftRound: null,
+    draftNumber: null,
     ...overrides,
   };
 }

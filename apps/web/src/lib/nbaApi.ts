@@ -6,6 +6,7 @@ import type {
   Lineup,
   Player,
   PlayerComparisonResponse,
+  PlayerPredictionSummary,
   PlayerStatsResponse,
   PagedResult,
   Team,
@@ -70,6 +71,10 @@ export function fetchGames(params: FetchGamesParams = {}): Promise<PagedResult<G
 
 export function fetchLatestLineup(): Promise<Lineup> {
   return fetchJson<Lineup>("/v1/optimizer/lineup");
+}
+
+export function fetchPlayerPrediction(playerId: string): Promise<PlayerPredictionSummary> {
+  return fetchJson<PlayerPredictionSummary>(`/v1/optimizer/predictions/${playerId}`);
 }
 
 export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {

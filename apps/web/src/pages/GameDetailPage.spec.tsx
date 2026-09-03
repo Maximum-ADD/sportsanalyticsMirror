@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GameDetailPage } from "./GameDetailPage";
 import { fetchGameDetail } from "@/lib/nbaApi";
@@ -129,5 +130,24 @@ describe("GameDetailPage", () => {
     renderWithProviders(<GameDetailPage />);
 
     expect(await screen.findByText("Could not load this game.")).toBeInTheDocument();
+  });
+
+  it("lets a visitor edit a predicted scorer's points locally, see it reflected, then reset", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchGameDetail).mockResolvedValue(makeGameDetail());
+
+    renderWithProviders(<GameDetailPage />);
+    await screen.findByText("27.4");
+
+    await user.click(screen.getByRole("button", { name: "Edit predicted points" }));
+    const pointsInput = screen.getByRole("spinbutton", { name: "Edit predicted points for LeBron James" });
+    await user.clear(pointsInput);
+    await user.type(pointsInput, "50");
+    expect(pointsInput).toHaveValue(50);
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(
+      screen.getByRole("spinbutton", { name: "Edit predicted points for LeBron James" })
+    ).toHaveValue(27.4);
   });
 });

@@ -1,4 +1,4 @@
-import { Controller, Get, HttpStatus, UseGuards } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Param, UseGuards } from "@nestjs/common";
 import { ApiException } from "../common/api-exception.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { OptimizerService } from "./optimizer.service.js";
@@ -19,5 +19,10 @@ export class OptimizerController {
       );
     }
     return lineup;
+  }
+
+  @Get("predictions/:playerId")
+  async getPlayerPrediction(@Param("playerId") playerId: string) {
+    return this.optimizerService.getPlayerPrediction(playerId);
   }
 }
