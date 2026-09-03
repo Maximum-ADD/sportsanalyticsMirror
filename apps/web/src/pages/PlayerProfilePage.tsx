@@ -5,7 +5,7 @@ import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
@@ -131,9 +131,8 @@ export function PlayerProfilePage() {
 
   if (playerQuery.isPending || statsQuery.isPending) {
     return (
-      <div className="grid grid-cols-1 gap-6 p-6 xl:grid-cols-3">
-        <Skeleton className="h-64 xl:col-span-2" />
-        <Skeleton className="h-64" />
+      <div className="flex min-h-[28rem] items-center justify-center p-6">
+        <BasketballSpinner size="lg" label="Loading player" />
       </div>
     );
   }

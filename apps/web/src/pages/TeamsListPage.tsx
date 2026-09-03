@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchTeams } from "@/lib/nbaApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { Pagination } from "@/components/Pagination";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -45,12 +45,16 @@ export function TeamsListPage() {
         value={searchTerm}
         onChange={(event) => changeSearch(event.target.value)}
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {isPending
-          ? Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-28" />)
-          : data?.data.length === 0 ? (
-              <p className="text-sm text-text-secondary">No teams found.</p>
-            ) : data?.data.map((team) => (
+      {isPending ? (
+        <div className="flex min-h-64 items-center justify-center">
+          <BasketballSpinner size="lg" label="Loading teams" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {data?.data.length === 0 ? (
+            <p className="text-sm text-text-secondary">No teams found.</p>
+          ) : (
+            data?.data.map((team) => (
               <Link key={team.id} to={`/teams/${team.id}`}>
                 <Card className="h-full transition-colors hover:border-brand-accent/40">
                   <CardHeader className="flex-row items-center gap-3 space-y-0">
@@ -66,8 +70,10 @@ export function TeamsListPage() {
                   </CardContent>
                 </Card>
               </Link>
-            ))}
-      </div>
+            ))
+          )}
+        </div>
+      )}
 
       {data && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}
     </div>

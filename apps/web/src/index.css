@@ -72,6 +72,66 @@
     }
   }
 
+  /* BasketballSpinner: a real dribble, not a hover-wobble. The three pieces
+     below share one 0.7s cycle so they read as a single physical ball —
+     apex at 0%/100%, ground contact at 50% (mirrors Tailwind's own
+     animate-bounce phasing, just with real amplitude and squash/stretch
+     added). --basketball-bounce-height is set per size by the component. */
+  --animate-basketball-bounce: basketball-bounce 0.7s infinite;
+  @keyframes basketball-bounce {
+    0%,
+    100% {
+      transform: translateY(calc(var(--basketball-bounce-height, 1.75rem) * -1)) scale(0.96, 1.06);
+      animation-timing-function: cubic-bezier(0.8, 0, 1, 1); /* falling: accelerate under gravity */
+    }
+    50% {
+      transform: translateY(0) scale(1.1, 0.88); /* ground contact: squash */
+      animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* rebound: decelerate back to apex */
+    }
+  }
+
+  /* One full turn per bounce, like a dribbled ball actually rolling off the
+     hand — not spinning independently of the bounce. */
+  --animate-basketball-spin: basketball-spin 0.7s linear infinite;
+  @keyframes basketball-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  --animate-basketball-shadow: basketball-shadow 0.7s ease-in-out infinite;
+  @keyframes basketball-shadow {
+    0%,
+    100% {
+      transform: scaleX(0.5);
+      opacity: 0.15;
+    }
+    50% {
+      transform: scaleX(1);
+      opacity: 0.38;
+    }
+  }
+
+  /* A thin ring that pops out right as the ball touches down, same 50%
+     beat as the shadow, then expands and fades before the next bounce. */
+  --animate-basketball-impact: basketball-impact 0.7s ease-out infinite;
+  @keyframes basketball-impact {
+    0%,
+    44% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(0.6);
+      opacity: 0.6;
+    }
+    80%,
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+
   /* Condensed display face for hero-scale headlines — regular system fonts
      read as generic at this size; a real display face is what makes a hero
      look designed rather than just "big text". Falls through to a
