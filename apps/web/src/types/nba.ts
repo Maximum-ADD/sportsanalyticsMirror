@@ -21,19 +21,51 @@ export interface Player {
   headshotUrl: string | null;
   teamId: string | null;
   team: Team | null;
+
+  // Bio fields from CommonPlayerInfo (see player_bios.py) — null for any
+  // player not yet enriched by that ingestion phase, not just genuinely
+  // missing data, so callers should render a "—" fallback, not assume null
+  // means "this player has no draft history".
+  birthDate: string | null;
+  school: string | null;
+  country: string | null;
+  lastAffiliation: string | null;
+  seasonExp: number | null;
+  rosterStatus: string | null;
+  draftYear: number | null;
+  draftRound: number | null;
+  draftNumber: number | null;
 }
 
 export interface SeasonAverages {
   gamesPlayed: number;
+  minutesPerGame: number;
   pointsPerGame: number;
   reboundsPerGame: number;
   assistsPerGame: number;
   stealsPerGame: number;
   blocksPerGame: number;
   turnoversPerGame: number;
+  fieldGoalsMadePerGame: number;
+  fieldGoalsAttemptedPerGame: number;
   fieldGoalPercentage: number;
+  threesMadePerGame: number;
+  threesAttemptedPerGame: number;
   threePointPercentage: number;
+  freeThrowsMadePerGame: number;
+  freeThrowsAttemptedPerGame: number;
   freeThrowPercentage: number;
+}
+
+// One player's identity plus their season line — the unit GET
+// /v1/players/compare returns, one per player in the comparison.
+export interface PlayerComparisonEntry {
+  player: Player;
+  seasonAverages: SeasonAverages;
+}
+
+export interface PlayerComparisonResponse {
+  players: PlayerComparisonEntry[];
 }
 
 export interface GameLogEntry {
@@ -82,6 +114,14 @@ export interface Lineup {
   budget: number;
   createdAt: string;
   slots: LineupSlot[];
+}
+
+// A player's latest prediction looked up on its own, outside an existing
+// lineup — used to price up a hypothetical swap into a locally-edited
+// lineup. Null fields mean no prediction has been generated for this player.
+export interface PlayerPredictionSummary {
+  predictedFantasyPoints: number | null;
+  salary: number | null;
 }
 
 export interface PagedResult<T> {

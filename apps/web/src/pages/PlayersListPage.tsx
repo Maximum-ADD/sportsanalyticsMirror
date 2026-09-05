@@ -6,22 +6,33 @@ import { ErrorState } from "@/components/ErrorState";
 import { Pagination } from "@/components/Pagination";
 import { PlayersFilterBar, type PlayerSortKey } from "@/components/PlayersFilterBar";
 import { TeamBadge } from "@/components/TeamBadge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 const PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_IN_MILLISECONDS = 300;
 
 export function PlayersListPage() {
   const [page, setPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
   const [teamId, setTeamId] = useState<string | undefined>(undefined);
   const [position, setPosition] = useState<string | undefined>(undefined);
   const [sortKey, setSortKey] = useState<PlayerSortKey>("name");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm.trim(), SEARCH_DEBOUNCE_IN_MILLISECONDS);
 
   const teamsQuery = useQuery({ queryKey: ["teams"], queryFn: () => fetchTeams({ pageSize: 100 }) });
 
   const playersQuery = useQuery({
-    queryKey: ["players", { page, teamId, position }],
-    queryFn: () => fetchPlayers({ page, pageSize: PAGE_SIZE, teamId, position }),
+    queryKey: ["players", { page, teamId, position, search: debouncedSearchTerm }],
+    queryFn: () =>
+      fetchPlayers({
+        page,
+        pageSize: PAGE_SIZE,
+        teamId,
+        position,
+        search: debouncedSearchTerm || undefined,
+      }),
   });
 
   // Sorting by PPG needs each player's derived season stats, which the list
@@ -68,9 +79,11 @@ export function PlayersListPage() {
 
       <PlayersFilterBar
         teams={teamsQuery.data?.data ?? []}
+        searchTerm={searchTerm}
         teamId={teamId}
         position={position}
         sortKey={sortKey}
+        onSearchChange={(value) => changeFilterAndResetPage(() => setSearchTerm(value))}
         onTeamChange={(value) => changeFilterAndResetPage(() => setTeamId(value))}
         onPositionChange={(value) => changeFilterAndResetPage(() => setPosition(value))}
         onSortChange={setSortKey}
@@ -89,14 +102,20 @@ export function PlayersListPage() {
           </TableHeader>
           <TableBody className="bg-surface-card">
             {playersQuery.isPending || isLoadingStats
-              ? Array.from({ length: PAGE_SIZE }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell colSpan={sortKey === "ppg" ? 5 : 4}>
-                      <Skeleton className="h-5 w-full" />
+              ? (
+                  <TableRow>
+                    <TableCell colSpan={sortKey === "ppg" ? 5 : 4} className="py-10">
+                      <BasketballSpinner label="Loading players" />
                     </TableCell>
                   </TableRow>
-                ))
-              : rows.map((player) => (
+                )
+              : rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={sortKey === "ppg" ? 5 : 4} className="py-8 text-center text-text-secondary">
+                      No players found.
+                    </TableCell>
+                  </TableRow>
+                ) : rows.map((player) => (
                   <TableRow key={player.id}>
                     <TableCell>
                       <Link to={`/players/${player.id}`} className="text-text-primary hover:text-brand-accent">

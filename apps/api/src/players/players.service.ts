@@ -1,9 +1,13 @@
 import { Injectable } from "@nestjs/common";
-import type { Player, Team } from "@prisma/client";
+import type { Player, Prisma, Team } from "@prisma/client";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 export type PlayerWithTeam = Player & { team: Team | null };
+
+function getSearchTerms(search: unknown): string[] {
+  return typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean) : [];
+}
 
 @Injectable()
 export class PlayersService {
@@ -11,15 +15,22 @@ export class PlayersService {
 
   // Paginated player list, optionally narrowed by an exact teamId and/or
   // position match. query is the raw request query string object; only the
-  // recognised keys (page, pageSize, teamId, position) have any effect.
+  // recognised keys (page, pageSize, teamId, position, search) have any effect.
   async getPlayers(query: Record<string, unknown>): Promise<PagedResult<PlayerWithTeam>> {
     const { page, pageSize } = parsePageParams(query);
     const teamId = typeof query.teamId === "string" ? query.teamId : undefined;
     const position = typeof query.position === "string" ? query.position : undefined;
+    const searchTerms = getSearchTerms(query.search);
 
-    const where = {
+    const where: Prisma.PlayerWhereInput = {
       ...(teamId ? { teamId } : {}),
       ...(position ? { position } : {}),
+      AND: searchTerms.map((searchTerm) => ({
+        OR: [
+          { firstName: { contains: searchTerm, mode: "insensitive" } },
+          { lastName: { contains: searchTerm, mode: "insensitive" } },
+        ],
+      })),
     };
 
     const [data, total] = await Promise.all([

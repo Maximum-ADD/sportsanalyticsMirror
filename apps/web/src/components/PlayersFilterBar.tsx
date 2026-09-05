@@ -5,12 +5,16 @@ export type PlayerSortKey = "name" | "ppg";
 
 const selectClassName =
   "rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-accent/50";
+const searchInputClassName =
+  "min-w-56 rounded-md border border-border-subtle bg-surface-card px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/50";
 
 interface PlayersFilterBarProps {
   teams: Team[];
+  searchTerm: string;
   teamId: string | undefined;
   position: string | undefined;
   sortKey: PlayerSortKey;
+  onSearchChange: (searchTerm: string) => void;
   onTeamChange: (teamId: string | undefined) => void;
   onPositionChange: (position: string | undefined) => void;
   onSortChange: (sortKey: PlayerSortKey) => void;
@@ -18,15 +22,26 @@ interface PlayersFilterBarProps {
 
 export function PlayersFilterBar({
   teams,
+  searchTerm,
   teamId,
   position,
   sortKey,
+  onSearchChange,
   onTeamChange,
   onPositionChange,
   onSortChange,
 }: PlayersFilterBarProps) {
   return (
     <div className="mb-4 flex flex-wrap gap-3">
+      <input
+        aria-label="Search players"
+        className={searchInputClassName}
+        type="search"
+        placeholder="Search players"
+        value={searchTerm}
+        onChange={(event) => onSearchChange(event.target.value)}
+      />
+
       <select
         className={selectClassName}
         value={teamId ?? ""}

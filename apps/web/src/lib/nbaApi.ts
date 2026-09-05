@@ -1,5 +1,16 @@
 import { fetchJson } from "./apiClient";
-import type { Game, GameDetail, GamePrediction, Lineup, Player, PlayerStatsResponse, PagedResult, Team } from "@/types/nba";
+import type {
+  Game,
+  GameDetail,
+  GamePrediction,
+  Lineup,
+  Player,
+  PlayerComparisonResponse,
+  PlayerPredictionSummary,
+  PlayerStatsResponse,
+  PagedResult,
+  Team,
+} from "@/types/nba";
 
 function toQueryString(params: object): string {
   const entries = Object.entries(params).filter(
@@ -12,6 +23,7 @@ function toQueryString(params: object): string {
 export interface FetchPlayersParams {
   teamId?: string;
   position?: string;
+  search?: string;
   page?: number;
   pageSize?: number;
 }
@@ -28,7 +40,14 @@ export function fetchPlayerStats(playerId: string): Promise<PlayerStatsResponse>
   return fetchJson<PlayerStatsResponse>(`/v1/players/${playerId}/stats`);
 }
 
+// Season lines for 2-4 players in one request, for the compare page. Order
+// of `playerIds` is preserved in the response.
+export function fetchPlayerComparison(playerIds: string[]): Promise<PlayerComparisonResponse> {
+  return fetchJson<PlayerComparisonResponse>(`/v1/players/compare?ids=${playerIds.join(",")}`);
+}
+
 export interface FetchTeamsParams {
+  search?: string;
   page?: number;
   pageSize?: number;
 }
@@ -52,6 +71,10 @@ export function fetchGames(params: FetchGamesParams = {}): Promise<PagedResult<G
 
 export function fetchLatestLineup(): Promise<Lineup> {
   return fetchJson<Lineup>("/v1/optimizer/lineup");
+}
+
+export function fetchPlayerPrediction(playerId: string): Promise<PlayerPredictionSummary> {
+  return fetchJson<PlayerPredictionSummary>(`/v1/optimizer/predictions/${playerId}`);
 }
 
 export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {

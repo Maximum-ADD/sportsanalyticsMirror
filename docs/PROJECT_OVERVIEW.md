@@ -117,6 +117,8 @@ same pattern as every other endpoint.
 - `SessionAuthGuard` calls `auth.api.getSession(...)`; if there's no
   session it throws `401 UNAUTHENTICATED`, otherwise it sets
   `request.user` for downstream guards/controllers.
+- Games and optimizer controllers require `SessionAuthGuard`; player and
+  team endpoints remain public.
 - `RolesGuard` reads `@Roles(...)` metadata off the handler/class via
   `Reflector` and throws `403 FORBIDDEN` unless `request.user.role` is in
   that list. A handler with no `@Roles(...)` is unrestricted.
@@ -177,26 +179,39 @@ envelope `{ error: { code, message } }`.
 | GET | `/v1/players` | Query: `page`, `pageSize`, `teamId`, `position` |
 | GET | `/v1/players/:id` | |
 | GET | `/v1/players/:id/stats` | Derived season averages + game log |
+| GET | `/v1/players/compare` | Query: `ids` (comma-separated, 2–4). Each player + derived season averages |
 | GET | `/v1/teams` | Query: `page`, `pageSize` |
 | GET | `/v1/teams/:id` | |
+| GET | `/v1/games` | Auth required; paginated games and predictions |
+| GET | `/v1/games/:id` | Auth required; game and prediction detail |
+| GET | `/v1/games/:id/prediction` | Auth required |
+| GET | `/v1/optimizer/lineup` | Auth required; latest optimized lineup |
 | ALL | `*` | Catch-all → `404 NOT_FOUND` |
 
 Pagination shape: `{ data: T[], page, pageSize, total }`.
 
-No route currently requires authentication — `SessionAuthGuard`/
-`RolesGuard` exist and are unit-tested but aren't applied anywhere yet.
+Games and optimizer routes require a BetterAuth session. Player and team
+routes remain public. No route currently requires a role above `USER`.
 
 ## Frontend architecture (`apps/web`)
 
 ### Routing & pages (`src/App.tsx`, `src/pages/`)
 
-| Route | Page | Purpose |
-|---|---|---|
-| `/` | `HomePage` | Hero + links into Players/Teams |
-| `/players` | `PlayersListPage` | Filter (team/position) + sort (name/PPG) + paginated table |
-| `/players/:playerId` | `PlayerProfilePage` | Stat tiles, traits radar, points trend chart, shooting splits |
-| `/teams` | `TeamsListPage` | Paginated team cards |
-| `/teams/:teamId` | `TeamProfilePage` | Team header + roster table |
+| Route | Access | Page | Purpose |
+|---|---|---|---|
+| `/` | Public | `HomePage` | Hero + links into Players/Teams |
+| `/players` | Public | `PlayersListPage` | Filter (team/position) + sort (name/PPG) + paginated table |
+| `/players/:playerId` | Public | `PlayerProfilePage` | Stat tiles, traits radar, points trend chart, shooting splits |
+| `/compare` | Public | `ComparePage` | Side-by-side season averages for 2–4 players (`?ids=` in the URL); player tiles with add-by-search / remove |
+| `/teams` | Public | `TeamsListPage` | Paginated team cards |
+| `/teams/:teamId` | Public | `TeamProfilePage` | Team header + roster table |
+| `/optimizer` | Signed in | `OptimizerPage` | Latest optimized fantasy lineup |
+| `/predictions` | Signed in | `PredictionsPage` | Paginated game predictions |
+| `/games/:gameId` | Signed in | `GameDetailPage` | Game and prediction detail |
+
+`ProtectedRoute` displays the Google sign-in action for logged-out visitors
+and uses the attempted URL as the OAuth callback so they return to the same
+page after signing in.
 
 ### Data fetching
 
@@ -299,7 +314,6 @@ checks and review required before merging.
 
 ## Known gaps
 
-- No route requires authentication yet (guards exist, unused in practice).
 - `PlayerGameStat` is seeded directly rather than derived from `GameEvent`
   rows — the event-sourcing story isn't fully real yet.
 - Real NBA data ingestion (`nba_api`, Python) into Postgres — not started.

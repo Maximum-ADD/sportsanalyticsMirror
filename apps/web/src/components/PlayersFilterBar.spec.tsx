@@ -25,9 +25,11 @@ function renderFilterBar(overrides: Partial<ComponentProps<typeof PlayersFilterB
   render(
     <PlayersFilterBar
       teams={TEAMS}
+      searchTerm=""
       teamId={undefined}
       position={undefined}
       sortKey="name"
+      onSearchChange={vi.fn()}
       onTeamChange={onTeamChange}
       onPositionChange={onPositionChange}
       onSortChange={onSortChange}
@@ -38,6 +40,16 @@ function renderFilterBar(overrides: Partial<ComponentProps<typeof PlayersFilterB
 }
 
 describe("PlayersFilterBar", () => {
+  it("reports player search input changes", async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    renderFilterBar({ onSearchChange });
+
+    await user.type(screen.getByRole("searchbox", { name: "Search players" }), "L");
+
+    expect(onSearchChange).toHaveBeenCalledWith("L");
+  });
+
   it("lists each team by city + name in the team select", () => {
     renderFilterBar();
     expect(screen.getByRole("option", { name: "Los Angeles Lakers" })).toBeInTheDocument();
