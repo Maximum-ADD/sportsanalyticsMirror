@@ -12,6 +12,7 @@
     "web:dev": "npm run dev --prefix apps/web",
     "test": "npm run test --prefix apps/api && npm run test --prefix apps/web",
     "test:cov": "npm run test:cov --prefix apps/api && npm run test:cov --prefix apps/web",
-    "coverage:report": "node scripts/build-coverage-report.mjs"
+    "coverage:report": "node scripts/build-coverage-report.mjs",
+    "labels:sync": "node scripts/setup-gitea-labels.mjs"
   }
 }
