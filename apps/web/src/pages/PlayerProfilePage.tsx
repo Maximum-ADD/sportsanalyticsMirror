@@ -11,14 +11,8 @@ import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { formatAge, formatHeight } from "@/lib/playerBio";
 import type { Player, PlayerStatsResponse, SeasonAverages } from "@/types/nba";
-
-function formatHeight(heightInches: number | null): string {
-  if (heightInches === null) return "—";
-  const feet = Math.floor(heightInches / 12);
-  const inches = heightInches % 12;
-  return `${feet}'${inches}"`;
-}
 
 function formatWeight(weightLbs: number | null): string {
   if (weightLbs === null) return "—";
@@ -32,21 +26,6 @@ function formatBirthdate(birthDate: string | null): string {
     month: "long",
     day: "numeric",
   });
-}
-
-// Age isn't stored anywhere - CommonPlayerInfo doesn't provide it directly,
-// and it would go stale the moment it was saved (unlike birthDate, which
-// never changes). Computed fresh on every render from birthDate instead.
-function calculateAge(birthDate: string | null): number | null {
-  if (!birthDate) return null;
-  const birth = new Date(birthDate);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const hasHadBirthdayThisYear =
-    today.getMonth() > birth.getMonth() ||
-    (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
-  if (!hasHadBirthdayThisYear) age -= 1;
-  return age;
 }
 
 // DRAFT_YEAR/DRAFT_ROUND/DRAFT_NUMBER are all-or-nothing from
@@ -158,7 +137,6 @@ export function PlayerProfilePage() {
   const { seasonAverages, gameLog } = statsQuery.data;
   const effectiveAverages: SeasonAverages = { ...seasonAverages, ...statOverrides };
   const hasStatOverrides = Object.keys(statOverrides).length > 0;
-  const age = calculateAge(player.birthDate);
   const bioPending = !isBioLoaded(player);
 
   return (
@@ -331,7 +309,7 @@ export function PlayerProfilePage() {
             />
             <BioField
               label="Age"
-              value={age === null ? "—" : `${age}`}
+              value={formatAge(player.birthDate)}
               isPending={bioPending}
             />
             <BioField

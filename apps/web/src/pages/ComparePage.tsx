@@ -9,6 +9,7 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { cn } from "@/lib/utils";
+import { NO_VALUE, formatAge, formatHeight } from "@/lib/playerBio";
 import type { Player, PlayerComparisonEntry, SeasonAverages } from "@/types/nba";
 
 const MAX_PLAYERS = 4;
@@ -19,15 +20,6 @@ const MIN_PLAYERS_FOR_COMPARISON = 2;
 // on one column grid; clamped rather than fixed so narrow screens give the
 // player columns their space back without a media query.
 const LABEL_COLUMN_WIDTH = "clamp(5.5rem, 16vw, 11rem)";
-
-// Shown when a value is genuinely absent, and in every cell of a column
-// whose slot hasn't been filled yet.
-const NO_VALUE = "—";
-
-function formatHeight(heightInches: number | null): string {
-  if (heightInches === null) return NO_VALUE;
-  return `${Math.floor(heightInches / 12)}'${heightInches % 12}"`;
-}
 
 const POSITION_NAMES: Record<string, string> = {
   G: "Guard",
@@ -73,10 +65,9 @@ const STAT_GROUPS: StatGroup[] = [
   {
     title: "General",
     rows: [
-      // Age needs Player.birthDate, which only exists on the unmerged player
-      // bio branch — the row is here so it lights up the moment that lands,
-      // and the page subheading explains the dash until then.
-      { label: "Age", render: () => NO_VALUE },
+      // No compareValue: every other row highlights a leader, but there is no
+      // better age to be, so this row stays unhighlighted.
+      { label: "Age", render: (_averages, player) => formatAge(player.birthDate) },
       { label: "Height", render: (_averages, player) => formatHeight(player.heightInches) },
       {
         label: "Team",
@@ -391,8 +382,7 @@ export function ComparePage() {
             Player comparison
           </h1>
           <p className="mt-1 text-xs text-text-muted">
-            Compare up to {MAX_PLAYERS} players side by side on their season averages. Age arrives
-            once player bios land.
+            Compare up to {MAX_PLAYERS} players side by side on their season averages.
           </p>
         </div>
       </div>

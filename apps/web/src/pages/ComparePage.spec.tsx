@@ -160,8 +160,8 @@ describe("ComparePage", () => {
     renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
     await screen.findByText("LeBron James");
 
-    // Age has no source on this branch, so both real players already show a
-    // dash there and nowhere else.
+    // makePlayer leaves birthDate null, so Age is the one row where both real
+    // players already show a dash, and nowhere else.
     const dashesWithNoEmptySlot = screen.getAllByText("—");
     expect(dashesWithNoEmptySlot).toHaveLength(2);
 
@@ -169,6 +169,44 @@ describe("ComparePage", () => {
 
     // The third column now carries a dash on every stat row.
     expect(screen.getAllByText("—").length).toBeGreaterThan(dashesWithNoEmptySlot.length);
+  });
+
+  it("shows each player's age once their bio has been ingested", async () => {
+    // Only Date is faked: react-query still needs real timers to resolve the
+    // query behind findByText.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00.000Z"));
+
+    vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      players: [
+        {
+          player: makePlayer({ id: "player-1", birthDate: "1984-12-30" }),
+          seasonAverages: makeAverages(),
+        },
+        {
+          player: makePlayer({
+            id: "player-2",
+            firstName: "Stephen",
+            lastName: "Curry",
+            nbaPlayerId: 2,
+            birthDate: "1988-03-14",
+          }),
+          seasonAverages: makeAverages(),
+        },
+      ],
+    });
+
+    renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
+
+    expect(await screen.findByText("LeBron James")).toBeInTheDocument();
+    expect(screen.getByText("Age")).toBeInTheDocument();
+    // Birthday still to come in 2026 for one, already past for the other.
+    expect(screen.getByText("41")).toBeInTheDocument();
+    expect(screen.getByText("38")).toBeInTheDocument();
+    // Age is the only row that was ever dashed for a filled column.
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 
   it("renders a tile and grouped stat rows for each compared player, highlighting the leader", async () => {
