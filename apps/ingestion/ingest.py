@@ -10,24 +10,25 @@ was designed around):
     for the full league) — see player_bios.py's module docstring.
   - Recent games: 30 calls (one LeagueGameFinder per team, kept to each
     team's newest GAMES_PER_TEAM games — see games.py's module docstring).
-  - Boxscores: TWO calls per unique game id — BoxScoreTraditionalV3 for
-    counting stats and BoxScoreAdvancedV3 for usage rate and offensive/
-    defensive rating, which cannot be derived from counting stats (see
-    games.py). Up to 2 * 30 * GAMES_PER_TEAM, deduplicated by game id (two
-    teams sharing a game only cost one pair) — in practice well under that
-    since most of a team's recent 15 games are against other teams whose
-    own recent 15 also include that game.
+  - Boxscores: one BoxScoreTraditionalV3 call per unique game id, up to
+    30 * GAMES_PER_TEAM, deduplicated by game id (two teams sharing a game
+    only cost one call) — in practice well under that since most of a
+    team's recent 15 games are against other teams whose own recent 15
+    also include that game.
+  - Plus/minus and advanced figures: 2 calls for the entire regular season
+    and 4 for the postseason (two measure types per segment), via
+    leaguewide PlayerGameLogs — not one call per game. See
+    player_game_logs.py for why that endpoint rather than
+    BoxScoreAdvancedV3: 6 calls instead of ~900.
   - Postseason game ids: 2 calls (one leaguewide LeagueGameLog per
     segment — play-in and playoffs — instead of another 60 per-team calls;
     see games.py's fetch_season_segment_games).
-  - Postseason boxscores: ~180 calls (verified live for 2025-26: 6 play-in
-    games and 85 playoff games, Finals included, at two calls each).
-    Deduplicated against nothing else — postseason ids don't overlap the
-    regular-season ones.
-  - Total: roughly 1500-1700 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
-    plus retries, expect this to take on the order of 40-50 minutes.
-    Boxscores are now the largest phase by call count, having overtaken
-    player bios when the advanced endpoint doubled them.
+  - Postseason boxscores: ~90 calls (verified live for 2025-26: 6 play-in
+    games and 85 playoff games, Finals included). Deduplicated against
+    nothing else — postseason ids don't overlap the regular-season ones.
+  - Total: roughly 900-1050 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
+    plus retries, expect this to take on the order of 25-35 minutes —
+    player bios remain the single largest phase by call count.
 
 Must run from a real residential network, not a cloud host — see
 README.md for why (stats.nba.com blocks cloud-provider IP ranges; this is
@@ -38,8 +39,8 @@ from db import get_connection
 from games import (
     NBA_SEASON_TYPE_PLAY_IN,
     NBA_SEASON_TYPE_PLAYOFFS,
+    NBA_SEASON_TYPE_REGULAR,
     classify_game,
-    fetch_game_advanced_boxscore,
     fetch_game_boxscore,
     fetch_recent_games,
     fetch_season_segment_games,
@@ -48,6 +49,7 @@ from games import (
     upsert_player_game_stat,
 )
 from player_bios import fetch_player_bio, upsert_player_bio
+from player_game_logs import fetch_season_player_game_logs
 from rosters import fetch_team_roster, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
@@ -125,11 +127,28 @@ def collect_postseason_game_dates() -> dict[str, str]:
     return game_date_by_nba_game_id
 
 
+def collect_postseason_player_figures() -> dict[tuple[str, int], dict]:
+    """Fetches plus/minus and advanced figures for both postseason segments.
+
+    Four calls total (two measure types per segment) covering every
+    play-in and playoff player-game. The two segments' game ids don't
+    overlap, so merging them into one lookup is safe — see
+    collect_postseason_game_dates.
+    """
+    figures_by_player_game: dict[tuple[str, int], dict] = {}
+    for nba_season_type in (NBA_SEASON_TYPE_PLAY_IN, NBA_SEASON_TYPE_PLAYOFFS):
+        segment_figures = fetch_season_player_game_logs(SEASON, nba_season_type)
+        figures_by_player_game.update(segment_figures)
+        print(f"  Fetched {len(segment_figures)} {nba_season_type} player-game figures.")
+    return figures_by_player_game
+
+
 def ingest_games_and_stats(
     cursor,
     game_date_by_nba_game_id: dict[str, str],
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
+    extra_figures_by_player_game: dict[tuple[str, int], dict] | None = None,
 ) -> None:
     """Fetches and writes one Game + its PlayerGameStat rows per game id.
 
@@ -140,24 +159,19 @@ def ingest_games_and_stats(
     classification — boxscores, period bookends, per-player stat rows — is
     already segment-independent.
 
-    Two boxscore calls per game: the traditional one for counting stats,
-    and the advanced one for usage rate and offensive/defensive rating,
-    which cannot be derived from counting stats (see games.py). If the
-    advanced call fails, the game is still written with its traditional
-    figures and null advanced ones rather than being lost — a missing usage
-    rate is worth far less than a missing game.
+    `extra_figures_by_player_game` supplies plus/minus, the rebound split
+    and the advanced figures, keyed by (nba_game_id, nba_player_id) — see
+    player_game_logs.py. It is fetched once for the whole segment rather
+    than per game, so it costs a couple of calls instead of one per game.
+    A player-game missing from it is written with null figures rather than
+    skipped: a missing usage rate is worth far less than a missing game,
+    and a later run fills it in.
     """
+    extra_figures_by_player_game = extra_figures_by_player_game or {}
     skipped_unknown_players = 0
-    games_missing_advanced_stats = 0
+    player_games_missing_extra_figures = 0
     for nba_game_id, game_date in game_date_by_nba_game_id.items():
         boxscore = fetch_game_boxscore(nba_game_id)
-
-        try:
-            advanced_by_nba_player_id = fetch_game_advanced_boxscore(nba_game_id)
-        except Exception as error:  # noqa: BLE001 - any failure here is non-fatal by design
-            print(f"  Advanced boxscore unavailable for game {nba_game_id} ({error}); writing traditional stats only.")
-            advanced_by_nba_player_id = {}
-            games_missing_advanced_stats += 1
 
         home_team_id = team_id_by_nba_id.get(boxscore["home_team_nba_id"])
         away_team_id = team_id_by_nba_id.get(boxscore["away_team_nba_id"])
@@ -190,12 +204,17 @@ def ingest_games_and_stats(
                 skipped_unknown_players += 1
                 continue
             traditional_stats = {key: value for key, value in player_stats.items() if key != "nba_player_id"}
-            advanced_stats = advanced_by_nba_player_id.get(player_stats["nba_player_id"], {})
-            upsert_player_game_stat(cursor, player_internal_id, game_internal_id, {**traditional_stats, **advanced_stats})
+            extra_figures = extra_figures_by_player_game.get((nba_game_id, player_stats["nba_player_id"]))
+            if extra_figures is None:
+                # A player-game the leaguewide feed doesn't carry — most
+                # often a DNP, which genuinely has no usage rate.
+                extra_figures = {}
+                player_games_missing_extra_figures += 1
+            upsert_player_game_stat(cursor, player_internal_id, game_internal_id, {**traditional_stats, **extra_figures})
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
-    if games_missing_advanced_stats:
-        print(f"{games_missing_advanced_stats} games have no advanced stats (usage/ratings left null).")
+    if player_games_missing_extra_figures:
+        print(f"{player_games_missing_extra_figures} player-games had no plus/minus or advanced figures (left null).")
     if skipped_unknown_players:
         print(f"Skipped {skipped_unknown_players} stat rows for players not on any ingested roster.")
 
@@ -216,9 +235,14 @@ def main() -> None:
         connection.commit()
 
         game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id)
+        # Two calls for the whole regular season, rather than two per game.
+        regular_season_figures = fetch_season_player_game_logs(SEASON, NBA_SEASON_TYPE_REGULAR)
+        print(f"Fetched plus/minus and advanced figures for {len(regular_season_figures)} regular-season player-games.")
 
         with connection.cursor() as cursor:
-            ingest_games_and_stats(cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+            ingest_games_and_stats(
+                cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, regular_season_figures
+            )
         connection.commit()
 
         # Postseason runs last and commits separately, so a failure here
@@ -226,9 +250,12 @@ def main() -> None:
         # back — and, like every other phase, it's idempotent and can be
         # re-run on its own.
         postseason_game_dates = collect_postseason_game_dates()
+        postseason_figures = collect_postseason_player_figures()
 
         with connection.cursor() as cursor:
-            ingest_games_and_stats(cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id)
+            ingest_games_and_stats(
+                cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures
+            )
         connection.commit()
 
         print("Ingestion complete.")

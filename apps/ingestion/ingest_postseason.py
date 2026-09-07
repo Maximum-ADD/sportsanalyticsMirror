@@ -11,9 +11,10 @@ Same standalone-phase pattern as backfill_player_bios.py: team and player
 id maps are read straight out of the database rather than re-fetched from
 nba_api, so this makes no calls beyond the postseason data itself.
 
-Call budget: 2 leaguewide LeagueGameLog calls for the game ids, then one
-BoxScoreTraditionalV3 call per game (~90 for a full postseason). At
-RATE_LIMIT_DELAY_SECONDS plus retries, expect roughly 5 minutes.
+Call budget: 2 leaguewide LeagueGameLog calls for the game ids, 4 more for
+the leaguewide plus/minus and advanced figures (see player_game_logs.py),
+then one BoxScoreTraditionalV3 call per game (~90 for a full postseason).
+At RATE_LIMIT_DELAY_SECONDS plus retries, expect roughly 5 minutes.
 
 Idempotent - every write is an upsert keyed on nbaGameId/(playerId,
 gameId), so a failed or interrupted run can simply be run again.
@@ -26,7 +27,7 @@ Run from apps/ingestion:
 """
 
 from db import get_connection
-from ingest import collect_postseason_game_dates, ingest_games_and_stats
+from ingest import collect_postseason_game_dates, collect_postseason_player_figures, ingest_games_and_stats
 
 
 def read_team_ids(cursor) -> dict[int, str]:
@@ -61,9 +62,12 @@ def main() -> None:
             return
 
         postseason_game_dates = collect_postseason_game_dates()
+        postseason_figures = collect_postseason_player_figures()
 
         with connection.cursor() as cursor:
-            ingest_games_and_stats(cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id)
+            ingest_games_and_stats(
+                cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures
+            )
         connection.commit()
 
         print("Postseason ingestion complete.")

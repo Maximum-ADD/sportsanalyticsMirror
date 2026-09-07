@@ -1,6 +1,7 @@
 """Ingests games (regular season and postseason) and their real per-player boxscores.
 
 Three endpoints, verified live against stats.nba.com during development
+(plus PlayerGameLogs, which lives in player_game_logs.py)
 (see module docstrings below for why the versions used here differ from
 what nba_api's own docs suggest):
 
@@ -21,7 +22,9 @@ what nba_api's own docs suggest):
   every player's individual stat line — so home/away scores never need to
   be inferred from LeagueGameFinder's per-team MATCHUP/PTS fields at all.
   It takes only a game id and knows nothing about season types, so the
-  postseason phase reuses it unchanged.
+  postseason phase reuses it unchanged. It does NOT carry usage rate or
+  offensive/defensive ratings — those come from the leaguewide feed in
+  player_game_logs.py, one call per season segment rather than per game.
 
 Which segment a game belongs to is derived from its game id by
 classify_game(), never from whichever endpoint it arrived on — see that
@@ -43,7 +46,7 @@ structure the package's `expected_data` declares.
 
 import json
 
-from nba_api.stats.endpoints import boxscoreadvancedv3, boxscoretraditionalv3, leaguegamefinder, leaguegamelog
+from nba_api.stats.endpoints import boxscoretraditionalv3, leaguegamefinder, leaguegamelog
 
 from throttle import call_with_rate_limit
 
@@ -222,45 +225,6 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
     }
 
 
-def fetch_game_advanced_boxscore(nba_game_id: str) -> dict[int, dict]:
-    """Fetches one game's advanced boxscore, keyed by nba_player_id.
-
-    Returns {nba_player_id: {usage_percentage, offensive_rating,
-    defensive_rating}} — the three figures that genuinely cannot be derived
-    from BoxScoreTraditionalV3's counting stats. Individual offensive and
-    defensive ratings need possession estimates and opponent context this
-    project's schema doesn't hold, so they are taken from the NBA's own
-    calculation rather than approximated locally.
-
-    Deliberately does NOT return true shooting %, effective FG% or
-    assist-to-turnover, which this endpoint also reports: those three were
-    verified to match a local derivation from the traditional boxscore
-    exactly (to three decimal places, across a full game), so deriving them
-    at request time avoids a second stored source of truth for the same
-    number. See StatsService.
-
-    Percentages come back as fractions (0.132 for 12.5% usage) and are
-    scaled to whole percents here, matching how every other percentage in
-    this project is stored and rendered.
-
-    Costs one extra call per game on top of fetch_game_boxscore — the
-    single largest addition to the ingestion call budget, see ingest.py.
-    """
-    response = call_with_rate_limit(lambda: boxscoreadvancedv3.BoxScoreAdvancedV3(game_id=nba_game_id, timeout=30))
-    box = json.loads(response.nba_response.get_json())["boxScoreAdvanced"]
-
-    advanced_by_nba_player_id: dict[int, dict] = {}
-    for team in (box["homeTeam"], box["awayTeam"]):
-        for player in team["players"]:
-            stats = player["statistics"]
-            advanced_by_nba_player_id[player["personId"]] = {
-                "usage_percentage": _to_whole_percent(stats["usagePercentage"]),
-                "offensive_rating": stats["offensiveRating"],
-                "defensive_rating": stats["defensiveRating"],
-            }
-    return advanced_by_nba_player_id
-
-
 def _to_int_or_none(value) -> int | None:
     """Converts an API number to an int, passing None through untouched.
 
@@ -270,17 +234,6 @@ def _to_int_or_none(value) -> int | None:
     if value is None:
         return None
     return int(value)
-
-
-def _to_whole_percent(fraction: float | None) -> float | None:
-    """Converts an API fraction (0.132) to a whole percent (13.2).
-
-    None passes through untouched — a player who didn't play has no usage
-    rate, which is not the same as a usage rate of zero.
-    """
-    if fraction is None:
-        return None
-    return round(fraction * 100, 1)
 
 
 def _parse_minutes_to_int(minutes: str) -> int:
