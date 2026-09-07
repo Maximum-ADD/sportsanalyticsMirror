@@ -74,6 +74,13 @@ const STATS: PlayerStatsResponse = {
     freeThrowsMadePerGame: 5.4,
     freeThrowsAttemptedPerGame: 7.2,
     freeThrowPercentage: 75,
+    trueShootingPercentage: 0,
+    effectiveFieldGoalPercentage: 0,
+    assistToTurnoverRatio: null,
+    plusMinusPerGame: null,
+    usagePercentage: null,
+    offensiveRating: null,
+    defensiveRating: null,
   },
   seasonType: "REGULAR" as const,
   gameLog: [{ gameId: "game-1", gameDate: "2026-01-01T00:00:00.000Z", points: 30 }],
@@ -168,6 +175,13 @@ function makeEmptyAverages(): SeasonAverages {
     freeThrowsMadePerGame: 0,
     freeThrowsAttemptedPerGame: 0,
     freeThrowPercentage: 0,
+    trueShootingPercentage: 0,
+    effectiveFieldGoalPercentage: 0,
+    assistToTurnoverRatio: null,
+    plusMinusPerGame: null,
+    usagePercentage: null,
+    offensiveRating: null,
+    defensiveRating: null,
   };
 }
 

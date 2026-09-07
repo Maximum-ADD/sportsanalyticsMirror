@@ -10,6 +10,7 @@ import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { cn } from "@/lib/utils";
 import { NO_VALUE, formatAge, formatHeight } from "@/lib/playerBio";
+import { formatNumber, formatPercentage, formatPlusMinus, formatRatio } from "@/lib/advancedStats";
 import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import type { Player, PlayerComparisonEntry, SeasonAverages, SeasonType } from "@/types/nba";
@@ -49,8 +50,12 @@ function formatShootingSplit(made: number, attempted: number, percentage: number
 interface StatRow {
   label: string;
   render: (averages: SeasonAverages, player: Player) => ReactNode;
-  compareValue?: (averages: SeasonAverages) => number;
-  // Turnovers are the one row where a lower number is the better one.
+  // Returns null when this player has no figure for the row — an
+  // unavailable stat must never win or lose the highlight, only sit out of
+  // the comparison. See bestEntryIndexes.
+  compareValue?: (averages: SeasonAverages) => number | null;
+  // Turnovers and defensive rating are the rows where a lower number is the
+  // better one.
   higherIsBetter?: boolean;
 }
 
@@ -183,6 +188,52 @@ const STAT_GROUPS: StatGroup[] = [
       },
     ],
   },
+  {
+    title: "Other",
+    caption:
+      "Efficiency and role. Shown as — where a figure hasn't been ingested for that player yet.",
+    rows: [
+      {
+        label: "True shooting %",
+        render: (averages) => `${averages.trueShootingPercentage}%`,
+        compareValue: (averages) => averages.trueShootingPercentage,
+      },
+      {
+        label: "Effective field goal %",
+        render: (averages) => `${averages.effectiveFieldGoalPercentage}%`,
+        compareValue: (averages) => averages.effectiveFieldGoalPercentage,
+      },
+      {
+        label: "Usage %",
+        render: (averages) => formatPercentage(averages.usagePercentage),
+        compareValue: (averages) => averages.usagePercentage,
+      },
+      {
+        label: "Assist to turnover ratio",
+        render: (averages) => formatRatio(averages.assistToTurnoverRatio),
+        compareValue: (averages) => averages.assistToTurnoverRatio,
+      },
+      {
+        label: "+/-",
+        render: (averages) => formatPlusMinus(averages.plusMinusPerGame),
+        compareValue: (averages) => averages.plusMinusPerGame,
+      },
+      {
+        label: "Offensive rating",
+        render: (averages) => formatNumber(averages.offensiveRating),
+        compareValue: (averages) => averages.offensiveRating,
+      },
+      {
+        // Points allowed per 100 possessions, so the lower figure is the
+        // stronger defender — the second row in this table where the
+        // highlight has to invert.
+        label: "Defensive rating",
+        render: (averages) => formatNumber(averages.defensiveRating),
+        compareValue: (averages) => averages.defensiveRating,
+        higherIsBetter: false,
+      },
+    ],
+  },
 ];
 
 // Indexes of the entries holding the best value for this row. Empty when the
@@ -193,12 +244,18 @@ function bestEntryIndexes(entries: PlayerComparisonEntry[], row: StatRow): Set<n
   if (!compareValue || entries.length < MIN_PLAYERS_FOR_COMPARISON) return new Set();
 
   const values = entries.map((entry) => compareValue(entry.seasonAverages));
-  const allEqual = values.every((value) => value === values[0]);
+  // A player missing the figure is excluded from the contest rather than
+  // treated as zero, which would hand the "best" badge to whoever happens
+  // to have been ingested most recently.
+  const comparableValues = values.filter((value): value is number => value !== null);
+  if (comparableValues.length < MIN_PLAYERS_FOR_COMPARISON) return new Set();
+
+  const allEqual = comparableValues.every((value) => value === comparableValues[0]);
   if (allEqual) return new Set();
 
   const higherIsBetter = row.higherIsBetter ?? true;
-  const best = higherIsBetter ? Math.max(...values) : Math.min(...values);
-  return new Set(values.flatMap((value, index) => (value === best ? [index] : [])));
+  const best = higherIsBetter ? Math.max(...comparableValues) : Math.min(...comparableValues);
+  return new Set(values.flatMap((value, index) => (value !== null && value === best ? [index] : [])));
 }
 
 function useSelectedPlayerIds(): [string[], (playerIds: string[]) => void] {
