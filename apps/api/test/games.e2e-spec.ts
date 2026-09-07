@@ -460,5 +460,79 @@ describe("Games API", () => {
       expect(responseAfterFutureGameExists.body.predictedScorers[0].predictedPoints).toBe(20);
       expect(responseAfterFutureGameExists.body.predictedScorers[0].gamesConsidered).toBe(1);
     });
+    // The correctness item the postseason plan called non-negotiable:
+    // adding postseason data must not quietly change existing predictions.
+    // Postseason games are the *most recent* games a player has, so they'd
+    // carry the heaviest recency weight of all if they leaked in here.
+    it("ignores postseason games when predicting scorers", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const lebron = await createPlayer(lakers.id, { firstName: "LeBron", lastName: "James" });
+
+      async function createPriorGameWithLebronScoring(
+        nbaGameId: string,
+        gameDate: Date,
+        seasonType: "REGULAR" | "PLAY_IN" | "PLAYOFFS" | "FINALS",
+        playoffRound: number | null,
+        points: number
+      ) {
+        const game = await testPrisma.game.create({
+          data: {
+            nbaGameId,
+            gameDate,
+            season: "2025-26",
+            seasonType,
+            playoffRound,
+            homeTeamId: lakers.id,
+            awayTeamId: celtics.id,
+            homeScore: 100,
+            awayScore: 98,
+          },
+        });
+        await testPrisma.playerGameStat.create({
+          data: {
+            playerId: lebron.id,
+            gameId: game.id,
+            minutes: 36,
+            points,
+            rebounds: 8,
+            assists: 8,
+            steals: 1,
+            blocks: 1,
+            turnovers: 3,
+            fieldGoalsMade: 10,
+            fieldGoalsAttempted: 20,
+            threesMade: 2,
+            threesAttempted: 5,
+            freeThrowsMade: 4,
+            freeThrowsAttempted: 4,
+          },
+        });
+        return game;
+      }
+
+      await createPriorGameWithLebronScoring("REG-PRIOR", new Date("2025-10-15"), "REGULAR", null, 20);
+      // Wildly different scoring in every postseason segment, all more
+      // recent than the regular-season game — if any of it reached the
+      // model, the prediction could not still come out at exactly 20.
+      await createPriorGameWithLebronScoring("PLAY-IN-PRIOR", new Date("2026-04-14"), "PLAY_IN", null, 90);
+      await createPriorGameWithLebronScoring("PLAYOFF-PRIOR", new Date("2026-04-20"), "PLAYOFFS", 1, 95);
+      await createPriorGameWithLebronScoring("FINALS-PRIOR", new Date("2026-06-03"), "FINALS", 4, 99);
+
+      const targetGame = await createPriorGameWithLebronScoring(
+        "POSTSEASON-TARGET",
+        new Date("2026-06-10"),
+        "FINALS",
+        4,
+        50
+      );
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${targetGame.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.predictedScorers).toHaveLength(1);
+      expect(response.body.predictedScorers[0].predictedPoints).toBe(20);
+      expect(response.body.predictedScorers[0].gamesConsidered).toBe(1);
+    });
   });
 });
