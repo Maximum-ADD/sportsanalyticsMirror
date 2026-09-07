@@ -43,7 +43,7 @@ structure the package's `expected_data` declares.
 
 import json
 
-from nba_api.stats.endpoints import boxscoretraditionalv3, leaguegamefinder, leaguegamelog
+from nba_api.stats.endpoints import boxscoreadvancedv3, boxscoretraditionalv3, leaguegamefinder, leaguegamelog
 
 from throttle import call_with_rate_limit
 
@@ -204,6 +204,12 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
                     "threes_attempted": stats["threePointersAttempted"],
                     "free_throws_made": stats["freeThrowsMade"],
                     "free_throws_attempted": stats["freeThrowsAttempted"],
+                    "offensive_rebounds": stats["reboundsOffensive"],
+                    "defensive_rebounds": stats["reboundsDefensive"],
+                    # Always a whole number in reality, but the API types it
+                    # as a float (-13.0). Converted explicitly rather than
+                    # left to Postgres's implicit cast into an INTEGER column.
+                    "plus_minus": _to_int_or_none(stats["plusMinusPoints"]),
                 }
             )
 
@@ -214,6 +220,67 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
         "away_score": box["awayTeam"]["statistics"]["points"],
         "players": players,
     }
+
+
+def fetch_game_advanced_boxscore(nba_game_id: str) -> dict[int, dict]:
+    """Fetches one game's advanced boxscore, keyed by nba_player_id.
+
+    Returns {nba_player_id: {usage_percentage, offensive_rating,
+    defensive_rating}} — the three figures that genuinely cannot be derived
+    from BoxScoreTraditionalV3's counting stats. Individual offensive and
+    defensive ratings need possession estimates and opponent context this
+    project's schema doesn't hold, so they are taken from the NBA's own
+    calculation rather than approximated locally.
+
+    Deliberately does NOT return true shooting %, effective FG% or
+    assist-to-turnover, which this endpoint also reports: those three were
+    verified to match a local derivation from the traditional boxscore
+    exactly (to three decimal places, across a full game), so deriving them
+    at request time avoids a second stored source of truth for the same
+    number. See StatsService.
+
+    Percentages come back as fractions (0.132 for 12.5% usage) and are
+    scaled to whole percents here, matching how every other percentage in
+    this project is stored and rendered.
+
+    Costs one extra call per game on top of fetch_game_boxscore — the
+    single largest addition to the ingestion call budget, see ingest.py.
+    """
+    response = call_with_rate_limit(lambda: boxscoreadvancedv3.BoxScoreAdvancedV3(game_id=nba_game_id, timeout=30))
+    box = json.loads(response.nba_response.get_json())["boxScoreAdvanced"]
+
+    advanced_by_nba_player_id: dict[int, dict] = {}
+    for team in (box["homeTeam"], box["awayTeam"]):
+        for player in team["players"]:
+            stats = player["statistics"]
+            advanced_by_nba_player_id[player["personId"]] = {
+                "usage_percentage": _to_whole_percent(stats["usagePercentage"]),
+                "offensive_rating": stats["offensiveRating"],
+                "defensive_rating": stats["defensiveRating"],
+            }
+    return advanced_by_nba_player_id
+
+
+def _to_int_or_none(value) -> int | None:
+    """Converts an API number to an int, passing None through untouched.
+
+    None means "not recorded", which is not the same as zero — a 0 plus/minus
+    is an even game, a null is a game we have no figure for.
+    """
+    if value is None:
+        return None
+    return int(value)
+
+
+def _to_whole_percent(fraction: float | None) -> float | None:
+    """Converts an API fraction (0.132) to a whole percent (13.2).
+
+    None passes through untouched — a player who didn't play has no usage
+    rate, which is not the same as a usage rate of zero.
+    """
+    if fraction is None:
+        return None
+    return round(fraction * 100, 1)
 
 
 def _parse_minutes_to_int(minutes: str) -> int:
@@ -289,18 +356,43 @@ def upsert_period_bookend_events(cursor, game_internal_id: str) -> None:
     )
 
 
+# Columns that may be absent from a caller's `stats` dict — either because
+# the advanced endpoint wasn't fetched for this game, or because the row is
+# being written by an older code path. Defaulted to None rather than 0 so a
+# missing figure stays distinguishable from a measured zero.
+OPTIONAL_STAT_KEYS = (
+    "offensive_rebounds",
+    "defensive_rebounds",
+    "plus_minus",
+    "usage_percentage",
+    "offensive_rating",
+    "defensive_rating",
+)
+
+
 def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: str, stats: dict) -> None:
-    """Upserts one PlayerGameStat row for (player, game)."""
+    """Upserts one PlayerGameStat row for (player, game).
+
+    `stats` carries the traditional boxscore figures plus, when an advanced
+    boxscore was fetched for this game, the advanced ones. Anything in
+    OPTIONAL_STAT_KEYS defaults to None when absent, so this stays callable
+    without them — a caller that skips the advanced endpoint writes real
+    counting stats and honest nulls rather than zeros.
+    """
+    stats = {**{key: None for key in OPTIONAL_STAT_KEYS}, **stats}
     cursor.execute(
         """
         INSERT INTO "PlayerGameStat"
             ("id", "playerId", "gameId", "minutes", "points", "rebounds", "assists", "steals", "blocks",
              "turnovers", "fieldGoalsMade", "fieldGoalsAttempted", "threesMade", "threesAttempted",
-             "freeThrowsMade", "freeThrowsAttempted")
+             "freeThrowsMade", "freeThrowsAttempted", "offensiveRebounds", "defensiveRebounds", "plusMinus",
+             "usagePercentage", "offensiveRating", "defensiveRating")
         VALUES
             (gen_random_uuid(), %(player_id)s, %(game_id)s, %(minutes)s, %(points)s, %(rebounds)s, %(assists)s,
              %(steals)s, %(blocks)s, %(turnovers)s, %(field_goals_made)s, %(field_goals_attempted)s,
-             %(threes_made)s, %(threes_attempted)s, %(free_throws_made)s, %(free_throws_attempted)s)
+             %(threes_made)s, %(threes_attempted)s, %(free_throws_made)s, %(free_throws_attempted)s,
+             %(offensive_rebounds)s, %(defensive_rebounds)s, %(plus_minus)s,
+             %(usage_percentage)s, %(offensive_rating)s, %(defensive_rating)s)
         ON CONFLICT ("playerId", "gameId") DO UPDATE SET
             "minutes" = EXCLUDED."minutes",
             "points" = EXCLUDED."points",
@@ -314,7 +406,15 @@ def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: s
             "threesMade" = EXCLUDED."threesMade",
             "threesAttempted" = EXCLUDED."threesAttempted",
             "freeThrowsMade" = EXCLUDED."freeThrowsMade",
-            "freeThrowsAttempted" = EXCLUDED."freeThrowsAttempted"
+            "freeThrowsAttempted" = EXCLUDED."freeThrowsAttempted",
+            "offensiveRebounds" = EXCLUDED."offensiveRebounds",
+            "defensiveRebounds" = EXCLUDED."defensiveRebounds",
+            "plusMinus" = EXCLUDED."plusMinus",
+            -- COALESCE so a re-run that skips the advanced endpoint keeps
+            -- previously-ingested advanced figures instead of nulling them.
+            "usagePercentage" = COALESCE(EXCLUDED."usagePercentage", "PlayerGameStat"."usagePercentage"),
+            "offensiveRating" = COALESCE(EXCLUDED."offensiveRating", "PlayerGameStat"."offensiveRating"),
+            "defensiveRating" = COALESCE(EXCLUDED."defensiveRating", "PlayerGameStat"."defensiveRating")
         """,
         {"player_id": player_internal_id, "game_id": game_internal_id, **stats},
     )

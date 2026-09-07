@@ -10,20 +10,24 @@ was designed around):
     for the full league) — see player_bios.py's module docstring.
   - Recent games: 30 calls (one LeagueGameFinder per team, kept to each
     team's newest GAMES_PER_TEAM games — see games.py's module docstring).
-  - Boxscores: up to 30 * GAMES_PER_TEAM calls, deduplicated by game id
-    (two teams sharing a game only cost one boxscore call) — in practice
-    well under that since most of a team's recent 15 games are against
-    other teams whose own recent 15 also include that game.
+  - Boxscores: TWO calls per unique game id — BoxScoreTraditionalV3 for
+    counting stats and BoxScoreAdvancedV3 for usage rate and offensive/
+    defensive rating, which cannot be derived from counting stats (see
+    games.py). Up to 2 * 30 * GAMES_PER_TEAM, deduplicated by game id (two
+    teams sharing a game only cost one pair) — in practice well under that
+    since most of a team's recent 15 games are against other teams whose
+    own recent 15 also include that game.
   - Postseason game ids: 2 calls (one leaguewide LeagueGameLog per
     segment — play-in and playoffs — instead of another 60 per-team calls;
     see games.py's fetch_season_segment_games).
-  - Postseason boxscores: ~90 calls (verified live for 2025-26: 6 play-in
-    games and 85 playoff games, Finals included). Deduplicated against
-    nothing else — postseason ids don't overlap the regular-season ones.
-  - Total: roughly 900-1050 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
-    plus retries, expect this to take on the order of 25-35 minutes —
-    player bios remain the single largest phase by call count, with the
-    postseason adding only about 5 minutes on top.
+  - Postseason boxscores: ~180 calls (verified live for 2025-26: 6 play-in
+    games and 85 playoff games, Finals included, at two calls each).
+    Deduplicated against nothing else — postseason ids don't overlap the
+    regular-season ones.
+  - Total: roughly 1500-1700 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
+    plus retries, expect this to take on the order of 40-50 minutes.
+    Boxscores are now the largest phase by call count, having overtaken
+    player bios when the advanced endpoint doubled them.
 
 Must run from a real residential network, not a cloud host — see
 README.md for why (stats.nba.com blocks cloud-provider IP ranges; this is
@@ -35,6 +39,7 @@ from games import (
     NBA_SEASON_TYPE_PLAY_IN,
     NBA_SEASON_TYPE_PLAYOFFS,
     classify_game,
+    fetch_game_advanced_boxscore,
     fetch_game_boxscore,
     fetch_recent_games,
     fetch_season_segment_games,
@@ -134,10 +139,25 @@ def ingest_games_and_stats(
     a re-run always lands a game in the same segment. Everything below
     classification — boxscores, period bookends, per-player stat rows — is
     already segment-independent.
+
+    Two boxscore calls per game: the traditional one for counting stats,
+    and the advanced one for usage rate and offensive/defensive rating,
+    which cannot be derived from counting stats (see games.py). If the
+    advanced call fails, the game is still written with its traditional
+    figures and null advanced ones rather than being lost — a missing usage
+    rate is worth far less than a missing game.
     """
     skipped_unknown_players = 0
+    games_missing_advanced_stats = 0
     for nba_game_id, game_date in game_date_by_nba_game_id.items():
         boxscore = fetch_game_boxscore(nba_game_id)
+
+        try:
+            advanced_by_nba_player_id = fetch_game_advanced_boxscore(nba_game_id)
+        except Exception as error:  # noqa: BLE001 - any failure here is non-fatal by design
+            print(f"  Advanced boxscore unavailable for game {nba_game_id} ({error}); writing traditional stats only.")
+            advanced_by_nba_player_id = {}
+            games_missing_advanced_stats += 1
 
         home_team_id = team_id_by_nba_id.get(boxscore["home_team_nba_id"])
         away_team_id = team_id_by_nba_id.get(boxscore["away_team_nba_id"])
@@ -169,14 +189,13 @@ def ingest_games_and_stats(
                 # stat row rather than failing the whole game.
                 skipped_unknown_players += 1
                 continue
-            upsert_player_game_stat(
-                cursor,
-                player_internal_id,
-                game_internal_id,
-                {key: value for key, value in player_stats.items() if key != "nba_player_id"},
-            )
+            traditional_stats = {key: value for key, value in player_stats.items() if key != "nba_player_id"}
+            advanced_stats = advanced_by_nba_player_id.get(player_stats["nba_player_id"], {})
+            upsert_player_game_stat(cursor, player_internal_id, game_internal_id, {**traditional_stats, **advanced_stats})
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
+    if games_missing_advanced_stats:
+        print(f"{games_missing_advanced_stats} games have no advanced stats (usage/ratings left null).")
     if skipped_unknown_players:
         print(f"Skipped {skipped_unknown_players} stat rows for players not on any ingested roster.")
 
