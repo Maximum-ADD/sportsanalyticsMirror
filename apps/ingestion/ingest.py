@@ -1,6 +1,6 @@
 """Populates Postgres with real NBA data via nba_api: all 30 teams, their
-current rosters, and each team's most recent games with real per-player
-boxscores.
+current rosters, each team's most recent games with real per-player
+boxscores, and the season's full postseason (play-in, playoffs, finals).
 
 Call budget (see README.md for the rate-limit/reliability background this
 was designed around):
@@ -14,10 +14,16 @@ was designed around):
     (two teams sharing a game only cost one boxscore call) — in practice
     well under that since most of a team's recent 15 games are against
     other teams whose own recent 15 also include that game.
-  - Total: roughly 800-950 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
-    plus retries, expect this to take on the order of 20-30 minutes —
-    roughly double the pre-player-bios estimate, since bios are now the
-    single largest phase by call count.
+  - Postseason game ids: 2 calls (one leaguewide LeagueGameLog per
+    segment — play-in and playoffs — instead of another 60 per-team calls;
+    see games.py's fetch_season_segment_games).
+  - Postseason boxscores: ~90 calls (verified live for 2025-26: 6 play-in
+    games and 85 playoff games, Finals included). Deduplicated against
+    nothing else — postseason ids don't overlap the regular-season ones.
+  - Total: roughly 900-1050 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
+    plus retries, expect this to take on the order of 25-35 minutes —
+    player bios remain the single largest phase by call count, with the
+    postseason adding only about 5 minutes on top.
 
 Must run from a real residential network, not a cloud host — see
 README.md for why (stats.nba.com blocks cloud-provider IP ranges; this is
@@ -25,7 +31,17 @@ a documented, repeated community pain point, not a guess).
 """
 
 from db import get_connection
-from games import fetch_game_boxscore, fetch_recent_games, upsert_game, upsert_period_bookend_events, upsert_player_game_stat
+from games import (
+    NBA_SEASON_TYPE_PLAY_IN,
+    NBA_SEASON_TYPE_PLAYOFFS,
+    classify_game,
+    fetch_game_boxscore,
+    fetch_recent_games,
+    fetch_season_segment_games,
+    upsert_game,
+    upsert_period_bookend_events,
+    upsert_player_game_stat,
+)
 from player_bios import fetch_player_bio, upsert_player_bio
 from rosters import fetch_team_roster, upsert_players
 from teams import fetch_all_teams, upsert_teams
@@ -81,13 +97,44 @@ def collect_recent_game_dates(team_id_by_nba_id: dict[int, str]) -> dict[str, st
     return game_date_by_nba_game_id
 
 
+def collect_postseason_game_dates() -> dict[str, str]:
+    """Fetches every play-in and playoff game of the season in two API calls.
+
+    Two leaguewide LeagueGameLog calls (one per segment) rather than the
+    30-call per-team loop collect_recent_game_dates uses — the postseason
+    is small and we want all of it, not a recency window. See
+    fetch_season_segment_games.
+
+    Returns the same deduplicated nbaGameId -> game_date map as
+    collect_recent_game_dates, so both feed ingest_games_and_stats
+    identically. The play-in and playoff id spaces don't overlap (different
+    id prefixes), so merging the two segments into one map is safe.
+    """
+    game_date_by_nba_game_id: dict[str, str] = {}
+    for nba_season_type in (NBA_SEASON_TYPE_PLAY_IN, NBA_SEASON_TYPE_PLAYOFFS):
+        games = fetch_season_segment_games(SEASON, nba_season_type)
+        for game in games:
+            game_date_by_nba_game_id[game["nba_game_id"]] = game["game_date"]
+        print(f"  Found {len(games)} {nba_season_type} games.")
+    print(f"{len(game_date_by_nba_game_id)} unique postseason games to fetch boxscores for.")
+    return game_date_by_nba_game_id
+
+
 def ingest_games_and_stats(
     cursor,
     game_date_by_nba_game_id: dict[str, str],
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
 ) -> None:
-    """Fetches and writes one Game + its PlayerGameStat rows per game id."""
+    """Fetches and writes one Game + its PlayerGameStat rows per game id.
+
+    Season-type agnostic: each game's segment (regular season, play-in,
+    playoffs, finals) is derived from its own game id by classify_game(),
+    so this runs unchanged over a regular-season or a postseason batch and
+    a re-run always lands a game in the same segment. Everything below
+    classification — boxscores, period bookends, per-player stat rows — is
+    already segment-independent.
+    """
     skipped_unknown_players = 0
     for nba_game_id, game_date in game_date_by_nba_game_id.items():
         boxscore = fetch_game_boxscore(nba_game_id)
@@ -98,6 +145,7 @@ def ingest_games_and_stats(
             print(f"  Skipping game {nba_game_id}: a team in this game isn't one of the ingested 30.")
             continue
 
+        season_type, playoff_round = classify_game(nba_game_id)
         game_internal_id = upsert_game(
             cursor,
             nba_game_id,
@@ -107,6 +155,8 @@ def ingest_games_and_stats(
             away_team_id,
             boxscore["home_score"],
             boxscore["away_score"],
+            season_type,
+            playoff_round,
         )
         upsert_period_bookend_events(cursor, game_internal_id)
 
@@ -150,6 +200,16 @@ def main() -> None:
 
         with connection.cursor() as cursor:
             ingest_games_and_stats(cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+        connection.commit()
+
+        # Postseason runs last and commits separately, so a failure here
+        # leaves a complete regular season behind rather than rolling one
+        # back — and, like every other phase, it's idempotent and can be
+        # re-run on its own.
+        postseason_game_dates = collect_postseason_game_dates()
+
+        with connection.cursor() as cursor:
+            ingest_games_and_stats(cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id)
         connection.commit()
 
         print("Ingestion complete.")
