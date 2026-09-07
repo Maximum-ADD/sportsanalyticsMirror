@@ -28,22 +28,20 @@ transient failures. Don't lower `RATE_LIMIT_DELAY_SECONDS` without a good
 reason — this endpoint is unofficial and undocumented, and being
 aggressive risks a temporary block.
 
-**Expect this to take 40-50 minutes.** Teams are free (bundled static
+**Expect this to take 25-35 minutes.** Teams are free (bundled static
 data), rosters are 30 calls, player bios are the largest phase by call
 count, and boxscores are the bulk of the remaining runtime — see
 `ingest.py`'s module docstring for the exact call-budget breakdown.
 
-Boxscores are now the largest phase, having overtaken player bios: each
-game costs **two** calls, `BoxScoreTraditionalV3` for counting stats and
-`BoxScoreAdvancedV3` for usage rate and offensive/defensive ratings, which
-can't be derived from counting stats (see `docs/PROJECT_OVERVIEW.md`). The
-postseason phase adds roughly 10 minutes on top: 2 leaguewide
-`LeagueGameLog` calls for the game ids, then ~180 boxscore calls.
+Plus/minus and the advanced figures (usage rate, offensive/defensive
+ratings) come from leaguewide `PlayerGameLogs` — 2 calls per season
+segment, not one per game. See `player_game_logs.py` for why that endpoint
+rather than `BoxScoreAdvancedV3`: 6 calls for a whole season instead of
+~900. The postseason phase adds roughly 5 minutes on top.
 
-If the advanced call fails for a game, that game is still written with its
-traditional figures and null advanced ones rather than being lost — a
-missing usage rate is worth far less than a missing game. Re-running fills
-them in.
+A player-game the feed doesn't carry keeps null advanced figures rather
+than blocking ingestion. Most of those are DNPs, which genuinely have no
+usage rate.
 
 **Postseason classification is derived from game ids, not endpoints.**
 `classify_game()` reads a game's segment out of its NBA game id (play-in
@@ -96,9 +94,18 @@ teams, rosters and games, so you don't pay for the whole pipeline to redo
 one step:
 
 ```bash
-python ingest_postseason.py     # play-in, playoffs and finals only (~10 min)
-python backfill_player_bios.py  # CommonPlayerInfo bio fields only
+python ingest_postseason.py       # play-in, playoffs and finals only (~5 min)
+python backfill_advanced_stats.py # plus/minus, usage and ratings only (~seconds)
+python backfill_player_bios.py    # CommonPlayerInfo bio fields only
 ```
+
+`backfill_advanced_stats.py` fills the plus/minus, rebound-split and
+advanced-rating columns on a database populated before those columns
+existed, including production. Use it rather than re-running `ingest.py`
+for that purpose: the regular-season phase is recency-windowed to each
+team's newest 15 games (~400 unique), so a re-run would leave the older
+two thirds of a full season's ~1,240 games null forever. The backfill
+instead walks the games already in the database.
 
 `ingest_postseason.py` is what to use when adding the postseason to a
 database populated before `Game.seasonType` existed — including

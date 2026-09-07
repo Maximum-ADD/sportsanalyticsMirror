@@ -229,9 +229,17 @@ official definitions.
 
 | Stat | Source | Why not derived |
 |---|---|---|
-| Plus/minus | `BoxScoreTraditionalV3` | An observation, not a calculation |
-| Usage % | `BoxScoreAdvancedV3` | Needs team possessions while on court |
-| Offensive/defensive rating | `BoxScoreAdvancedV3` | Need possession estimates and opponent context this schema doesn't hold |
+| Plus/minus | `PlayerGameLogs` (Base) | An observation, not a calculation |
+| Usage % | `PlayerGameLogs` (Advanced) | Needs team possessions while on court |
+| Offensive/defensive rating | `PlayerGameLogs` (Advanced) | Need possession estimates and opponent context this schema doesn't hold |
+
+`PlayerGameLogs` is leaguewide and season-scoped: one call returns every
+player-game row for a whole segment (26,651 for the 2025-26 regular
+season). Two measure types per segment covers the lot, so the whole season
+including postseason costs 6 calls rather than the ~900 a per-game
+boxscore endpoint would need. `apps/ingestion/backfill_advanced_stats.py`
+uses the same feed to fill these columns on a database populated before
+they existed.
 
 Computing individual ratings from the columns here would be inventing a
 statistic rather than deriving one — the same call `four_factors.py` makes
