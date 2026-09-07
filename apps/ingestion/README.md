@@ -79,6 +79,29 @@ Safe to re-run: every write is an upsert keyed on the real NBA id
 existing rows (rosters change, more recent games become available) rather
 than creating duplicates.
 
+### Single-phase scripts
+
+Two phases can be run on their own against a database that already has
+teams, rosters and games, so you don't pay for the whole pipeline to redo
+one step:
+
+```bash
+python ingest_postseason.py     # play-in, playoffs and finals only (~5 min)
+python backfill_player_bios.py  # CommonPlayerInfo bio fields only
+```
+
+`ingest_postseason.py` is what to use when adding the postseason to a
+database populated before `Game.seasonType` existed — including
+production. It reads the team/player id maps straight out of the database
+instead of re-fetching them, so it makes no calls beyond the postseason
+data itself: 2 leaguewide `LeagueGameLog` calls plus ~90 boxscores.
+Running the full `ingest.py` instead would re-fetch every player bio
+(~450-500 calls) to reach the same result.
+
+Existing regular-season rows are untouched either way — the migration
+defaults them to `seasonType = REGULAR`, which is accurate, since they were
+all ingested with `season_type_nullable="Regular Season"`.
+
 After it finishes, re-run the downstream Python services so their outputs
 reflect the real data instead of the old mock dataset:
 
