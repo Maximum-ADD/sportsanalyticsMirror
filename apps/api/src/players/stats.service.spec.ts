@@ -13,6 +13,8 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     awayTeamId: "team-away",
     homeScore: 100,
     awayScore: 98,
+    seasonType: "REGULAR",
+    playoffRound: null,
     ...overrides,
   };
 }
@@ -146,9 +148,17 @@ describe("StatsService", () => {
 
       const averages = await statsService.getPlayerSeasonAverages("player-1");
 
-      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1");
+      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "REGULAR");
       expect(averages.gamesPlayed).toBe(1);
       expect(averages.pointsPerGame).toBe(10);
+    });
+
+    it("asks PlayersService for the requested segment only", async () => {
+      vi.mocked(playersService.getPlayerSeasonStats).mockResolvedValue([makeStat({ points: 30 })] as never);
+
+      await statsService.getPlayerSeasonAverages("player-1", "FINALS");
+
+      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "FINALS");
     });
   });
 
@@ -160,6 +170,52 @@ describe("StatsService", () => {
       const log = await statsService.getPlayerGameLog("player-1");
 
       expect(log).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 15 }]);
+    });
+
+    it("asks PlayersService for the requested segment only", async () => {
+      vi.mocked(playersService.getPlayerSeasonStats).mockResolvedValue([] as never);
+
+      await statsService.getPlayerGameLog("player-1", "PLAY_IN");
+
+      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "PLAY_IN");
+    });
+  });
+
+  describe("getPlayerSeasonSplits", () => {
+    it("derives one independent season line per segment", async () => {
+      // A different points total per segment, so a split that silently
+      // reused another segment's rows would show up as an equal average
+      // rather than passing unnoticed.
+      const pointsBySeasonType: Record<string, number> = {
+        REGULAR: 20,
+        PLAY_IN: 12,
+        PLAYOFFS: 26,
+        FINALS: 31,
+      };
+      vi.mocked(playersService.getPlayerSeasonStats).mockImplementation((_playerId, seasonType) =>
+        Promise.resolve([makeStat({ points: pointsBySeasonType[seasonType ?? "REGULAR"] })] as never)
+      );
+
+      const splits = await statsService.getPlayerSeasonSplits("player-1");
+
+      expect(splits.REGULAR.pointsPerGame).toBe(20);
+      expect(splits.PLAY_IN.pointsPerGame).toBe(12);
+      expect(splits.PLAYOFFS.pointsPerGame).toBe(26);
+      expect(splits.FINALS.pointsPerGame).toBe(31);
+    });
+
+    it("returns a zeroed line for a segment the player did not appear in", async () => {
+      // The comparison view renders a fixed set of columns, so "didn't
+      // play" has to come back as gamesPlayed: 0 rather than a missing key.
+      vi.mocked(playersService.getPlayerSeasonStats).mockImplementation((_playerId, seasonType) =>
+        Promise.resolve((seasonType === "REGULAR" ? [makeStat({ points: 20 })] : []) as never)
+      );
+
+      const splits = await statsService.getPlayerSeasonSplits("player-1");
+
+      expect(splits.REGULAR.gamesPlayed).toBe(1);
+      expect(splits.FINALS.gamesPlayed).toBe(0);
+      expect(splits.FINALS.pointsPerGame).toBe(0);
     });
   });
 });

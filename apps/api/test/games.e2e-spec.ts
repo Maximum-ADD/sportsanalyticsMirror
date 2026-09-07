@@ -188,6 +188,69 @@ describe("Games API", () => {
       expect(response.body.total).toBe(3);
       expect(response.body.data).toHaveLength(1);
     });
+
+    describe("?seasonType=", () => {
+      async function seedOneGamePerSegment() {
+        const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+        const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+
+        const segments = [
+          { nbaGameId: "REGULAR-GAME", seasonType: "REGULAR" as const, playoffRound: null },
+          { nbaGameId: "PLAY-IN-GAME", seasonType: "PLAY_IN" as const, playoffRound: null },
+          { nbaGameId: "PLAYOFF-GAME", seasonType: "PLAYOFFS" as const, playoffRound: 1 },
+          { nbaGameId: "FINALS-GAME", seasonType: "FINALS" as const, playoffRound: 4 },
+        ];
+        for (const segment of segments) {
+          await testPrisma.game.create({
+            data: {
+              ...segment,
+              gameDate: new Date("2026-01-01"),
+              season: "2025-26",
+              homeTeamId: lakers.id,
+              awayTeamId: celtics.id,
+              homeScore: 100,
+              awayScore: 98,
+            },
+          });
+        }
+      }
+
+      it.each([
+        ["REGULAR", "REGULAR-GAME"],
+        ["PLAY_IN", "PLAY-IN-GAME"],
+        ["PLAYOFFS", "PLAYOFF-GAME"],
+        ["FINALS", "FINALS-GAME"],
+      ])("returns only %s games", async (seasonType, expectedNbaGameId) => {
+        await seedOneGamePerSegment();
+
+        const response = await request(app.getHttpServer()).get(`/v1/games?seasonType=${seasonType}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(1);
+        expect(response.body.data[0].nbaGameId).toBe(expectedNbaGameId);
+        expect(response.body.data[0].seasonType).toBe(seasonType);
+      });
+
+      // Unlike the player-stats endpoints, this list defaults to *no*
+      // filter rather than REGULAR — a chronological schedule that runs
+      // through the postseason is the useful thing here, and nothing is
+      // being averaged across segments. See GamesService.getGames.
+      it("returns every segment when no seasonType is given", async () => {
+        await seedOneGamePerSegment();
+
+        const response = await request(app.getHttpServer()).get("/v1/games");
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(4);
+      });
+
+      it("rejects an unrecognised segment instead of silently serving every game", async () => {
+        const response = await request(app.getHttpServer()).get("/v1/games?seasonType=finals");
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe("BAD_REQUEST");
+      });
+    });
   });
 
   describe("GET /v1/games/:id/prediction", () => {
@@ -460,6 +523,7 @@ describe("Games API", () => {
       expect(responseAfterFutureGameExists.body.predictedScorers[0].predictedPoints).toBe(20);
       expect(responseAfterFutureGameExists.body.predictedScorers[0].gamesConsidered).toBe(1);
     });
+
     // The correctness item the postseason plan called non-negotiable:
     // adding postseason data must not quietly change existing predictions.
     // Postseason games are the *most recent* games a player has, so they'd
