@@ -4,8 +4,8 @@ A small Python service, separate from the NestJS API, that pulls **real**
 NBA data from [`nba_api`](https://github.com/swar/nba_api) (a wrapper
 around stats.nba.com's endpoints) and writes it into the same Postgres
 database Prisma/NestJS manages: all 30 current NBA teams, their current
-rosters, and each team's ~15 most recent games with real per-player
-boxscores.
+rosters, each team's ~15 most recent games with real per-player boxscores,
+and the season's full postseason (play-in, playoffs and Finals).
 
 This is the real ingestion pipeline the root `README.md`/`PROJECT_OVERVIEW.md`
 described as a known gap — until now the only data in this database was
@@ -28,9 +28,23 @@ transient failures. Don't lower `RATE_LIMIT_DELAY_SECONDS` without a good
 reason — this endpoint is unofficial and undocumented, and being
 aggressive risks a temporary block.
 
-**Expect this to take 10-15 minutes.** Teams are free (bundled static
-data), rosters are 30 calls, and boxscores are the bulk of the runtime —
-see `ingest.py`'s module docstring for the exact call-budget breakdown.
+**Expect this to take 25-35 minutes.** Teams are free (bundled static
+data), rosters are 30 calls, player bios are the largest phase by call
+count, and boxscores are the bulk of the remaining runtime — see
+`ingest.py`'s module docstring for the exact call-budget breakdown. The
+postseason phase adds roughly 5 minutes: 2 leaguewide `LeagueGameLog`
+calls for the game ids, then ~90 boxscores.
+
+**Postseason classification is derived from game ids, not endpoints.**
+`classify_game()` reads a game's segment out of its NBA game id (play-in
+games carry a `005` prefix; playoff ids carry the round in digit 7, where
+round 4 is the Finals) rather than trusting whichever endpoint returned it.
+That keeps re-runs consistent and means a game can't be filed differently
+by two phases. Both the `"PlayIn"`/`"Playoffs"` season-type spellings and
+the id layout were verified live against stats.nba.com for 2025-26 — the
+spellings have changed between `nba_api` releases, so check them against
+the installed version if you bump it. `CommonPlayoffSeries` gives round
+numbers directly if the id layout ever stops holding.
 
 **Run this *before* `npm run prisma:seed`, not after — or don't run
 prisma:seed again at all once you've ingested real data.** `seed.ts`

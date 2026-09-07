@@ -103,15 +103,23 @@ This is a base scaffold, not the finished product. What's wired up:
   rows, and per-game `PlayerGameStat` boxscores. Season averages
   (`apps/api/src/services/statsService.ts`) are computed from those boxscore
   rows at request time — nothing is stored as a pre-computed total.
+- **Season segments**: every `Game` carries a `seasonType` (regular season,
+  play-in, playoffs, finals), and the player/game endpoints filter on it, so
+  a postseason view never shows regular-season figures or vice versa. The
+  prediction and optimizer models are deliberately regular-season only —
+  see `docs/PROJECT_OVERVIEW.md` for why.
 - **Ingestion**: `prisma/seed.ts` still seeds a handful of mock players/games
   for local dev, but `apps/ingestion` now pulls real NBA data (all 30
   current teams, their rosters, and each team's ~15 most recent games with
   real boxscores) from `nba_api` into the same Postgres database — a
   separate Python process, with the NestJS API remaining the only thing
-  that talks to the database over HTTP-facing requests.
+  that talks to the database over HTTP-facing requests. A postseason phase
+  additionally ingests the season's play-in, playoff and Finals games.
 - **Frontend**: dark-themed dashboard shell — sidebar nav, players list,
   and a player profile page (stat tiles, a traits radar chart, a points
-  trend line chart) built with Recharts + Tailwind.
+  trend line chart, and a regular-season-vs-postseason comparison) built
+  with Recharts + Tailwind. A segment selector on the player, compare and
+  predictions pages keeps its choice in the URL (`?segment=playoffs`).
 
 ## What's not done yet (follow-up tasks for the team)
 
