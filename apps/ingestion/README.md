@@ -28,12 +28,22 @@ transient failures. Don't lower `RATE_LIMIT_DELAY_SECONDS` without a good
 reason — this endpoint is unofficial and undocumented, and being
 aggressive risks a temporary block.
 
-**Expect this to take 25-35 minutes.** Teams are free (bundled static
+**Expect this to take 40-50 minutes.** Teams are free (bundled static
 data), rosters are 30 calls, player bios are the largest phase by call
 count, and boxscores are the bulk of the remaining runtime — see
-`ingest.py`'s module docstring for the exact call-budget breakdown. The
-postseason phase adds roughly 5 minutes: 2 leaguewide `LeagueGameLog`
-calls for the game ids, then ~90 boxscores.
+`ingest.py`'s module docstring for the exact call-budget breakdown.
+
+Boxscores are now the largest phase, having overtaken player bios: each
+game costs **two** calls, `BoxScoreTraditionalV3` for counting stats and
+`BoxScoreAdvancedV3` for usage rate and offensive/defensive ratings, which
+can't be derived from counting stats (see `docs/PROJECT_OVERVIEW.md`). The
+postseason phase adds roughly 10 minutes on top: 2 leaguewide
+`LeagueGameLog` calls for the game ids, then ~180 boxscore calls.
+
+If the advanced call fails for a game, that game is still written with its
+traditional figures and null advanced ones rather than being lost — a
+missing usage rate is worth far less than a missing game. Re-running fills
+them in.
 
 **Postseason classification is derived from game ids, not endpoints.**
 `classify_game()` reads a game's segment out of its NBA game id (play-in
@@ -86,7 +96,7 @@ teams, rosters and games, so you don't pay for the whole pipeline to redo
 one step:
 
 ```bash
-python ingest_postseason.py     # play-in, playoffs and finals only (~5 min)
+python ingest_postseason.py     # play-in, playoffs and finals only (~10 min)
 python backfill_player_bios.py  # CommonPlayerInfo bio fields only
 ```
 
