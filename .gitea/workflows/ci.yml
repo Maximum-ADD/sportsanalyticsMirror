@@ -94,8 +94,12 @@ jobs:
     timeout-minutes: 20
 
     # The API e2e suite needs a real, disposable Postgres database.
-    # Jobs run inside containers on this runner, so tests reach the service by
-    # its `postgres` hostname and normal container port rather than localhost.
+    # This runner runs jobs with `network: host` (shared across every group on
+    # the runner, not just this repo), so there's no bridge network giving us
+    # a `postgres` hostname alias, and the default 5432 is exactly the port
+    # every other group's default Postgres setup also reaches for — collide
+    # with any of them and the service fails to bind before it ever starts.
+    # Reached via localhost on a non-default port to dodge that.
     services:
       postgres:
         image: postgres:16-alpine
@@ -103,6 +107,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: nba_analytics_test
+          PGPORT: 55432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -110,7 +115,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nba_analytics_test?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@localhost:55432/nba_analytics_test?schema=public
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
       WEB_ORIGIN: http://localhost:5173
