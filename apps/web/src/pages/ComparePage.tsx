@@ -10,7 +10,9 @@ import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { cn } from "@/lib/utils";
 import { NO_VALUE, formatAge, formatHeight } from "@/lib/playerBio";
-import type { Player, PlayerComparisonEntry, SeasonAverages } from "@/types/nba";
+import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
+import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
+import type { Player, PlayerComparisonEntry, SeasonAverages, SeasonType } from "@/types/nba";
 
 const MAX_PLAYERS = 4;
 const MIN_PLAYERS_FOR_COMPARISON = 2;
@@ -219,6 +221,21 @@ function useSelectedPlayerIds(): [string[], (playerIds: string[]) => void] {
   return [playerIds, setPlayerIds];
 }
 
+// Same ?segment= URL parameter the player profile uses, so following the
+// "Compare" link from a postseason view lands on a postseason comparison.
+function useSelectedSeasonType(): [SeasonType, (seasonType: SeasonType) => void] {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const seasonType = parseUrlSegment(searchParams.get("segment"));
+
+  function selectSeasonType(nextSeasonType: SeasonType) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("segment", toUrlSegment(nextSeasonType));
+    setSearchParams(nextParams, { replace: true });
+  }
+
+  return [seasonType, selectSeasonType];
+}
+
 // The label column plus one equal column per slot, so the header tiles, the
 // group headings and every stat row share the same column edges.
 function gridStyle(slotCount: number) {
@@ -316,13 +333,18 @@ function LoadingSlotTile() {
 
 export function ComparePage() {
   const [playerIds, setPlayerIds] = useSelectedPlayerIds();
+  const [seasonType, selectSeasonType] = useSelectedSeasonType();
   // Extra empty columns the user asked for with "Add another player", beyond
   // the two the comparison always shows. Consumed as they get filled.
   const [extraSlots, setExtraSlots] = useState(0);
 
+  // seasonType is in the query key so each segment caches separately —
+  // comparing two players inside a playoffs view has to compare their
+  // playoff lines, or the comparison answers a different question than the
+  // one on screen.
   const comparisonQuery = useQuery({
-    queryKey: ["playerComparison", playerIds],
-    queryFn: () => fetchPlayerComparison(playerIds),
+    queryKey: ["playerComparison", playerIds, seasonType],
+    queryFn: () => fetchPlayerComparison(playerIds, seasonType),
     enabled: playerIds.length >= MIN_PLAYERS_FOR_COMPARISON,
   });
 
@@ -331,11 +353,11 @@ export function ComparePage() {
   // renders while the user picks an opponent.
   const lonePlayerId = playerIds.length === 1 ? playerIds[0] : undefined;
   const lonePlayerQuery = useQuery({
-    queryKey: ["playerComparison", "lone", lonePlayerId],
+    queryKey: ["playerComparison", "lone", lonePlayerId, seasonType],
     queryFn: async (): Promise<PlayerComparisonEntry> => {
       const [player, stats] = await Promise.all([
         fetchPlayer(lonePlayerId!),
-        fetchPlayerStats(lonePlayerId!),
+        fetchPlayerStats(lonePlayerId!, seasonType),
       ]);
       return { player, seasonAverages: stats.seasonAverages };
     },
@@ -382,8 +404,12 @@ export function ComparePage() {
             Player comparison
           </h1>
           <p className="mt-1 text-xs text-text-muted">
-            Compare up to {MAX_PLAYERS} players side by side on their season averages.
+            Compare up to {MAX_PLAYERS} players side by side on their {formatSeasonType(seasonType).toLowerCase()}{" "}
+            averages.
           </p>
+          <div className="mt-3 flex justify-center">
+            <SeasonSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
+          </div>
         </div>
       </div>
 

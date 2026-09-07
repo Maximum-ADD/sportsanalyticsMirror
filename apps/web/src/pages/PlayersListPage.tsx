@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchPlayers, fetchPlayerStats, fetchTeams } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { Pagination } from "@/components/Pagination";
@@ -8,13 +8,30 @@ import { PlayersFilterBar, type PlayerSortKey } from "@/components/PlayersFilter
 import { TeamBadge } from "@/components/TeamBadge";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
+import type { SeasonType } from "@/types/nba";
 
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_IN_MILLISECONDS = 300;
 
 export function PlayersListPage() {
   const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Same ?segment= parameter the player profile and compare pages use, so
+  // the selection survives a reload and a link into a postseason list is
+  // shareable.
+  const seasonType = parseUrlSegment(searchParams.get("segment"));
+  const isPostseasonSegment = seasonType !== "REGULAR";
+
+  function selectSeasonType(nextSeasonType: SeasonType) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("segment", toUrlSegment(nextSeasonType));
+    setSearchParams(nextParams, { replace: true });
+    setPage(1);
+  }
   const [searchTerm, setSearchTerm] = useState("");
   const [teamId, setTeamId] = useState<string | undefined>(undefined);
   const [position, setPosition] = useState<string | undefined>(undefined);
@@ -23,8 +40,13 @@ export function PlayersListPage() {
 
   const teamsQuery = useQuery({ queryKey: ["teams"], queryFn: () => fetchTeams({ pageSize: 100 }) });
 
+  // In a postseason segment the list is narrowed to players who actually
+  // appeared in it (`participated`), so an eliminated team's bench doesn't
+  // pad the list with players who have no figures to show. The regular
+  // season is left unfiltered: essentially everyone played, so the filter
+  // would only cost a join to remove nobody.
   const playersQuery = useQuery({
-    queryKey: ["players", { page, teamId, position, search: debouncedSearchTerm }],
+    queryKey: ["players", { page, teamId, position, search: debouncedSearchTerm, seasonType }],
     queryFn: () =>
       fetchPlayers({
         page,
@@ -32,6 +54,8 @@ export function PlayersListPage() {
         teamId,
         position,
         search: debouncedSearchTerm || undefined,
+        seasonType,
+        ...(isPostseasonSegment ? { participated: true } : {}),
       }),
   });
 
@@ -43,8 +67,8 @@ export function PlayersListPage() {
   const playerIds = useMemo(() => playersQuery.data?.data.map((player) => player.id) ?? [], [playersQuery.data]);
   const statsQueries = useQueries({
     queries: playerIds.map((id) => ({
-      queryKey: ["playerStats", id],
-      queryFn: () => fetchPlayerStats(id),
+      queryKey: ["playerStats", id, seasonType],
+      queryFn: () => fetchPlayerStats(id, seasonType),
       enabled: sortKey === "ppg" && playersQuery.isSuccess,
     })),
   });
@@ -76,6 +100,15 @@ export function PlayersListPage() {
   return (
     <div className="p-6">
       <h1 className="mb-4 text-xl font-semibold text-text-primary">Players</h1>
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <SeasonSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
+        <span className="text-xs text-text-muted">
+          {isPostseasonSegment
+            ? `Only players who appeared in the ${formatSeasonType(seasonType)}`
+            : "All players"}
+        </span>
+      </div>
 
       <PlayersFilterBar
         teams={teamsQuery.data?.data ?? []}
@@ -112,7 +145,9 @@ export function PlayersListPage() {
               : rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={sortKey === "ppg" ? 5 : 4} className="py-8 text-center text-text-secondary">
-                      No players found.
+                      {isPostseasonSegment
+                        ? `No players matched in the ${formatSeasonType(seasonType)}.`
+                        : "No players found."}
                     </TableCell>
                   </TableRow>
                 ) : rows.map((player) => (

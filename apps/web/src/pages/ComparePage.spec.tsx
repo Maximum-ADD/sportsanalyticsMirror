@@ -93,6 +93,7 @@ describe("ComparePage", () => {
     vi.mocked(fetchPlayerStats).mockResolvedValue({
       playerId: "player-1",
       seasonAverages: makeAverages(),
+      seasonType: "REGULAR" as const,
       gameLog: [],
     });
 
@@ -121,6 +122,7 @@ describe("ComparePage", () => {
 
   it("spells positions out on the tile and keeps them out of the General rows", async () => {
     vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
       players: [
         { player: makePlayer({ id: "player-1", position: "G-F" }), seasonAverages: makeAverages() },
         {
@@ -148,6 +150,7 @@ describe("ComparePage", () => {
   it("fills an unclaimed slot's rows with a dash rather than leaving them blank", async () => {
     const user = userEvent.setup();
     vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
       players: [
         { player: makePlayer({ id: "player-1" }), seasonAverages: makeAverages() },
         {
@@ -178,6 +181,7 @@ describe("ComparePage", () => {
     vi.setSystemTime(new Date("2026-09-05T12:00:00.000Z"));
 
     vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
       players: [
         {
           player: makePlayer({ id: "player-1", birthDate: "1984-12-30" }),
@@ -211,6 +215,7 @@ describe("ComparePage", () => {
 
   it("renders a tile and grouped stat rows for each compared player, highlighting the leader", async () => {
     vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
       players: [
         { player: makePlayer({ id: "player-1", lastName: "James" }), seasonAverages: makeAverages({ pointsPerGame: 30 }) },
         {
@@ -235,6 +240,7 @@ describe("ComparePage", () => {
 
   it("renders shooting rows as made / attempted (accuracy) in a single cell", async () => {
     vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
       players: [
         { player: makePlayer({ id: "player-1" }), seasonAverages: makeAverages() },
         {
@@ -266,6 +272,7 @@ describe("ComparePage", () => {
     vi.mocked(fetchPlayerStats).mockResolvedValue({
       playerId: "player-9",
       seasonAverages: makeAverages(),
+      seasonType: "REGULAR" as const,
       gameLog: [],
     });
 
@@ -275,6 +282,8 @@ describe("ComparePage", () => {
     await user.click(await screen.findByRole("button", { name: /Nikola Jokic/ }));
 
     expect(await screen.findByText("Nikola Jokic")).toBeInTheDocument();
-    await waitFor(() => expect(fetchPlayerStats).toHaveBeenCalledWith("player-9"));
+    // The compare page now states which segment it wants, so a comparison
+    // opened from a postseason view compares postseason lines.
+    await waitFor(() => expect(fetchPlayerStats).toHaveBeenCalledWith("player-9", "REGULAR"));
   });
 });

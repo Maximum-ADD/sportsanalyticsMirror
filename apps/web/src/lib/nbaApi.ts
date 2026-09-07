@@ -8,7 +8,9 @@ import type {
   PlayerComparisonResponse,
   PlayerPredictionSummary,
   PlayerStatsResponse,
+  PlayerStatsSplitsResponse,
   PagedResult,
+  SeasonType,
   Team,
 } from "@/types/nba";
 
@@ -26,6 +28,11 @@ export interface FetchPlayersParams {
   search?: string;
   page?: number;
   pageSize?: number;
+  seasonType?: SeasonType;
+  // Only meaningful alongside `seasonType`: narrows the list to players who
+  // actually appeared in that segment, so a playoffs view doesn't list an
+  // eliminated team's bench.
+  participated?: boolean;
 }
 
 export function fetchPlayers(params: FetchPlayersParams = {}): Promise<PagedResult<Player>> {
@@ -36,14 +43,26 @@ export function fetchPlayer(playerId: string): Promise<Player> {
   return fetchJson<Player>(`/v1/players/${playerId}`);
 }
 
-export function fetchPlayerStats(playerId: string): Promise<PlayerStatsResponse> {
-  return fetchJson<PlayerStatsResponse>(`/v1/players/${playerId}/stats`);
+// Omitting `seasonType` lets the API apply its own default (REGULAR)
+// rather than this client asserting one, so the two can't drift apart.
+export function fetchPlayerStats(playerId: string, seasonType?: SeasonType): Promise<PlayerStatsResponse> {
+  return fetchJson<PlayerStatsResponse>(`/v1/players/${playerId}/stats${toQueryString({ seasonType })}`);
+}
+
+// Every segment's season line in one request, for the postseason
+// comparison view. See PlayerStatsSplitsResponse.
+export function fetchPlayerStatsSplits(playerId: string): Promise<PlayerStatsSplitsResponse> {
+  return fetchJson<PlayerStatsSplitsResponse>(`/v1/players/${playerId}/stats/splits`);
 }
 
 // Season lines for 2-4 players in one request, for the compare page. Order
 // of `playerIds` is preserved in the response.
-export function fetchPlayerComparison(playerIds: string[]): Promise<PlayerComparisonResponse> {
-  return fetchJson<PlayerComparisonResponse>(`/v1/players/compare?ids=${playerIds.join(",")}`);
+export function fetchPlayerComparison(
+  playerIds: string[],
+  seasonType?: SeasonType
+): Promise<PlayerComparisonResponse> {
+  const segmentParam = seasonType ? `&seasonType=${seasonType}` : "";
+  return fetchJson<PlayerComparisonResponse>(`/v1/players/compare?ids=${playerIds.join(",")}${segmentParam}`);
 }
 
 export interface FetchTeamsParams {
@@ -63,6 +82,9 @@ export function fetchTeam(teamId: string): Promise<Team> {
 export interface FetchGamesParams {
   page?: number;
   pageSize?: number;
+  // Omitted means every segment — unlike the player endpoints, the games
+  // list has no default segment. See GamesService.getGames.
+  seasonType?: SeasonType;
 }
 
 export function fetchGames(params: FetchGamesParams = {}): Promise<PagedResult<Game>> {

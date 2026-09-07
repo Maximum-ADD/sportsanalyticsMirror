@@ -137,6 +137,9 @@ describe("PlayersListPage", () => {
         teamId: LAKERS.id,
         position: "F",
         search: "LeBron James",
+        // The list now always states which segment it wants; the regular
+        // season is the default and carries no `participated` filter.
+        seasonType: "REGULAR",
       });
     });
   });
@@ -148,5 +151,56 @@ describe("PlayersListPage", () => {
     renderWithProviders(<PlayersListPage />);
 
     expect(await screen.findByText("No players found.")).toBeInTheDocument();
+  });
+
+  describe("season segments", () => {
+    it("asks only for players who appeared in the segment when a postseason view is selected", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />, ["/players?segment=playoffs"]);
+
+      await waitFor(() =>
+        expect(fetchPlayers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ seasonType: "PLAYOFFS", participated: true })
+        )
+      );
+    });
+
+    it("does not narrow the regular season by participation, where it would remove nobody", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      await waitFor(() => expect(fetchPlayers).toHaveBeenCalled());
+      expect(fetchPlayers).toHaveBeenLastCalledWith(expect.not.objectContaining({ participated: true }));
+    });
+
+    it("refetches for the newly selected segment", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByRole("radio", { name: "Finals" });
+
+      await user.click(screen.getByRole("radio", { name: "Finals" }));
+
+      await waitFor(() =>
+        expect(fetchPlayers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ seasonType: "FINALS", participated: true })
+        )
+      );
+    });
+
+    it("explains an empty postseason list in terms of the segment", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [], page: 1, pageSize: 100, total: 0 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([]));
+
+      renderWithProviders(<PlayersListPage />, ["/players?segment=finals"]);
+
+      expect(await screen.findByText("No players matched in the Finals.")).toBeInTheDocument();
+    });
   });
 });
