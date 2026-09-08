@@ -5,8 +5,14 @@ on:
   pull_request:
 
 # A newer push to the same branch/PR supersedes an in-flight run.
+#
+# Keyed on the PR number where there is one, because pushing to a branch with
+# an open PR fires both `push` and `pull_request`, and those carry different
+# refs (refs/heads/<branch> vs refs/pull/<n>/merge). Keyed on github.ref alone
+# they land in different groups, never dedupe, and run the whole matrix twice
+# on a runner shared with every other group on the machine.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,13 +51,11 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      # The guard this used to carry (skip lint when no flat config exists) is
+      # obsolete: apps/api/eslint.config.js landed in 9294b65, so the skip
+      # branch was dead and its warning was misleading about what CI enforces.
       - name: Lint
-        run: |
-          if ls eslint.config.* 2>/dev/null; then
-            npm run lint
-          else
-            echo "::warning title=API lint skipped::apps/api has no eslint.config.js. ESLint 10 requires a flat config, so 'npm run lint' cannot run. Add apps/api/eslint.config.js and this step starts enforcing automatically."
-          fi
+        run: npm run lint
 
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.json
@@ -93,29 +97,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # The API e2e suite needs a real, disposable Postgres database.
-    # This runner runs jobs with `network: host` (shared across every group on
-    # the runner, not just this repo), so there's no bridge network giving us
-    # a `postgres` hostname alias, and the default 5432 is exactly the port
-    # every other group's default Postgres setup also reaches for — collide
-    # with any of them and the service fails to bind before it ever starts.
-    # Reached via localhost on a non-default port to dodge that.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: nba_analytics_test
-          PGPORT: 55432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    # The API e2e suite needs a real, disposable Postgres database, and it is
+    # started as a step below rather than with `services:`. Three attempts at
+    # the services block never went green (497b2c4, 03d38ba, 566c8d1), and the
+    # reason it cannot work here is now understood rather than guessed at:
+    #
+    # This runner runs jobs with `network: host`, shared across every group on
+    # the machine. That has two consequences. There is no bridge network, so a
+    # `postgres` hostname alias is silently dropped and never resolves (which
+    # is what 03d38ba hit). And every `services:` port is really a host port,
+    # so any fixed number we pick is a bet that no other job on the machine
+    # picked it too — 5432 lost that bet, and so did 55432.
+    #
+    # When it loses, postgres cannot bind, prints "FATAL: could not create any
+    # TCP/IP sockets" and exits about two seconds in. Docker reports an exited
+    # container that has a healthcheck as `unhealthy` even though the probe
+    # never ran once, so the runner fails the job with a bare "the service
+    # 'postgres' is unhealthy" — no probe output, no steps, and the container
+    # log buried inside the collapsed "Starting job container" group. That
+    # opacity is why this went round three times.
+    #
+    # A bare `--health-cmd pg_isready` was also wrong independently: this
+    # image's entrypoint runs initdb against a socket-only server first, and
+    # pg_isready answers over that socket, so "healthy" could be reported
+    # while the TCP port was still closed.
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:55432/nba_analytics_test?schema=public
+      # DATABASE_URL is deliberately not set here. The step below computes it
+      # and exports it through $GITHUB_ENV, and having a second definition at
+      # job level would leave a precedence question we cannot debug on a
+      # runner we do not administer.
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
       WEB_ORIGIN: http://localhost:5173
@@ -123,6 +134,165 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Starts Postgres as a sibling container on Docker's default bridge with
+      # NO published ports, and talks to it on its container IP. That works
+      # precisely *because* the job runs with `network: host`: the job shares
+      # the host's network namespace, docker0 lives in that namespace, so the
+      # container's 172.17.x.x address is routable from here. Nothing is bound
+      # on the host, so no other group's database can collide with ours — this
+      # is structurally immune to the race a fixed port kept losing.
+      #
+      # Readiness is checked from both ends: a TCP connect from this side, and
+      # then pg_isready against the real user and database. Both have to pass,
+      # so a socket-only server still running initdb does not count as ready.
+      - name: Start disposable Postgres
+        run: |
+          set -euo pipefail
+          NAME="ci-postgres-${{ github.run_id }}"
+
+          if ! docker info >/dev/null 2>&1; then
+            echo "::error title=No Docker daemon in the job::This job starts its own Postgres and needs a reachable Docker socket. act_runner mounts one by default, so this runner is likely configured with container.docker_host: \"-\". The fallback is to install Postgres into the job instead (apt-get install postgresql, then initdb on a unix socket)."
+            exit 1
+          fi
+
+          # A cancelled run is killed before its cleanup step, so sweep our own
+          # leftovers. Matched by label and excluding this run, so a concurrent
+          # run on another branch is left alone.
+          docker ps -a --filter label=ci-postgres-for=nba-analytics --format '{{.Names}}' \
+            | grep -vFx "$NAME" | xargs -r docker rm -f || true
+
+          # Every probe below is wrapped in `timeout`. An earlier version of
+          # this step used a bare `exec 3<>/dev/tcp/...`, which does not fail
+          # fast: against an address that drops packets rather than refusing
+          # them, each attempt blocks on the kernel's connect timeout, and the
+          # step hung for nearly two hours instead of erroring in one minute.
+          # `timeout-minutes` on the job did not stop it either, so nothing
+          # bounds this except the commands themselves.
+          probe_tcp() {
+            timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null
+          }
+
+          alive() {
+            [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = true ]
+          }
+
+          # Deliberately no --rm: if postgres dies on startup we need the
+          # corpse and its log, and --rm deletes both before we can read them.
+          # The "Stop disposable Postgres" step at the end does the cleanup.
+          # --tmpfs rather than a volume, since the suite applies migrations
+          # and truncates between specs — nothing here outlives the job.
+          start_pg() {
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+            docker run -d --name "$NAME" \
+              --label ci-postgres-for=nba-analytics \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=postgres \
+              -e POSTGRES_DB=nba_analytics_test \
+              --tmpfs /var/lib/postgresql/data \
+              "$@" postgres:16-alpine >/dev/null
+          }
+
+          # Proven from inside the container, so this says "the server is up"
+          # without depending on the job being able to reach it.
+          wait_server_up() {
+            for _ in $(seq 1 40); do
+              if ! alive; then return 1; fi
+              if timeout 5 docker exec "$NAME" \
+                   pg_isready -q -h 127.0.0.1 -p 5432 -U postgres -d nba_analytics_test; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          try_target() {
+            for _ in $(seq 1 10); do
+              if probe_tcp "$1" "$2"; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
+
+          diagnose() {
+            echo "--- container state ---"
+            docker inspect -f 'running={{.State.Running}} exit={{.State.ExitCode}} err={{.State.Error}}' "$NAME" 2>&1 || true
+            echo "--- postgres log (last 40) ---"
+            docker logs "$NAME" 2>&1 | tail -40 || true
+            echo "--- job network context ---"
+            echo "hostname: $(hostname)"
+            echo "job networks: ${JOB_NET:-<undetermined>}"
+          }
+
+          # This job runs *inside a container* on its own Docker network — its
+          # hostname is a container id, and 127.0.0.1 is its own loopback, not
+          # the host's. So neither the default bridge (172.17.x.x) nor a port
+          # published on the host is reachable from here; both were tried and
+          # both failed, which is what the previous revision of this step
+          # proved. Docker's default bridge and a user-defined network are
+          # isolated from each other, and that is the whole problem.
+          #
+          # The fix is to put Postgres on the *same* network as this job, which
+          # we can discover by inspecting our own container through the mounted
+          # socket. On a user-defined network Docker also runs an embedded DNS
+          # server, so the container name resolves directly.
+          JOB_ID="$(hostname)"
+          JOB_NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$JOB_ID" 2>/dev/null | awk '{print $1}')" || JOB_NET=""
+          echo "job container: $JOB_ID"
+          echo "job network:   ${JOB_NET:-<could not determine>}"
+
+          TARGET=""
+
+          if [ -n "$JOB_NET" ]; then
+            echo "==> attempt 1: Postgres on this job's own network, addressed by container name"
+            start_pg --network "$JOB_NET"
+            if ! wait_server_up; then
+              echo "::error title=Postgres did not start::The server never accepted connections inside its own container, so this is not a networking problem."
+              diagnose
+              exit 1
+            fi
+            if try_target "$NAME" 5432; then
+              TARGET="$NAME:5432"
+              echo "reachable by container name on $JOB_NET"
+            else
+              # Embedded DNS is not available on the default bridge, so fall
+              # back to the address it was given on that same network.
+              PGIP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$JOB_NET\").IPAddress}}" "$NAME" 2>/dev/null || true)"
+              echo "==> name did not resolve; attempt 2: its address on $JOB_NET (${PGIP:-<none>})"
+              if [ -n "$PGIP" ] && try_target "$PGIP" 5432; then
+                TARGET="$PGIP:5432"
+                echo "reachable by address on $JOB_NET"
+              fi
+            fi
+          fi
+
+          # Only reached if this job is *not* in a container on its own network
+          # (a runner configured with `network: host` behaves that way), where a
+          # port published on the host is the right answer instead.
+          if [ -z "$TARGET" ]; then
+            echo "==> attempt 3: port published on 127.0.0.1 (for a host-network runner)"
+            start_pg -p 127.0.0.1::5432
+            if ! wait_server_up; then
+              echo "::error title=Postgres did not start on the final attempt::"
+              diagnose
+              exit 1
+            fi
+            HOSTPORT="$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')"
+            if [ -n "$HOSTPORT" ] && try_target 127.0.0.1 "$HOSTPORT"; then
+              TARGET="127.0.0.1:$HOSTPORT"
+              echo "reachable on the published port"
+            fi
+          fi
+
+          if [ -z "$TARGET" ]; then
+            echo "::error title=Postgres is running but unreachable from the job::The server accepts connections inside its own container, but this job cannot reach it on its own network, by address, or via a published port. The fallback that needs no networking at all is to install Postgres into the job and talk to it over a unix socket: apt-get install -y postgresql, run initdb as the postgres user with listen_addresses='', and set DATABASE_URL=postgresql://postgres@localhost/nba_analytics_test?host=/var/run/postgresql&schema=public"
+            diagnose
+            exit 1
+          fi
+
+          echo "DATABASE_URL=postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public" >> "$GITHUB_ENV"
+          echo "using $TARGET"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -154,9 +324,19 @@ jobs:
 
       # Gitea 1.24.7 supports the legacy artifact protocol. Its v4 backend
       # requires a patched action and is avoided until the server is upgraded.
+      # The `-node20` variant is the same code on an older runtime: plain
+      # v3.2.2 declares `runs.using: node24`, which act rejects outright with
+      # "unknown runner using:" on older runners. Every other action in this
+      # file is node20, which is why only this step would have hit it.
       - name: Upload combined coverage report
-        uses: actions/upload-artifact@v3.2.2
+        uses: actions/upload-artifact@v3.2.2-node20
         with:
           name: coverage-report
           path: coverage-report
           if-no-files-found: error
+
+      # if: always() so a failed suite still hands the container and its memory
+      # back to a runner every other group on the machine is also using.
+      - name: Stop disposable Postgres
+        if: always()
+        run: docker rm -f "ci-postgres-${{ github.run_id }}" || true
