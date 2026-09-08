@@ -68,10 +68,19 @@ describe("LandingPage", () => {
     expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
   });
 
-  it("reserves a box for each app screenshot that lands later", () => {
+  it("reserves a box for each app screenshot, filled or still to come", () => {
     renderLanding();
 
     expect(screen.getAllByTestId("screenshot-placeholder")).toHaveLength(5);
+  });
+
+  it("shows the real home-page screenshot in the hero cascade", () => {
+    renderLanding();
+
+    // A filled panel stops being decorative, so it gets a described alt and
+    // drops the aria-hidden the empty grey blocks carry.
+    const shot = screen.getByRole("img", { name: /signed-in home page/i });
+    expect(shot).toHaveAttribute("src", "/screenshots/home-locker.webp");
   });
 
   it("keeps feature-only destinations in the app header", () => {
