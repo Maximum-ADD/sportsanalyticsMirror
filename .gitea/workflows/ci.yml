@@ -162,40 +162,112 @@ jobs:
           docker ps -a --filter label=ci-postgres-for=nba-analytics --format '{{.Names}}' \
             | grep -vFx "$NAME" | xargs -r docker rm -f || true
 
-          # --tmpfs rather than a volume: the suite applies migrations and
-          # truncates between specs, so nothing here needs to outlive the job.
-          docker run -d --rm --name "$NAME" \
-            --label ci-postgres-for=nba-analytics \
-            -e POSTGRES_USER=postgres \
-            -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=nba_analytics_test \
-            --tmpfs /var/lib/postgresql/data \
-            postgres:16-alpine
+          # Every probe below is wrapped in `timeout`. An earlier version of
+          # this step used a bare `exec 3<>/dev/tcp/...`, which does not fail
+          # fast: against an address that drops packets rather than refusing
+          # them, each attempt blocks on the kernel's connect timeout, and the
+          # step hung for nearly two hours instead of erroring in one minute.
+          # `timeout-minutes` on the job did not stop it either, so nothing
+          # bounds this except the commands themselves.
+          probe_tcp() {
+            timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null
+          }
 
+          alive() {
+            [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = true ]
+          }
+
+          # Deliberately no --rm: if postgres dies on startup we need the
+          # corpse and its log, and --rm deletes both before we can read them.
+          # The "Stop disposable Postgres" step at the end does the cleanup.
+          # --tmpfs rather than a volume, since the suite applies migrations
+          # and truncates between specs — nothing here outlives the job.
+          start_pg() {
+            docker rm -f "$NAME" >/dev/null 2>&1 || true
+            docker run -d --name "$NAME" \
+              --label ci-postgres-for=nba-analytics \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=postgres \
+              -e POSTGRES_DB=nba_analytics_test \
+              --tmpfs /var/lib/postgresql/data \
+              "$@" postgres:16-alpine >/dev/null
+          }
+
+          # Proven from inside the container, so this says "the server is up"
+          # without depending on the job being able to reach it.
+          wait_server_up() {
+            for _ in $(seq 1 40); do
+              if ! alive; then return 1; fi
+              if timeout 5 docker exec "$NAME" \
+                   pg_isready -q -h 127.0.0.1 -p 5432 -U postgres -d nba_analytics_test; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          # Reachability is the part we cannot assume. The bridge address works
+          # only if this job shares the host's network namespace (docker0 lives
+          # there); a published port on 127.0.0.1 works in that case too, and
+          # also when the daemon proxies it. Try both, each bounded, and report
+          # which one won so the next person does not have to rediscover it.
+          try_target() {
+            for _ in $(seq 1 10); do
+              if probe_tcp "$1" "$2"; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
+
+          diagnose() {
+            echo "--- container state ---"
+            docker inspect -f 'running={{.State.Running}} exit={{.State.ExitCode}} err={{.State.Error}}' "$NAME" 2>&1 || true
+            echo "--- postgres log (last 40) ---"
+            docker logs "$NAME" 2>&1 | tail -40 || true
+            echo "--- job network context ---"
+            echo "hostname: $(hostname)"; ip -o addr 2>/dev/null || true
+            ip route 2>/dev/null | head || true
+          }
+
+          echo "==> attempt 1: container bridge address"
+          start_pg
+          if ! wait_server_up; then
+            echo "::error title=Postgres did not start::The server never accepted connections inside its own container, so this is not a networking problem."
+            diagnose
+            exit 1
+          fi
           PGHOST="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$NAME")"
-          if [ -z "$PGHOST" ]; then
-            echo "::error title=Postgres container has no bridge address::It started, but Docker reported no IP. Is this daemon using a non-default network?"
-            docker inspect "$NAME" || true
-            exit 1
-          fi
-          echo "Postgres container $NAME is at $PGHOST:5432"
+          echo "server is up; bridge address is '${PGHOST:-<none>}'"
 
-          for i in $(seq 1 60); do
-            if (exec 3<>"/dev/tcp/${PGHOST}/5432") 2>/dev/null \
-               && docker exec "$NAME" pg_isready -q -h 127.0.0.1 -p 5432 -U postgres -d nba_analytics_test; then
-              echo "Postgres ready after ${i}s"
-              READY=yes
-              break
+          TARGET=""
+          if [ -n "$PGHOST" ] && try_target "$PGHOST" 5432; then
+            TARGET="$PGHOST:5432"
+            echo "reachable on the bridge address"
+          else
+            echo "==> bridge address not reachable from this job; attempt 2: published port on 127.0.0.1"
+            start_pg -p 127.0.0.1::5432
+            if ! wait_server_up; then
+              echo "::error title=Postgres did not start on the second attempt::"
+              diagnose
+              exit 1
             fi
-            sleep 1
-          done
-          if [ "${READY:-no}" != yes ]; then
-            echo "::error title=Postgres never became ready::Waited 60s. Container log follows."
-            docker logs "$NAME" 2>&1 | tail -50
+            HOSTPORT="$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')"
+            echo "published on 127.0.0.1:${HOSTPORT:-<none>}"
+            if [ -n "$HOSTPORT" ] && try_target 127.0.0.1 "$HOSTPORT"; then
+              TARGET="127.0.0.1:$HOSTPORT"
+              echo "reachable on the published port"
+            fi
+          fi
+
+          if [ -z "$TARGET" ]; then
+            echo "::error title=Postgres is running but unreachable from the job::The server accepts connections inside its own container, but this job cannot reach it on either its bridge address or a published port. That means the job container is not sharing a network with the Docker daemon that runs it. The fallback that needs no networking at all is to install Postgres into the job and talk to it over a unix socket: apt-get install -y postgresql, run initdb as the postgres user with listen_addresses='', and set DATABASE_URL=postgresql://postgres@localhost/nba_analytics_test?host=/var/run/postgresql&schema=public"
+            diagnose
             exit 1
           fi
 
-          echo "DATABASE_URL=postgresql://postgres:postgres@${PGHOST}:5432/nba_analytics_test?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public" >> "$GITHUB_ENV"
+          echo "using $TARGET"
 
       - name: Set up Node
         uses: actions/setup-node@v4
