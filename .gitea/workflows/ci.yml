@@ -207,11 +207,6 @@ jobs:
             return 1
           }
 
-          # Reachability is the part we cannot assume. The bridge address works
-          # only if this job shares the host's network namespace (docker0 lives
-          # there); a published port on 127.0.0.1 works in that case too, and
-          # also when the daemon proxies it. Try both, each bounded, and report
-          # which one won so the next person does not have to rediscover it.
           try_target() {
             for _ in $(seq 1 10); do
               if probe_tcp "$1" "$2"; then return 0; fi
@@ -226,34 +221,64 @@ jobs:
             echo "--- postgres log (last 40) ---"
             docker logs "$NAME" 2>&1 | tail -40 || true
             echo "--- job network context ---"
-            echo "hostname: $(hostname)"; ip -o addr 2>/dev/null || true
-            ip route 2>/dev/null | head || true
+            echo "hostname: $(hostname)"
+            echo "job networks: ${JOB_NET:-<undetermined>}"
           }
 
-          echo "==> attempt 1: container bridge address"
-          start_pg
-          if ! wait_server_up; then
-            echo "::error title=Postgres did not start::The server never accepted connections inside its own container, so this is not a networking problem."
-            diagnose
-            exit 1
-          fi
-          PGHOST="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$NAME")"
-          echo "server is up; bridge address is '${PGHOST:-<none>}'"
+          # This job runs *inside a container* on its own Docker network — its
+          # hostname is a container id, and 127.0.0.1 is its own loopback, not
+          # the host's. So neither the default bridge (172.17.x.x) nor a port
+          # published on the host is reachable from here; both were tried and
+          # both failed, which is what the previous revision of this step
+          # proved. Docker's default bridge and a user-defined network are
+          # isolated from each other, and that is the whole problem.
+          #
+          # The fix is to put Postgres on the *same* network as this job, which
+          # we can discover by inspecting our own container through the mounted
+          # socket. On a user-defined network Docker also runs an embedded DNS
+          # server, so the container name resolves directly.
+          JOB_ID="$(hostname)"
+          JOB_NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$JOB_ID" 2>/dev/null | awk '{print $1}')" || JOB_NET=""
+          echo "job container: $JOB_ID"
+          echo "job network:   ${JOB_NET:-<could not determine>}"
 
           TARGET=""
-          if [ -n "$PGHOST" ] && try_target "$PGHOST" 5432; then
-            TARGET="$PGHOST:5432"
-            echo "reachable on the bridge address"
-          else
-            echo "==> bridge address not reachable from this job; attempt 2: published port on 127.0.0.1"
+
+          if [ -n "$JOB_NET" ]; then
+            echo "==> attempt 1: Postgres on this job's own network, addressed by container name"
+            start_pg --network "$JOB_NET"
+            if ! wait_server_up; then
+              echo "::error title=Postgres did not start::The server never accepted connections inside its own container, so this is not a networking problem."
+              diagnose
+              exit 1
+            fi
+            if try_target "$NAME" 5432; then
+              TARGET="$NAME:5432"
+              echo "reachable by container name on $JOB_NET"
+            else
+              # Embedded DNS is not available on the default bridge, so fall
+              # back to the address it was given on that same network.
+              PGIP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$JOB_NET\").IPAddress}}" "$NAME" 2>/dev/null || true)"
+              echo "==> name did not resolve; attempt 2: its address on $JOB_NET (${PGIP:-<none>})"
+              if [ -n "$PGIP" ] && try_target "$PGIP" 5432; then
+                TARGET="$PGIP:5432"
+                echo "reachable by address on $JOB_NET"
+              fi
+            fi
+          fi
+
+          # Only reached if this job is *not* in a container on its own network
+          # (a runner configured with `network: host` behaves that way), where a
+          # port published on the host is the right answer instead.
+          if [ -z "$TARGET" ]; then
+            echo "==> attempt 3: port published on 127.0.0.1 (for a host-network runner)"
             start_pg -p 127.0.0.1::5432
             if ! wait_server_up; then
-              echo "::error title=Postgres did not start on the second attempt::"
+              echo "::error title=Postgres did not start on the final attempt::"
               diagnose
               exit 1
             fi
             HOSTPORT="$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')"
-            echo "published on 127.0.0.1:${HOSTPORT:-<none>}"
             if [ -n "$HOSTPORT" ] && try_target 127.0.0.1 "$HOSTPORT"; then
               TARGET="127.0.0.1:$HOSTPORT"
               echo "reachable on the published port"
@@ -261,7 +286,7 @@ jobs:
           fi
 
           if [ -z "$TARGET" ]; then
-            echo "::error title=Postgres is running but unreachable from the job::The server accepts connections inside its own container, but this job cannot reach it on either its bridge address or a published port. That means the job container is not sharing a network with the Docker daemon that runs it. The fallback that needs no networking at all is to install Postgres into the job and talk to it over a unix socket: apt-get install -y postgresql, run initdb as the postgres user with listen_addresses='', and set DATABASE_URL=postgresql://postgres@localhost/nba_analytics_test?host=/var/run/postgresql&schema=public"
+            echo "::error title=Postgres is running but unreachable from the job::The server accepts connections inside its own container, but this job cannot reach it on its own network, by address, or via a published port. The fallback that needs no networking at all is to install Postgres into the job and talk to it over a unix socket: apt-get install -y postgresql, run initdb as the postgres user with listen_addresses='', and set DATABASE_URL=postgresql://postgres@localhost/nba_analytics_test?host=/var/run/postgresql&schema=public"
             diagnose
             exit 1
           fi
