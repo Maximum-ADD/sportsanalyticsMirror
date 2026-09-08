@@ -94,12 +94,16 @@ jobs:
     timeout-minutes: 20
 
     # The API e2e suite needs a real, disposable Postgres database.
-    # This runner runs jobs with `network: host` (shared across every group on
-    # the runner, not just this repo), so there's no bridge network giving us
-    # a `postgres` hostname alias, and the default 5432 is exactly the port
-    # every other group's default Postgres setup also reaches for — collide
-    # with any of them and the service fails to bind before it ever starts.
-    # Reached via localhost on a non-default port to dodge that.
+    #
+    # PGPORT moves the server off 5432 because this runner is shared with every
+    # other group and runs jobs with `network: host`: on the default port the
+    # service lost the race to bind and died before any step ran ("could not
+    # bind IPv4 address 0.0.0.0: Address in use"). 55439 also stays clear of the
+    # 55432/55433 docker-compose.yml publishes, so a runner host that has ever
+    # brought our own compose file up doesn't collide either.
+    #
+    # The address tests connect on is resolved by the "Wait for Postgres" step
+    # rather than hardcoded here — see the comment on that step.
     services:
       postgres:
         image: postgres:16-alpine
@@ -107,15 +111,17 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: nba_analytics_test
-          PGPORT: 55432
+          PGPORT: 55439
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
+    # DATABASE_URL is deliberately not set here: "Wait for Postgres" writes it
+    # once it knows which address answers, and a job-level value would take
+    # precedence over what that step puts in $GITHUB_ENV.
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:55432/nba_analytics_test?schema=public
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
       WEB_ORIGIN: http://localhost:5173
@@ -142,6 +148,50 @@ jobs:
 
       - name: Generate Prisma client
         run: npm run prisma:generate --prefix apps/api
+
+      # Which address reaches the service container depends on how the runner
+      # networks jobs, and that has already changed under us once: the
+      # `postgres` bridge alias worked on our own runner, localhost was needed
+      # after the switch to the shared one. act_runner also doesn't hold steps
+      # back for a service's health check, so guessing wrong doesn't fail here
+      # — it surfaces minutes later as a Prisma P1001 inside vitest. So probe
+      # both modes, confirm what answers really is our disposable test database
+      # (on a host-networked shared runner something else may hold the port),
+      # and only then pin DATABASE_URL for the steps that follow.
+      - name: Wait for Postgres
+        shell: bash
+        working-directory: apps/api
+        run: |
+          set -u
+          candidates="localhost:55439 postgres:55439"
+          tcp_open() { (exec 3<>"/dev/tcp/$1/$2") 2>/dev/null; }
+
+          for _attempt in $(seq 1 30); do
+            for candidate in $candidates; do
+              host=${candidate%:*}
+              port=${candidate##*:}
+              tcp_open "$host" "$port" || continue
+              url="postgresql://postgres:postgres@$host:$port/nba_analytics_test?schema=public"
+              if echo "SELECT 1" | npx prisma db execute --url "$url" --stdin >/dev/null 2>&1; then
+                echo "Postgres answered on $host:$port"
+                echo "DATABASE_URL=$url" >>"$GITHUB_ENV"
+                exit 0
+              fi
+              echo "note: $host:$port took a TCP connection but is not our test database; ignoring it"
+            done
+            sleep 2
+          done
+
+          echo "::error title=Postgres never became reachable::Tried $candidates for 60s. Diagnostics below."
+          if command -v docker >/dev/null 2>&1; then
+            docker ps -a || true
+            for cid in $(docker ps -aq --filter "name=postgres" 2>/dev/null); do
+              echo "--- docker logs $cid ---"
+              docker logs --tail 40 "$cid" 2>&1 || true
+            done
+          fi
+          command -v ss >/dev/null 2>&1 && ss -ltn || true
+          exit 1
 
       - name: Run API coverage
         run: npm run test:cov --prefix apps/api
