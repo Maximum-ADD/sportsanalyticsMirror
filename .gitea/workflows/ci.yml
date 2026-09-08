@@ -93,34 +93,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # The API e2e suite needs a real, disposable Postgres database.
-    #
-    # PGPORT moves the server off 5432 because this runner is shared with every
-    # other group and runs jobs with `network: host`: on the default port the
-    # service lost the race to bind and died before any step ran ("could not
-    # bind IPv4 address 0.0.0.0: Address in use"). 55439 also stays clear of the
-    # 55432/55433 docker-compose.yml publishes, so a runner host that has ever
-    # brought our own compose file up doesn't collide either.
-    #
-    # The address tests connect on is resolved by the "Wait for Postgres" step
-    # rather than hardcoded here — see the comment on that step.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: nba_analytics_test
-          PGPORT: 55439
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    # DATABASE_URL is deliberately not set here: "Wait for Postgres" writes it
-    # once it knows which address answers, and a job-level value would take
-    # precedence over what that step puts in $GITHUB_ENV.
+    # DATABASE_URL is set by the "Start Postgres" step below, once it knows
+    # which address the database ended up on. A job-level value would take
+    # precedence over what that step writes to $GITHUB_ENV.
     env:
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
@@ -149,48 +124,70 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate --prefix apps/api
 
-      # Which address reaches the service container depends on how the runner
-      # networks jobs, and that has already changed under us once: the
-      # `postgres` bridge alias worked on our own runner, localhost was needed
-      # after the switch to the shared one. act_runner also doesn't hold steps
-      # back for a service's health check, so guessing wrong doesn't fail here
-      # — it surfaces minutes later as a Prisma P1001 inside vitest. So probe
-      # both modes, confirm what answers really is our disposable test database
-      # (on a host-networked shared runner something else may hold the port),
-      # and only then pin DATABASE_URL for the steps that follow.
-      - name: Wait for Postgres
+      # The API e2e suite needs a real, disposable Postgres, but a `services:`
+      # container gave us two failures we couldn't see into on this runner:
+      # "the service 'postgres' is unhealthy" during job setup, which kills the
+      # job before any step runs and prints no container logs, and a P1001
+      # before that because which address reaches a service container depends
+      # on how the runner networks jobs (the `postgres` bridge alias worked on
+      # our own runner, localhost was needed on the shared ones).
+      #
+      # Starting it from a step fixes both: we get the container's logs on
+      # failure, and we can bind it where nothing can collide. That matters
+      # because jobs here run with `network: host` on a machine shared with
+      # every other group's runner — a fixed port is what killed 5432 ("could
+      # not bind IPv4 address 0.0.0.0: Address in use"), and any fixed
+      # replacement collides just as easily between two concurrent jobs. So:
+      # inside the job container's own network namespace when the job is
+      # containerized (nothing is published on the host at all), otherwise on
+      # a kernel-assigned ephemeral loopback port.
+      - name: Start Postgres
         shell: bash
         working-directory: apps/api
         run: |
           set -u
-          candidates="localhost:55439 postgres:55439"
-          tcp_open() { (exec 3<>"/dev/tcp/$1/$2") 2>/dev/null; }
+          name="nba-test-pg-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+          echo "PG_CONTAINER=$name" >>"$GITHUB_ENV"
 
+          if ! docker info >/dev/null 2>&1; then
+            echo "::error title=Docker unavailable::This job needs a Docker daemon to run the disposable Postgres the API e2e suite tests against."
+            exit 1
+          fi
+          docker rm -f "$name" >/dev/null 2>&1 || true
+
+          # --type container because a bare `docker inspect` also matches image
+          # names, and a host called e.g. `postgres` would take the wrong path.
+          self=$(hostname)
+          if docker inspect --type container "$self" >/dev/null 2>&1; then
+            docker run -d --name "$name" --network "container:$self" \
+              -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+              -e POSTGRES_DB=nba_analytics_test postgres:16-alpine
+            host=localhost
+            port=5432
+          else
+            docker run -d --name "$name" -p 127.0.0.1::5432 \
+              -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+              -e POSTGRES_DB=nba_analytics_test postgres:16-alpine
+            host=127.0.0.1
+            port=$(docker port "$name" 5432 | head -1 | sed 's/.*://')
+          fi
+          echo "Postgres container $name listening on $host:$port"
+
+          # `prisma db execute` rather than a bare port check: it proves the
+          # server is past initdb and that our credentials and database exist,
+          # over the same connection the tests will use.
+          url="postgresql://postgres:postgres@$host:$port/nba_analytics_test?schema=public"
           for _attempt in $(seq 1 30); do
-            for candidate in $candidates; do
-              host=${candidate%:*}
-              port=${candidate##*:}
-              tcp_open "$host" "$port" || continue
-              url="postgresql://postgres:postgres@$host:$port/nba_analytics_test?schema=public"
-              if echo "SELECT 1" | npx prisma db execute --url "$url" --stdin >/dev/null 2>&1; then
-                echo "Postgres answered on $host:$port"
-                echo "DATABASE_URL=$url" >>"$GITHUB_ENV"
-                exit 0
-              fi
-              echo "note: $host:$port took a TCP connection but is not our test database; ignoring it"
-            done
+            if echo "SELECT 1" | npx prisma db execute --url "$url" --stdin >/dev/null 2>&1; then
+              echo "Postgres is accepting connections"
+              echo "DATABASE_URL=$url" >>"$GITHUB_ENV"
+              exit 0
+            fi
             sleep 2
           done
 
-          echo "::error title=Postgres never became reachable::Tried $candidates for 60s. Diagnostics below."
-          if command -v docker >/dev/null 2>&1; then
-            docker ps -a || true
-            for cid in $(docker ps -aq --filter "name=postgres" 2>/dev/null); do
-              echo "--- docker logs $cid ---"
-              docker logs --tail 40 "$cid" 2>&1 || true
-            done
-          fi
-          command -v ss >/dev/null 2>&1 && ss -ltn || true
+          echo "::error title=Postgres never became ready::Nothing answered on $host:$port after 60s. Container logs follow."
+          docker logs --tail 50 "$name" 2>&1 || true
           exit 1
 
       - name: Run API coverage
@@ -210,3 +207,9 @@ jobs:
           name: coverage-report
           path: coverage-report
           if-no-files-found: error
+
+      # This runner is shared, so don't leave the database container behind.
+      - name: Stop Postgres
+        if: always()
+        shell: bash
+        run: docker rm -f "${PG_CONTAINER:-}" >/dev/null 2>&1 || true
