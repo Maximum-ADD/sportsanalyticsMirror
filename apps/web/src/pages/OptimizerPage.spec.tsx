@@ -5,6 +5,7 @@ import { OptimizerPage } from "./OptimizerPage";
 import { fetchLatestLineup } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { Lineup, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -96,6 +97,15 @@ const CURRY: Lineup["slots"][number] = {
 describe("OptimizerPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("has no automated accessibility violations", async () => {
+    vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
+
+    const { container } = renderWithProviders(<main><OptimizerPage /></main>);
+    await screen.findByText("Anthony Davis");
+
+    await expectNoAccessibilityViolations(container);
   });
 
   it("renders the lineup summary and players once the query resolves", async () => {

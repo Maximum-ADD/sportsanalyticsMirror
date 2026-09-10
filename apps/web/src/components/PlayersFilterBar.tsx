@@ -43,6 +43,7 @@ export function PlayersFilterBar({
       />
 
       <select
+        aria-label="Filter players by team"
         className={selectClassName}
         value={teamId ?? ""}
         onChange={(event) => onTeamChange(event.target.value || undefined)}
@@ -56,6 +57,7 @@ export function PlayersFilterBar({
       </select>
 
       <select
+        aria-label="Filter players by position"
         className={selectClassName}
         value={position ?? ""}
         onChange={(event) => onPositionChange(event.target.value || undefined)}
@@ -69,6 +71,7 @@ export function PlayersFilterBar({
       </select>
 
       <select
+        aria-label="Sort players"
         className={selectClassName}
         value={sortKey}
         onChange={(event) => onSortChange(event.target.value as PlayerSortKey)}

@@ -3,12 +3,19 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { CHALLENGE } from "@/components/home/placeholderData";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { HomePage } from "./HomePage";
 
 // No nbaApi mock here on purpose: /home is not wired to the API yet, so a
 // query mock would be asserting on plumbing that does not exist. When it is
 // wired up these become mocked-query tests like the other page specs.
 describe("HomePage", () => {
+  it("has no automated accessibility violations", async () => {
+    const { container } = renderWithProviders(<main><HomePage /></main>);
+
+    await expectNoAccessibilityViolations(container);
+  });
+
   it("renders as an app page, not a second landing hero", () => {
     renderWithProviders(<HomePage />);
 
