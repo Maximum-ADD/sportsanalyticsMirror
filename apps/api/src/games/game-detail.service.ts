@@ -22,6 +22,42 @@ export interface GameDetail extends GameWithTeamsAndPrediction {
 // Python service: this is a read-time computation over data already in
 // Postgres, not something that needs to write/persist a model output the
 // way Elo ratings or Four Factors weights do.
+//
+// Three enhancements were backtested against a full season and
+// deliberately left out — see apps/optimizer/predict.py's matching note
+// and docs/reports for the full write-up, since all three were tried on
+// that predictor too:
+//   - Opponent-defense adjustment (scale the prediction by the upcoming
+//     opponent's leak-free running points-allowed average relative to the
+//     leaguewide average): improved MAE by only 0.002 points and didn't
+//     reliably hold on a chronological validation split. Team-level
+//     points-allowed only spans about +/-9% across the whole league — too
+//     small a signal relative to a single player's game-to-game variance
+//     (RMSE ~6 points here) to move individual predictions meaningfully.
+//   - Minutes-aware prediction (predict minutes and points-per-minute
+//     separately, both via this same recency-weighting technique, then
+//     multiply, instead of averaging raw points directly): an initial
+//     backtest looked like a real win, but that number came from a bug in
+//     the backtest script's handling of DNP (0-minute) games — once
+//     corrected to match this function's actual semantics, the edge
+//     vanished and went slightly negative (-0.005 MAE full-season, -0.002
+//     on a validation split). Not shipped. Worth remembering this one
+//     specifically: it's a reminder to distrust a backtest result that
+//     looks great until it's been checked against the exact logic being
+//     validated, not an approximation of it.
+//   - Minutes-trend adjustment (a DIFFERENT minutes signal than the
+//     multiply-based one above: nudge the existing prediction by a small
+//     amount based on whether a player's recent minutes deviate from
+//     their longer-run baseline, rather than replacing the prediction).
+//     This one WAS shipped on predict.py's fantasy-point prediction
+//     (consistent MAE improvement on two validation splits, larger still
+//     on players with an actual minutes swing) but NOT here — this
+//     predictor's edge was negligible to zero on the same two splits (one
+//     split's grid search picked strength=0.0 as optimal outright).
+//     Plausibly because MOST_RECENT_GAMES_CONSIDERED (10, capped) already
+//     makes this prediction more locally responsive to a minutes change
+//     than predict.py's unbounded window, leaving less room for a
+//     separate trend signal to add.
 const RECENCY_DECAY = 0.8;
 const MOST_RECENT_GAMES_CONSIDERED = 10;
 const TOP_SCORERS_PER_TEAM_COUNT = 5;

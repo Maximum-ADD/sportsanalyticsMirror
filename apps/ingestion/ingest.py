@@ -97,11 +97,18 @@ def ingest_games_and_stats(
                 # stat row rather than failing the whole game.
                 skipped_unknown_players += 1
                 continue
+            # The team this player suited up for IN THIS GAME (from the
+            # boxscore itself, via games.py's nba_team_id), not their
+            # current roster team — see PlayerGameStat.teamId's schema
+            # doc comment. home_team_id/away_team_id above are already
+            # known-non-None at this point (checked before the loop).
+            team_internal_id = team_id_by_nba_id.get(player_stats["nba_team_id"])
             upsert_player_game_stat(
                 cursor,
                 player_internal_id,
                 game_internal_id,
-                {key: value for key, value in player_stats.items() if key != "nba_player_id"},
+                team_internal_id,
+                {key: value for key, value in player_stats.items() if key not in ("nba_player_id", "nba_team_id")},
             )
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")

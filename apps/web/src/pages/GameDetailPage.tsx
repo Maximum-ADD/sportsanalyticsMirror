@@ -103,8 +103,13 @@ export function GameDetailPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-wide text-text-muted">Predicted margin</div>
-            <div className="mt-1 text-2xl font-semibold text-text-primary">
+            <div
+              className="text-xs uppercase tracking-wide text-text-muted"
+              title="Backtested at ~12.5 points mean absolute error — only marginally better than guessing the leaguewide average margin. Treat this as a rough secondary signal, not a precise forecast."
+            >
+              Predicted margin (low confidence)
+            </div>
+            <div className="mt-1 text-lg font-medium text-text-secondary">
               {prediction ? formatMargin(prediction.predictedMarginHome, game.homeTeam, game.awayTeam) : "—"}
             </div>
           </CardContent>
