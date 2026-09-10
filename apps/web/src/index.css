@@ -65,10 +65,98 @@
   --color-landing-accent: #e04e34;
   --color-landing-ink: #14100c;
 
+  /* Signed-in /home ("the locker") is built on the landing palette above
+     rather than the dark app shell, so signing in reads as walking further
+     into the same building instead of into a different product. These are
+     the few steps that palette needs and doesn't already have — nothing
+     here changes an existing token.
+
+     Note that --color-landing-accent is display-only: it measures 2.45:1 on
+     landing-hero, which is fine for hero-scale type (all the landing page
+     uses it for) but below AA for UI text. Small text and controls on
+     /home use locker-leather instead, which measures 4.66:1 on
+     locker-surface. */
+  --color-locker-surface: #e3e0dc;
+  --color-locker-ink-muted: #4a423b;
+  --color-locker-leather: #a4441c;
+
+  /* Warm is the human call, cool is the Elo model — the split carries the
+     page's whole argument. Validated as a categorical pair against
+     locker-surface: CVD ΔE 19.0 (protan), normal-vision ΔE 27.5, both
+     above 3:1 contrast. */
+  --color-locker-you: #c2410c;
+  --color-locker-model: #1f6f9c;
+
+  /* Outcome colors. Always rendered with a glyph and a word beside them,
+     never as the only channel — a red/green pair is the one CVD case that
+     cannot be fixed by re-stepping the hues. */
+  --color-locker-good: #15733f;
+  --color-locker-bad: #a8202c;
+
   --animate-marquee: marquee 32s linear infinite;
   @keyframes marquee {
     to {
       transform: translateX(-50%);
+    }
+  }
+
+  /* BasketballSpinner: a real dribble, not a hover-wobble. The three pieces
+     below share one 0.7s cycle so they read as a single physical ball —
+     apex at 0%/100%, ground contact at 50% (mirrors Tailwind's own
+     animate-bounce phasing, just with real amplitude and squash/stretch
+     added). --basketball-bounce-height is set per size by the component. */
+  --animate-basketball-bounce: basketball-bounce 0.7s infinite;
+  @keyframes basketball-bounce {
+    0%,
+    100% {
+      transform: translateY(calc(var(--basketball-bounce-height, 1.75rem) * -1)) scale(0.96, 1.06);
+      animation-timing-function: cubic-bezier(0.8, 0, 1, 1); /* falling: accelerate under gravity */
+    }
+    50% {
+      transform: translateY(0) scale(1.1, 0.88); /* ground contact: squash */
+      animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* rebound: decelerate back to apex */
+    }
+  }
+
+  /* One full turn per bounce, like a dribbled ball actually rolling off the
+     hand — not spinning independently of the bounce. */
+  --animate-basketball-spin: basketball-spin 0.7s linear infinite;
+  @keyframes basketball-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  --animate-basketball-shadow: basketball-shadow 0.7s ease-in-out infinite;
+  @keyframes basketball-shadow {
+    0%,
+    100% {
+      transform: scaleX(0.5);
+      opacity: 0.15;
+    }
+    50% {
+      transform: scaleX(1);
+      opacity: 0.38;
+    }
+  }
+
+  /* A thin ring that pops out right as the ball touches down, same 50%
+     beat as the shadow, then expands and fades before the next bounce. */
+  --animate-basketball-impact: basketball-impact 0.7s ease-out infinite;
+  @keyframes basketball-impact {
+    0%,
+    44% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(0.6);
+      opacity: 0.6;
+    }
+    80%,
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
     }
   }
 

@@ -38,4 +38,19 @@ export class OptimizerService {
       })),
     };
   }
+
+  // Lets the web app look up a specific player's latest prediction outside
+  // the context of an existing lineup — e.g. to price up a hypothetical
+  // swap into the client's local (never-persisted) lineup edit, the same
+  // way getLatestLineup() already prices players already in a lineup.
+  async getPlayerPrediction(playerId: string) {
+    const prediction = await this.prisma.playerPrediction.findFirst({
+      where: { playerId },
+      orderBy: { asOf: "desc" },
+    });
+    return {
+      predictedFantasyPoints: prediction?.predictedFantasyPoints ?? null,
+      salary: prediction?.salary ?? null,
+    };
+  }
 }

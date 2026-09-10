@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { Game, PlayerGameStat } from "@prisma/client";
-import { PlayersService } from "./players.service.js";
+import { PlayersService, type PlayerWithTeam } from "./players.service.js";
 
 export interface GameLogEntry {
   gameId: string;
@@ -10,15 +10,29 @@ export interface GameLogEntry {
 
 export interface DerivedSeasonAverages {
   gamesPlayed: number;
+  minutesPerGame: number;
   pointsPerGame: number;
   reboundsPerGame: number;
   assistsPerGame: number;
   stealsPerGame: number;
   blocksPerGame: number;
   turnoversPerGame: number;
+  fieldGoalsMadePerGame: number;
+  fieldGoalsAttemptedPerGame: number;
   fieldGoalPercentage: number;
+  threesMadePerGame: number;
+  threesAttemptedPerGame: number;
   threePointPercentage: number;
+  freeThrowsMadePerGame: number;
+  freeThrowsAttemptedPerGame: number;
   freeThrowPercentage: number;
+}
+
+// One player's identity plus their derived season line — the unit the
+// comparison endpoint returns, one per requested player.
+export interface PlayerComparisonEntry {
+  player: PlayerWithTeam;
+  seasonAverages: DerivedSeasonAverages;
 }
 
 function averageOf(values: number[]): number {
@@ -52,14 +66,21 @@ export class StatsService {
 
     return {
       gamesPlayed: gameStats.length,
+      minutesPerGame: averageOf(gameStats.map((stat) => stat.minutes)),
       pointsPerGame: averageOf(gameStats.map((stat) => stat.points)),
       reboundsPerGame: averageOf(gameStats.map((stat) => stat.rebounds)),
       assistsPerGame: averageOf(gameStats.map((stat) => stat.assists)),
       stealsPerGame: averageOf(gameStats.map((stat) => stat.steals)),
       blocksPerGame: averageOf(gameStats.map((stat) => stat.blocks)),
       turnoversPerGame: averageOf(gameStats.map((stat) => stat.turnovers)),
+      fieldGoalsMadePerGame: averageOf(gameStats.map((stat) => stat.fieldGoalsMade)),
+      fieldGoalsAttemptedPerGame: averageOf(gameStats.map((stat) => stat.fieldGoalsAttempted)),
       fieldGoalPercentage: percentageOf(totalFieldGoalsMade, totalFieldGoalsAttempted),
+      threesMadePerGame: averageOf(gameStats.map((stat) => stat.threesMade)),
+      threesAttemptedPerGame: averageOf(gameStats.map((stat) => stat.threesAttempted)),
       threePointPercentage: percentageOf(totalThreesMade, totalThreesAttempted),
+      freeThrowsMadePerGame: averageOf(gameStats.map((stat) => stat.freeThrowsMade)),
+      freeThrowsAttemptedPerGame: averageOf(gameStats.map((stat) => stat.freeThrowsAttempted)),
       freeThrowPercentage: percentageOf(totalFreeThrowsMade, totalFreeThrowsAttempted),
     };
   }

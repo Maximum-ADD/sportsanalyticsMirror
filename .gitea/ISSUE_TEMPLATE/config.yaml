@@ -1,0 +1,15 @@
+# Controls the issue-picker screen shown before a template is chosen.
+#
+# blank_issues_enabled stays true deliberately: forcing every issue through
+# the bug form makes it harder, not easier, to jot down a task or a question,
+# and an empty issue is better than no issue. Set it to false only if blank
+# issues actually become a triage problem.
+blank_issues_enabled: true
+
+contact_links:
+  - name: How we branch, review and merge
+    url: https://sdp.ms.wits.ac.za/innovation/sportsanalytics/src/branch/main/docs/GIT_METHODOLOGY.md
+    about: Process questions about commits, branches or merge requirements — read this before filing an issue.
+  - name: Documentation site
+    url: https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/
+    about: Architecture, decisions (ADRs) and the AI usage ledger.

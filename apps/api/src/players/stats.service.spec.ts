@@ -52,14 +52,21 @@ describe("StatsService", () => {
     it("returns all-zero averages for a player with no games played", () => {
       expect(statsService.deriveSeasonAverages([])).toEqual({
         gamesPlayed: 0,
+        minutesPerGame: 0,
         pointsPerGame: 0,
         reboundsPerGame: 0,
         assistsPerGame: 0,
         stealsPerGame: 0,
         blocksPerGame: 0,
         turnoversPerGame: 0,
+        fieldGoalsMadePerGame: 0,
+        fieldGoalsAttemptedPerGame: 0,
         fieldGoalPercentage: 0,
+        threesMadePerGame: 0,
+        threesAttemptedPerGame: 0,
         threePointPercentage: 0,
+        freeThrowsMadePerGame: 0,
+        freeThrowsAttemptedPerGame: 0,
         freeThrowPercentage: 0,
       });
     });
@@ -72,6 +79,19 @@ describe("StatsService", () => {
       expect(averages.gamesPlayed).toBe(2);
       expect(averages.pointsPerGame).toBe(20.5);
       expect(averages.reboundsPerGame).toBe(5.5);
+    });
+
+    it("averages per-game volume stats (minutes, attempts) alongside the counting stats", () => {
+      const gameStats = [
+        makeStat({ minutes: 30, freeThrowsAttempted: 4, threesAttempted: 6 }),
+        makeStat({ minutes: 36, freeThrowsAttempted: 6, threesAttempted: 8 }),
+      ];
+
+      const averages = statsService.deriveSeasonAverages(gameStats);
+
+      expect(averages.minutesPerGame).toBe(33);
+      expect(averages.freeThrowsAttemptedPerGame).toBe(5);
+      expect(averages.threesAttemptedPerGame).toBe(7);
     });
 
     it("computes shooting percentages from summed makes/attempts, not per-game averages", () => {
