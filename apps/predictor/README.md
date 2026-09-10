@@ -21,27 +21,82 @@ game outcomes:
    one `GamePrediction` row per game (both completed and upcoming), into
    the same Postgres database Prisma/NestJS manages. NestJS only ever
    *reads* this table, via `GET /v1/games/:id/prediction`.
+4. **`check_accuracy.py`** — read-only accuracy monitor. Backtests both
+   models against whatever completed games are currently in the database
+   (Brier score / accuracy for Elo, MAE for Four Factors, each compared
+   against a naive baseline) and prints a summary. Writes nothing — safe to
+   run any time, and worth re-running after a batch of new games/results
+   lands to catch model drift.
+5. **`ingest_historical_season.py`** (in `apps/ingestion`) — pulls one
+   fully completed prior season's games/boxscores (not capped at a
+   recent-N window the way the current season's pull is, and deliberately
+   not touching rosters — see its module docstring). This is how the
+   dataset below grew from one season to three.
 
-## Honest limitations (read before trusting the numbers)
+## Accuracy (read before trusting the numbers)
 
-This project's seed data is tiny — 4 teams, ~6 games each. Two things fall
-out of that, on purpose, not as bugs:
+With three full seasons of real data now loaded (2023-24, 2024-25,
+2025-26 — ~3,780 games, 30 teams, ~83,000 player-game rows), both models
+have been properly backtested — walk-forward, against realized outcomes,
+with permutation tests establishing the results aren't chance. Full
+methodology: `docs/reports/prediction-accuracy-report.pdf` (single-season
+baseline), `-v2.pdf` (first round of follow-up tuning attempts), `-v3.pdf`
+(multi-season data pull + the Elo HCA/K re-tuning that came from it), and
+`-v4.pdf` (the season-boundary reset covered below), same directory.
+Current headline numbers (re-run via `check_accuracy.py` against the live
+database, not stale copy):
 
-- **Elo barely moves.** With only 6 games per team, ratings stay close to
-  the 1500 starting point; predictions will look close to 50/50 (plus
-  home-court advantage) for almost every matchup. Elo needs many games to
-  produce a meaningfully differentiated rating.
-- **The margin model uses the heuristic fallback, not a fitted
-  regression.** 12 total games isn't enough to fit a 3-feature OLS
-  regression without overfitting, so `four_factors.py` uses fixed weights
-  instead (see its module docstring). `GamePrediction.marginMethod` records
-  which path produced a given prediction (`"heuristic"` vs `"regression"`)
-  so this is never silently hidden from anything reading the table.
+- **Elo win probability**: Brier score 0.2130 vs. 0.25 for a coin flip.
+  `HOME_COURT_ADVANTAGE_ELO` (40) and `K_FACTOR` (25) are tuned against
+  this project's own 3-season data — a single season's data couldn't beat
+  the FiveThirtyEight-derived defaults (75/20) on held-out validation
+  (overfitting), but three seasons' worth could, confirmed across two
+  validation splits. `SEASON_RESET_FRACTION` (0.5) regresses every team's
+  rating halfway back toward the 1500 starting point at each season
+  boundary (trades/draft/free agency shift a roster without fully
+  resetting it) — validated separately from the HCA/K tuning (those held
+  fixed while only the reset fraction was searched), confirmed on 19 of 20
+  randomized validation splits and a permutation test (p<0.001). See
+  `elo.py`'s module docstring for the full tuning history of both. Elo
+  calibration is also meaningfully better than the single-season report's
+  numbers — the earlier overconfidence in the 0.2-0.5 predicted-probability
+  range is largely gone.
+- **Four Factors margin**: 12.30 points MAE vs. 12.91 for the naive
+  "always predict the leaguewide average margin" baseline — still a
+  modest edge (statistically real, permutation-tested), improved slightly
+  from the single-season number but not transformed by more data the way
+  Elo was. Frontend surfaces label this "low confidence" and visually
+  de-emphasize it relative to win probability.
+- **Player-point predictors** (`apps/optimizer/predict.py`'s fantasy
+  points, `game-detail.service.ts`'s scorer points): recency-weighting's
+  edge over a naive running mean roughly *doubled* with more data (fantasy
+  points: +0.52 -> +0.94 MAE edge; scorer points: +0.20 -> +0.36) — with
+  more career-length history per player, an unweighted mean gets diluted
+  by increasingly stale games while the recency-weighted version keeps
+  tracking current form, so the gap between them widens rather than
+  narrows as more data comes in.
+- The regression path (`fit_or_fallback_margin_model`'s fitted-OLS branch)
+  is what actually runs in production — the heuristic fallback is now a
+  cold-start path for a near-empty database, not the common case.
+- `PlayerGameStat.teamId` (the team a player suited up for in a specific
+  game, not their current roster team) was added to fix a real
+  correctness bug: the query `four_factors.py` used to join on
+  `Player.teamId` silently misattributed every traded player's past games
+  to whichever team they play for now (~7.7% of rows, confirmed live).
+  Backtested impact was small (12.52 -> 12.51 MAE on the original
+  single-season data) since the schema fix and the data-volume increase
+  are separate changes, but it matters more with real multi-season trade
+  history now loaded, and was worth fixing on correctness grounds alone.
+- An opponent-defense adjustment for the player-point predictors, and a
+  minutes-aware prediction variant, were both backtested and found not to
+  help enough to justify shipping — see `predict.py`/
+  `game-detail.service.ts`'s module comments for the full results
+  (including one case where an initial "win" turned out to be a bug in
+  the backtest script itself, caught before shipping).
 
-Both of these improve automatically once more real game history exists
-(see the root `PROJECT_OVERVIEW.md`'s note on the planned `nba_api`
-ingestion pipeline) — no code change needed, just more rows in `Game` and
-`PlayerGameStat`.
+Run `python check_accuracy.py` any time to see these numbers recomputed
+against the database's current state, rather than relying on the
+point-in-time numbers above.
 
 ## Setup
 

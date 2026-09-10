@@ -60,7 +60,10 @@ function GamePredictionRow({ game, prediction }: GamePredictionRowProps) {
               <span className="text-text-secondary">
                 {formatWinProbability(prediction.homeWinProbability, game.homeTeam)} win
               </span>
-              <span className="text-text-secondary">
+              <span
+                className="text-text-muted"
+                title="Predicted margin is backtested at ~12.5 points mean absolute error — only marginally better than guessing the leaguewide average margin. Treat as a rough secondary signal, not a precise forecast."
+              >
                 {formatMargin(prediction.predictedMarginHome, game.homeTeam, game.awayTeam)}
               </span>
               {prediction.marginMethod === "heuristic" && (
