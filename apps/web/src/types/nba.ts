@@ -1,3 +1,8 @@
+// Which segment of a season a figure or game belongs to. Mirrors the
+// SeasonType enum in the API's Prisma schema — the discriminator that keeps
+// regular-season and postseason numbers out of each other's views.
+export type SeasonType = "REGULAR" | "PLAY_IN" | "PLAYOFFS" | "FINALS";
+
 export interface Team {
   id: string;
   nbaTeamId: number;
@@ -55,6 +60,23 @@ export interface SeasonAverages {
   freeThrowsMadePerGame: number;
   freeThrowsAttemptedPerGame: number;
   freeThrowPercentage: number;
+
+  // Derived from the boxscore by the API, like the percentages above.
+  trueShootingPercentage: number;
+  effectiveFieldGoalPercentage: number;
+
+  // Null when undefined rather than zero — a player with no turnovers has
+  // an undefined ratio, not the worst possible one. Render as "—".
+  assistToTurnoverRatio: number | null;
+
+  // Null when no game in this segment carries the figure: either the rows
+  // predate the columns or the advanced boxscore was unavailable. A zero
+  // would be a real measurement (an even plus/minus, 0% usage), so these
+  // must render as "—" rather than 0.
+  plusMinusPerGame: number | null;
+  usagePercentage: number | null;
+  offensiveRating: number | null;
+  defensiveRating: number | null;
 }
 
 // One player's identity plus their season line — the unit GET
@@ -65,6 +87,7 @@ export interface PlayerComparisonEntry {
 }
 
 export interface PlayerComparisonResponse {
+  seasonType: SeasonType;
   players: PlayerComparisonEntry[];
 }
 
@@ -76,8 +99,32 @@ export interface GameLogEntry {
 
 export interface PlayerStatsResponse {
   playerId: string;
+  // The segment these figures were derived from, echoed back by the API so
+  // a caller can't label an already-rendered chart with the wrong segment.
+  seasonType: SeasonType;
   seasonAverages: SeasonAverages;
   gameLog: GameLogEntry[];
+}
+
+// GET /v1/players/stats-batch's per-player entry — same shape as
+// PlayerStatsResponse minus `seasonType`: the batch endpoint always derives
+// from the default (regular season) segment and doesn't echo one back, so
+// there's nothing here for a caller to mislabel.
+export interface PlayerStatsBatchEntry {
+  playerId: string;
+  seasonAverages: SeasonAverages;
+  gameLog: GameLogEntry[];
+}
+
+// Every segment's season line at once, from GET /v1/players/:id/stats/splits.
+// A segment the player didn't appear in is present with gamesPlayed: 0
+// rather than missing, so the comparison table renders a stable set of
+// columns.
+export type PlayerSeasonSplits = Record<SeasonType, SeasonAverages>;
+
+export interface PlayerStatsSplitsResponse {
+  playerId: string;
+  splits: PlayerSeasonSplits;
 }
 
 export interface Game {
@@ -91,6 +138,9 @@ export interface Game {
   awayTeam: Team;
   homeScore: number | null;
   awayScore: number | null;
+  seasonType: SeasonType;
+  // 1-4 for PLAYOFFS/FINALS games, null for REGULAR and PLAY_IN.
+  playoffRound: number | null;
   // Present on list/detail endpoints that join it in (GET /v1/games,
   // GET /v1/games/:id) — undefined, not just null, on any endpoint that
   // doesn't include the relation, so callers can tell "not fetched" apart

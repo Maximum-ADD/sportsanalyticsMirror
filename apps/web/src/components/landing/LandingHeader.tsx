@@ -21,9 +21,10 @@ const LINK_CLASS =
 
 interface LandingHeaderProps {
   overlaysContent?: boolean;
+  signInCallbackURL?: string;
 }
 
-export function LandingHeader({ overlaysContent = false }: LandingHeaderProps) {
+export function LandingHeader({ overlaysContent = false, signInCallbackURL }: LandingHeaderProps) {
   const navigationLinks = overlaysContent ? PRIMARY_LINKS : APP_LINKS;
 
   return (
@@ -58,7 +59,7 @@ export function LandingHeader({ overlaysContent = false }: LandingHeaderProps) {
             ))}
           </ul>
           <div className="ml-auto flex items-center">
-            <AuthStatus />
+            <AuthStatus signInCallbackURL={signInCallbackURL} />
           </div>
         </nav>
       </div>

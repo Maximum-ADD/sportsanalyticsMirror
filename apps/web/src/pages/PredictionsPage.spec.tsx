@@ -5,6 +5,7 @@ import { PredictionsPage } from "./PredictionsPage";
 import { fetchEloRatings, fetchGameDetail, fetchGames, fetchPlayerStatsBatch, fetchSeasons } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { Game, GamePrediction, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -60,6 +61,8 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     awayTeam: CELTICS,
     homeScore: 119,
     awayScore: 100,
+    seasonType: "REGULAR",
+    playoffRound: null,
     ...overrides,
   };
 }
@@ -97,6 +100,15 @@ describe("PredictionsPage", () => {
       return { data: matching, page: 1, pageSize: params?.pageSize ?? 60, total: matching.length };
     });
   }
+
+  it("has no automated accessibility violations", async () => {
+    mockGamesByStatus([makeGame({ homeScore: null, awayScore: null, prediction: PREDICTION })]);
+
+    const { container } = renderWithProviders(<main><PredictionsPage /></main>);
+    await screen.findAllByText("LAL 62%", { exact: false });
+
+    await expectNoAccessibilityViolations(container);
+  });
 
   it("renders each game's win probability and margin from the joined prediction", async () => {
     // homeWinProbability 0.62 means this same upcoming game can legitimately
@@ -318,6 +330,13 @@ describe("PredictionsPage", () => {
             freeThrowsMadePerGame: 4,
             freeThrowsAttemptedPerGame: 5,
             freeThrowPercentage: 0.8,
+            trueShootingPercentage: 0.58,
+            effectiveFieldGoalPercentage: 0.56,
+            assistToTurnoverRatio: 2.67,
+            plusMinusPerGame: 4.2,
+            usagePercentage: 28.5,
+            offensiveRating: 115,
+            defensiveRating: 108,
           },
           gameLog: [{ gameId: "g1", gameDate: "2026-01-01T00:00:00.000Z", points: 28 }],
         },

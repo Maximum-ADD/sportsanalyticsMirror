@@ -77,6 +77,7 @@ const SCORER: PredictedScorer = { player: LEBRON, predictedPoints: 27.4, gamesCo
 
 const PLAYER_STATS: PlayerStatsResponse = {
   playerId: LEBRON.id,
+  seasonType: "REGULAR",
   seasonAverages: {
     gamesPlayed: 10,
     minutesPerGame: 35.2,
@@ -95,6 +96,13 @@ const PLAYER_STATS: PlayerStatsResponse = {
     freeThrowsMadePerGame: 4.5,
     freeThrowsAttemptedPerGame: 5.8,
     freeThrowPercentage: 0.776,
+    trueShootingPercentage: 0.58,
+    effectiveFieldGoalPercentage: 0.56,
+    assistToTurnoverRatio: 2.61,
+    plusMinusPerGame: 4.2,
+    usagePercentage: 28.5,
+    offensiveRating: 115,
+    defensiveRating: 108,
   },
   gameLog: [
     { gameId: "g1", gameDate: "2026-01-10T00:00:00.000Z", points: 30 },
@@ -114,6 +122,8 @@ function makeGameDetail(overrides: Partial<GameDetail> = {}): GameDetail {
     awayTeam: CELTICS,
     homeScore: 119,
     awayScore: 100,
+    seasonType: "REGULAR",
+    playoffRound: null,
     prediction: PREDICTION,
     predictedScorers: [SCORER],
     ...overrides,

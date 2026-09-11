@@ -97,6 +97,14 @@ MINUTES_TREND_BASELINE_WINDOW = 10
 MINUTES_TREND_ADJUSTMENT_STRENGTH = 0.15
 MINUTES_TREND_DEVIATION_CAP = 1.0
 
+# Only this Game.seasonType feeds the recency-weighted average below. Same
+# reasoning as apps/predictor/elo.py's REGULAR_SEASON_TYPE: a player's
+# playoff minutes and usage are a different distribution from their
+# regular-season ones, and letting a deep playoff run dominate the most
+# recent (highest-weighted) games would skew every fantasy projection.
+# Postseason games are ingested but excluded from every model input.
+REGULAR_SEASON_TYPE = "REGULAR"
+
 # Calibrated so this mock dataset's predicted-points range (roughly 20-45)
 # maps onto a DraftKings-like salary spread ($4,000-$10,500), not derived
 # from any real pricing model.
@@ -211,12 +219,14 @@ def calculate_salary(predicted_points: float) -> int:
 
 
 def fetch_game_logs(cursor) -> dict[str, dict[str, list]]:
-    """Reads every player's boxscore rows and scores each game.
+    """Reads every player's regular-season boxscore rows and scores each game.
 
     Returns a dict of playerId -> {"fantasy_points": [...], "minutes": [...]},
     both oldest game first (the ordering calculate_recency_weighted_average
     and calculate_minutes_trend_ratio require) and index-aligned (game i's
     fantasy points and minutes are the same game for both lists).
+
+    Postseason games are excluded — see REGULAR_SEASON_TYPE.
     """
     cursor.execute(
         """
@@ -226,8 +236,10 @@ def fetch_game_logs(cursor) -> dict[str, dict[str, list]]:
         FROM "Player" p
         JOIN "PlayerGameStat" pgs ON pgs."playerId" = p."id"
         JOIN "Game" g ON g."id" = pgs."gameId"
+        WHERE g."seasonType" = %(season_type)s
         ORDER BY p."id", g."gameDate" ASC
-        """
+        """,
+        {"season_type": REGULAR_SEASON_TYPE},
     )
     game_logs: dict[str, dict[str, list]] = {}
     for row in cursor.fetchall():

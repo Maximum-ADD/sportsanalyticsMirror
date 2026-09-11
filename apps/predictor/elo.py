@@ -50,6 +50,15 @@ See docs/reports for the full write-up.
 
 STARTING_ELO = 1500.0
 
+# Both queries below are restricted to this Game.seasonType. Playoff
+# basketball is a different distribution — shorter rotations, targeted
+# matchup planning, no back-to-backs — and folding it into a model that
+# doesn't represent any of that context makes the regular-season ratings
+# worse, not better. Postseason games are ingested (see apps/ingestion) but
+# deliberately excluded from every model input here; revisit only alongside
+# a model that actually represents postseason context.
+REGULAR_SEASON_TYPE = "REGULAR"
+
 # See module docstring's "Season-boundary reset" section for the full
 # backtest. 0.0 would reproduce the pre-this-change behavior exactly
 # (games treated as one continuous sequence with no reset).
@@ -92,7 +101,7 @@ def update_elo(rating: float, actual_result: float, expected_result: float) -> f
 
 
 def fetch_completed_games_chronological(cursor) -> list[dict]:
-    """Reads every played game (both scores present) oldest game first.
+    """Reads every played regular-season game (both scores present) oldest game first.
 
     Chronological order is required by compute_elo_ratings, which processes
     games as a single forward pass, updating a running rating dict — Elo is
@@ -101,6 +110,8 @@ def fetch_completed_games_chronological(cursor) -> list[dict]:
     predict.py's recency-weighted average relies on. season is included so
     compute_elo_ratings can detect and apply the season-boundary reset (see
     module docstring).
+
+    Postseason games are excluded — see REGULAR_SEASON_TYPE.
     """
     cursor.execute(
         """
@@ -110,27 +121,36 @@ def fetch_completed_games_chronological(cursor) -> list[dict]:
                g."season" AS season
         FROM "Game" g
         WHERE g."homeScore" IS NOT NULL AND g."awayScore" IS NOT NULL
+          AND g."seasonType" = %(season_type)s
         ORDER BY g."gameDate" ASC
-        """
+        """,
+        {"season_type": REGULAR_SEASON_TYPE},
     )
     return cursor.fetchall()
 
 
 def fetch_upcoming_games(cursor) -> list[dict]:
-    """Reads every scheduled-but-not-yet-played game (either score missing).
+    """Reads every scheduled-but-not-yet-played regular-season game (either score missing).
 
     season is included so predict_upcoming_games can apply a season-
     boundary reset for upcoming games whose season hasn't been reached yet
     by any completed game (e.g. predicting the first games of a new season
     before any of them have been played) — see its own docstring.
+
+    Postseason games are excluded — see REGULAR_SEASON_TYPE. A postseason
+    game with no score yet would otherwise get a GamePrediction row built
+    from ratings that never saw a postseason game, which is worse than
+    having no prediction for it at all.
     """
     cursor.execute(
         """
         SELECT g."id" AS game_id, g."homeTeamId" AS home_team_id,
                g."awayTeamId" AS away_team_id, g."season" AS season
         FROM "Game" g
-        WHERE g."homeScore" IS NULL OR g."awayScore" IS NULL
-        """
+        WHERE (g."homeScore" IS NULL OR g."awayScore" IS NULL)
+          AND g."seasonType" = %(season_type)s
+        """,
+        {"season_type": REGULAR_SEASON_TYPE},
     )
     return cursor.fetchall()
 

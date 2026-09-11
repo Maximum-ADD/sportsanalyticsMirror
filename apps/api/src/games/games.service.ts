@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Game, GamePrediction, Prisma, Team } from "@prisma/client";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
+import { parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 export type GameWithTeams = Game & { homeTeam: Team; awayTeam: Team };
@@ -57,6 +58,14 @@ export class GamesService {
   // Predictions page's season filter) needed to ask for a specific one by
   // name rather than only ever seeing "soonest upcoming, then most recent."
   //
+  // An absent `seasonType` means no filter — every segment, mixed. That's
+  // deliberately different from the player-stats endpoints, which default
+  // to REGULAR: a schedule/results list is the one view where seeing a
+  // team's regular season and playoff run in one chronological sequence is
+  // the useful thing rather than a bleed, and nothing derived is being
+  // averaged across segments here. The frontend still always sends a
+  // segment when the user has picked one.
+  //
   // Every orderBy carries `id: "asc"` as a second key — NOT decorative.
   // Many games share the exact same gameDate (every game on a given real
   // calendar day stores the same timestamp; confirmed live, e.g. 12 games
@@ -70,9 +79,13 @@ export class GamesService {
     const { page, pageSize } = parsePageParams(query);
     const status = parseStatusFilter(query);
     const season = parseSeasonFilter(query);
+    const seasonType = parseSeasonType(query.seasonType);
     const rowsNeeded = page * pageSize;
 
-    const seasonWhere: Prisma.GameWhereInput = season ? { season } : {};
+    const seasonWhere: Prisma.GameWhereInput = {
+      ...(season ? { season } : {}),
+      ...(seasonType ? { seasonType } : {}),
+    };
 
     if (status === "upcoming") {
       const [data, total] = await Promise.all([

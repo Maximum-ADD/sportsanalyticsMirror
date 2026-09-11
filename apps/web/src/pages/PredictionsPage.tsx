@@ -1,15 +1,29 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Check, Flame, Search, Swords, Trophy, X } from "lucide-react";
 import { fetchEloRatings, fetchGames, fetchSeasons } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { HitMissPill } from "@/components/HitMissPill";
 import { PlayerCardsDisplay, useUpcomingPlayerReliability } from "@/components/PlayerCards";
+import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PERCENT, formatMargin, isCompleted, wasModelHit } from "@/lib/predictions";
+import {
+  ALL_SEGMENTS,
+  SEASON_TYPES_IN_ORDER,
+  formatSeasonType,
+  parseUrlSegmentSelection,
+  toSeasonTypeParam,
+  toUrlSegmentSelection,
+} from "@/lib/seasonType";
+import type { SeasonSegmentSelection } from "@/lib/seasonType";
 import type { Game, GamePrediction, TeamEloRating } from "@/types/nba";
+
+// The games list is the one view that can show a whole season at once — see
+// ALL_SEGMENTS. Ordered so "All" reads first, then the season in sequence.
+const GAME_SEGMENT_OPTIONS: SeasonSegmentSelection[] = [ALL_SEGMENTS, ...SEASON_TYPES_IN_ORDER];
 
 // A single larger fetch, then searched entirely client-side (see
 // matchesSearch below) — GET /v1/games has no server-side team-name search
@@ -678,6 +692,16 @@ export function PredictionsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [seasonFilter, setSeasonFilter] = useState<string | "all">("all");
   const [showAllCards, setShowAllCards] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const segment = parseUrlSegmentSelection(searchParams.get("segment"));
+  const isPostseasonSegment = segment !== ALL_SEGMENTS && segment !== "REGULAR";
+
+  function selectSegment(nextSegment: SeasonSegmentSelection) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("segment", toUrlSegmentSelection(nextSegment));
+    setSearchParams(nextParams, { replace: true });
+    setShowAllCards(false);
+  }
 
   const seasonsQuery = useQuery({ queryKey: ["seasons"], queryFn: fetchSeasons });
 
@@ -690,13 +714,18 @@ export function PredictionsPage() {
   // specific season switches to that season's own full mix (its own
   // upcoming games, if it has any, then its completed ones), since a
   // single season doesn't have the "buried by 1000+ future games" problem.
+  //
+  // segment narrows further to one season type (regular/play-in/playoffs/
+  // finals); omitted (ALL_SEGMENTS) means every segment mixed, matching
+  // GamesService.getGames' own "no seasonType filter" default.
   const gamesQuery = useQuery({
-    queryKey: ["games", { pageSize: GAMES_TO_FETCH, season: seasonFilter }],
+    queryKey: ["games", { pageSize: GAMES_TO_FETCH, season: seasonFilter, segment }],
     queryFn: () =>
       fetchGames({
         pageSize: GAMES_TO_FETCH,
         status: seasonFilter === "all" ? "upcoming" : "all",
         ...(seasonFilter !== "all" ? { season: seasonFilter } : {}),
+        seasonType: toSeasonTypeParam(segment),
       }),
   });
 
@@ -917,7 +946,24 @@ export function PredictionsPage() {
               </option>
             ))}
           </select>
+          <SeasonSegmentControl
+            value={segment}
+            onChange={selectSegment}
+            options={GAME_SEGMENT_OPTIONS}
+            label="Season segment"
+          />
         </div>
+
+        {/* Postseason games are ingested but deliberately excluded from every
+            model input (see apps/predictor), so they carry no prediction.
+            Said plainly here rather than leaving a column of "No prediction
+            yet" looking like something failed. */}
+        {isPostseasonSegment && (
+          <p className="mb-4 border border-landing-light bg-locker-surface px-4 py-3 text-[12.5px] text-locker-ink-muted">
+            {formatSeasonType(segment)} games are shown for reference only. The Elo and Four Factors models are
+            trained on regular-season games alone, so no predictions are generated for the postseason.
+          </p>
+        )}
 
         {gamesQuery.isPending && (
           <div className="flex min-h-[16rem] items-center justify-center">

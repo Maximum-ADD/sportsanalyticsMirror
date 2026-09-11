@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { Marquee } from "@/components/landing/Marquee";
 import { ScreenshotPlaceholder } from "@/components/landing/ScreenshotPlaceholder";
@@ -32,10 +33,36 @@ const HERO_CASCADE = [
 
 const PANEL_WIDTH = "71%";
 
+interface GetStartedProps {
+  signInCallbackURL: string;
+}
+
+function GetStarted({ signInCallbackURL }: GetStartedProps) {
+  const { data: session, isPending } = useSession();
+  const className = "leather-texture mt-10 inline-flex h-14 min-w-[15rem] items-center justify-center px-10 text-xl font-bold tracking-[0.06em] text-white shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-black disabled:cursor-wait disabled:opacity-70";
+
+  if (session) {
+    return <Link to={APP_HOME} className={className}>Get Started</Link>;
+  }
+
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={isPending}
+      onClick={() => signInWithGoogle(signInCallbackURL)}
+    >
+      Get Started
+    </button>
+  );
+}
+
 export function LandingPage() {
+  const appHomeURL = new URL(APP_HOME, window.location.origin).href;
+
   return (
     <div className="flex min-h-screen flex-col bg-landing-hero">
-      <LandingHeader overlaysContent />
+      <LandingHeader overlaysContent signInCallbackURL={appHomeURL} />
       <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         <section className="relative overflow-hidden bg-landing-hero">
           <SectionPhoto name="court-player" narrowName="court-player-narrow" priority />
@@ -46,12 +73,7 @@ export function LandingPage() {
                 <span className="hero-outline-text block">Fantasy League</span>
                 <span className="block text-black">Optimizer</span>
               </h1>
-              <Link
-                to={APP_HOME}
-                className="leather-texture mt-10 inline-flex h-14 min-w-[15rem] items-center justify-center px-10 text-xl font-bold tracking-[0.06em] text-white shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-black"
-              >
-                Get Started
-              </Link>
+              <GetStarted signInCallbackURL={appHomeURL} />
             </div>
             <div className="relative mx-auto aspect-[403/370] w-full max-w-[36rem] lg:mx-0 lg:ml-auto">
               {HERO_CASCADE.map((panel) => (
