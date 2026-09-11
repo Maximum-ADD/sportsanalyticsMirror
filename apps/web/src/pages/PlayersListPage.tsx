@@ -3,6 +3,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { fetchPlayers, fetchPlayerStats, fetchTeams } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
+import { FollowPlayerButton } from "@/components/FollowPlayerButton";
 import { Pagination } from "@/components/Pagination";
 import { PlayersFilterBar, type PlayerSortKey } from "@/components/PlayersFilterBar";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -10,6 +11,7 @@ import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useMe } from "@/lib/useMe";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import type { SeasonType } from "@/types/nba";
 
@@ -19,6 +21,7 @@ const SEARCH_DEBOUNCE_IN_MILLISECONDS = 300;
 export function PlayersListPage() {
   const [page, setPage] = useState(1);
   const [searchParams, setSearchParams] = useSearchParams();
+  const { session } = useMe();
 
   // Same ?segment= parameter the player profile and compare pages use, so
   // the selection survives a reload and a link into a postseason list is
@@ -88,6 +91,8 @@ export function PlayersListPage() {
 
   const isLoadingStats = sortKey === "ppg" && statsQueries.some((query) => query.isPending);
 
+  const columnCount = 4 + (sortKey === "ppg" ? 1 : 0) + (session ? 1 : 0);
+
   function changeFilterAndResetPage(applyFilter: () => void) {
     applyFilter();
     setPage(1);
@@ -131,20 +136,21 @@ export function PlayersListPage() {
               <TableHead>Position</TableHead>
               <TableHead>Jersey</TableHead>
               {sortKey === "ppg" && <TableHead>PPG</TableHead>}
+              {session && <TableHead>Follow</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody className="bg-surface-card">
             {playersQuery.isPending || isLoadingStats
               ? (
                   <TableRow>
-                    <TableCell colSpan={sortKey === "ppg" ? 5 : 4} className="py-10">
+                    <TableCell colSpan={columnCount} className="py-10">
                       <BasketballSpinner label="Loading players" />
                     </TableCell>
                   </TableRow>
                 )
               : rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={sortKey === "ppg" ? 5 : 4} className="py-8 text-center text-text-secondary">
+                    <TableCell colSpan={columnCount} className="py-8 text-center text-text-secondary">
                       {isPostseasonSegment
                         ? `No players matched in the ${formatSeasonType(seasonType)}.`
                         : "No players found."}
@@ -180,6 +186,11 @@ export function PlayersListPage() {
                     {sortKey === "ppg" && (
                       <TableCell className="text-text-secondary">
                         {pointsPerGameByPlayerId.get(player.id) ?? "—"}
+                      </TableCell>
+                    )}
+                    {session && (
+                      <TableCell>
+                        <FollowPlayerButton playerId={player.id} playerName={`${player.firstName} ${player.lastName}`} />
                       </TableCell>
                     )}
                   </TableRow>

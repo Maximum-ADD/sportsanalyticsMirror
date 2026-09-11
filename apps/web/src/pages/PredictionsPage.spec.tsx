@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PredictionsPage } from "./PredictionsPage";
 import { fetchEloRatings, fetchGameDetail, fetchGames, fetchPlayerStatsBatch, fetchSeasons } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
+import { useSession } from "@/lib/authClient";
+import { fetchMe } from "@/lib/meApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import { expectNoAccessibilityViolations } from "@/test/accessibility";
-import type { Game, GamePrediction, Team } from "@/types/nba";
+import type { Game, GamePrediction, MeProfile, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchGames: vi.fn(),
@@ -14,6 +16,14 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchEloRatings: vi.fn(),
   fetchGameDetail: vi.fn(),
   fetchPlayerStatsBatch: vi.fn(),
+}));
+
+vi.mock("@/lib/authClient", () => ({
+  useSession: vi.fn(),
+}));
+
+vi.mock("@/lib/meApi", () => ({
+  fetchMe: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -79,6 +89,9 @@ describe("PredictionsPage", () => {
     vi.mocked(fetchEloRatings).mockResolvedValue([]);
     vi.mocked(fetchGameDetail).mockRejectedValue(new Error("not mocked in this test"));
     vi.mocked(fetchPlayerStatsBatch).mockResolvedValue({ players: [] });
+    // Signed out by default — Your matchups/Tailored for you have their own
+    // tests below that mock a real session and GET /v1/me response.
+    vi.mocked(useSession).mockReturnValue({ data: null, isPending: false } as never);
   });
 
   afterEach(() => {
@@ -141,15 +154,6 @@ describe("PredictionsPage", () => {
     expect(await screen.findByText("Could not load games.")).toBeInTheDocument();
   });
 
-  it("shows the model's recent-form record for completed games", async () => {
-    mockGamesByStatus([makeGame({ prediction: PREDICTION })]);
-
-    renderWithProviders(<PredictionsPage />);
-
-    expect(await screen.findByText("1", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByText("of 1 correct — last 1 completed games", { exact: false })).toBeInTheDocument();
-  });
-
   it("shows only the first page of cards with a View more button when there are more games than the page size", async () => {
     const games = Array.from({ length: 12 }, (_, index) =>
       makeGame({
@@ -181,11 +185,11 @@ describe("PredictionsPage", () => {
     expect(screen.queryByRole("button", { name: /show less/i })).not.toBeInTheDocument();
   });
 
-  it("still shows recent results and the model track record when the main list is upcoming-only", async () => {
+  it("still shows recent results when the main list is upcoming-only", async () => {
     // Regression test: gamesQuery (the main card grid) can be scoped to
-    // upcoming games with no scores yet — Recent results/Model track record
-    // must come from their own dedicated completed-games fetch
-    // (recentGamesQuery), not from whatever gamesQuery happens to return.
+    // upcoming games with no scores yet — Recent results must come from its
+    // own dedicated completed-games fetch (recentGamesQuery), not from
+    // whatever gamesQuery happens to return.
     const upcomingGame = makeGame({
       id: "upcoming-1",
       homeScore: null,
@@ -203,8 +207,7 @@ describe("PredictionsPage", () => {
 
     renderWithProviders(<PredictionsPage />);
 
-    expect(await screen.findByText(/model track record/i)).toBeInTheDocument();
-    expect(screen.getByText(/recent results/i)).toBeInTheDocument();
+    expect(await screen.findByText(/recent results/i)).toBeInTheDocument();
     // The completed game's score shows up in Recent results even though
     // gamesQuery's own result set (the main grid) is upcoming-only.
     expect(screen.getByText("100–119", { exact: false })).toBeInTheDocument();
@@ -352,5 +355,142 @@ describe("PredictionsPage", () => {
     expect(await screen.findByText("LeBron James")).toBeInTheDocument();
     // Card grid content precedes Top 5 to watch in document order.
     expect(cardGridGame.compareDocumentPosition(top5Heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  function mockSignedIn(me: MeProfile) {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: me.email, name: me.name } },
+      isPending: false,
+    } as never);
+    vi.mocked(fetchMe).mockResolvedValue(me);
+  }
+
+  function makePlayer(overrides: Partial<MeProfile["followedPlayers"][number]> = {}): MeProfile["followedPlayers"][number] {
+    return {
+      id: "player-1",
+      nbaPlayerId: 2544,
+      firstName: "LeBron",
+      lastName: "James",
+      position: "F",
+      heightInches: 81,
+      weightLbs: 250,
+      jerseyNumber: "23",
+      headshotUrl: null,
+      teamId: LAKERS.id,
+      team: LAKERS,
+      birthDate: null,
+      school: null,
+      country: null,
+      lastAffiliation: null,
+      seasonExp: null,
+      rosterStatus: null,
+      draftYear: null,
+      draftRound: null,
+      draftNumber: null,
+      ...overrides,
+    };
+  }
+
+  const ME_BASE: MeProfile = {
+    id: "user-1",
+    email: "player@example.com",
+    name: "Player One",
+    username: "playerone",
+    avatarUrl: null,
+    favoriteTeam: null,
+    followedPlayers: [],
+  };
+
+  it("shows the favorite team's next game and the model's pick in Your matchups", async () => {
+    const nextGame = makeGame({
+      id: "next-game",
+      homeScore: null,
+      awayScore: null,
+      prediction: { ...PREDICTION, gameId: "next-game" },
+    });
+    mockGamesByStatus([nextGame]);
+    mockSignedIn({ ...ME_BASE, favoriteTeam: LAKERS });
+
+    renderWithProviders(<PredictionsPage />);
+
+    expect(await screen.findByRole("heading", { name: /your matchups/i })).toBeInTheDocument();
+    const nextGameLabel = screen.getByText(/lakers's next game/i);
+    const matchupLink = nextGameLabel.closest("a");
+    expect(matchupLink).not.toBeNull();
+    expect(matchupLink).toHaveAttribute("href", "/games/next-game");
+    // homeWinProbability 0.62 favors the home team (Lakers).
+    expect(matchupLink).toHaveTextContent("LAL 62%");
+  });
+
+  it("lists a followed player's next game in Your matchups", async () => {
+    const nextGame = makeGame({
+      id: "next-game",
+      homeScore: null,
+      awayScore: null,
+      prediction: { ...PREDICTION, gameId: "next-game" },
+    });
+    mockGamesByStatus([nextGame]);
+    mockSignedIn({ ...ME_BASE, followedPlayers: [makePlayer()] });
+
+    renderWithProviders(<PredictionsPage />);
+
+    expect(await screen.findByRole("heading", { name: /your matchups/i })).toBeInTheDocument();
+    expect(screen.getByText("LeBron James")).toBeInTheDocument();
+  });
+
+  it("omits Your matchups for a signed-out visitor", async () => {
+    mockGamesByStatus([makeGame({ homeScore: null, awayScore: null, prediction: PREDICTION })]);
+
+    renderWithProviders(<PredictionsPage />);
+
+    await screen.findByText("LAL by 3.7", { exact: false });
+    expect(screen.queryByRole("heading", { name: /your matchups/i })).not.toBeInTheDocument();
+  });
+
+  it("omits Your matchups for a signed-in user with no favorite team or follows", async () => {
+    mockGamesByStatus([makeGame({ homeScore: null, awayScore: null, prediction: PREDICTION })]);
+    mockSignedIn(ME_BASE);
+
+    renderWithProviders(<PredictionsPage />);
+
+    await screen.findByText("LAL by 3.7", { exact: false });
+    expect(screen.queryByRole("heading", { name: /your matchups/i })).not.toBeInTheDocument();
+  });
+
+  it("shows a followed player's predicted points and links their mini card to their profile", async () => {
+    const nextGame = makeGame({
+      id: "next-game",
+      homeScore: null,
+      awayScore: null,
+      prediction: { ...PREDICTION, gameId: "next-game" },
+    });
+    mockGamesByStatus([nextGame]);
+    mockSignedIn({ ...ME_BASE, followedPlayers: [makePlayer()] });
+    vi.mocked(fetchGameDetail).mockResolvedValue({
+      ...nextGame,
+      predictedScorers: [{ player: makePlayer(), predictedPoints: 27.4, gamesConsidered: 8 }],
+    });
+
+    renderWithProviders(<PredictionsPage />);
+
+    const playerLink = await screen.findByRole("link", { name: /lebron james/i });
+    expect(playerLink).toHaveAttribute("href", "/players/player-1");
+    expect(playerLink).toHaveTextContent("27.4");
+  });
+
+  it("shows the model's longest streak, high-confidence accuracy, and most predictable team", async () => {
+    const games = [
+      makeGame({ id: "g1", prediction: { ...PREDICTION, gameId: "g1", homeWinProbability: 0.75 } }),
+      makeGame({ id: "g2", prediction: { ...PREDICTION, gameId: "g2", homeWinProbability: 0.75 } }),
+      makeGame({ id: "g3", prediction: { ...PREDICTION, gameId: "g3", homeWinProbability: 0.75 } }),
+    ];
+    mockGamesByStatus(games);
+
+    renderWithProviders(<PredictionsPage />);
+
+    expect(await screen.findByRole("heading", { name: /model track record/i })).toBeInTheDocument();
+    expect(screen.getByText("3 games", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(/most predictable team/i)).toBeInTheDocument();
+    expect(screen.getByText("Lakers")).toBeInTheDocument();
   });
 });

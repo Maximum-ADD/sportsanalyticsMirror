@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, Flame, Search, Swords, Trophy, X } from "lucide-react";
-import { fetchEloRatings, fetchGames, fetchSeasons } from "@/lib/nbaApi";
+import { Flame, Search, Swords, Trophy } from "lucide-react";
+import { fetchEloRatings, fetchGameDetail, fetchGames, fetchSeasons } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { HitMissPill } from "@/components/HitMissPill";
 import { PlayerCardsDisplay, useUpcomingPlayerReliability } from "@/components/PlayerCards";
+import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { SectionLoading } from "@/components/ui/loading-overlay";
+import { useMe } from "@/lib/useMe";
 import { PERCENT, formatMargin, isCompleted, wasModelHit } from "@/lib/predictions";
 import {
   ALL_SEGMENTS,
@@ -19,7 +22,7 @@ import {
   toUrlSegmentSelection,
 } from "@/lib/seasonType";
 import type { SeasonSegmentSelection } from "@/lib/seasonType";
-import type { Game, GamePrediction, TeamEloRating } from "@/types/nba";
+import type { Game, GamePrediction, MeProfile, TeamEloRating } from "@/types/nba";
 
 // The games list is the one view that can show a whole season at once — see
 // ALL_SEGMENTS. Ordered so "All" reads first, then the season in sequence.
@@ -300,23 +303,6 @@ function GamePredictionCard({ game, prediction }: GamePredictionCardProps) {
   );
 }
 
-const RECENT_FORM_WINDOW = 20;
-
-interface RecentFormGame {
-  game: Game;
-  hit: boolean;
-}
-
-function computeRecentForm(games: Game[]): RecentFormGame[] {
-  return games
-    .filter((game): game is Game & { prediction: GamePrediction } => Boolean(game.prediction) && isCompleted(game))
-    .slice()
-    .sort((a, b) => new Date(b.gameDate).getTime() - new Date(a.gameDate).getTime())
-    .slice(0, RECENT_FORM_WINDOW)
-    .map((game) => ({ game, hit: wasModelHit(game, game.prediction)! }))
-    .reverse(); // oldest → newest, left → right, matching how a form guide reads
-}
-
 interface TeamRecord {
   team: Game["homeTeam"];
   hits: number;
@@ -345,155 +331,6 @@ function computeTeamRecords(games: Game[]): TeamRecord[] {
   return Array.from(byTeam.values())
     .filter((record) => record.total >= TEAM_INSIGHT_MIN_GAMES)
     .map((record) => ({ ...record, hitRate: record.hits / record.total }));
-}
-
-interface TeamInsights {
-  mostPredictable: TeamRecord | null;
-  outlier: TeamRecord | null;
-}
-
-// Longest run of consecutive correct calls inside the same recent-form
-// window shown above (oldest → newest) — a real, honest number computed
-// from the same games, not a separate cherry-picked lookback. Alongside the
-// plain N/20 headline, this is the flattering-but-true framing: a model
-// that's right 13/20 overall can still have strung together a real run of
-// good calls, and that streak is what "hot right now" actually means.
-function computeLongestStreak(form: RecentFormGame[]): number {
-  let longest = 0;
-  let current = 0;
-  for (const entry of form) {
-    current = entry.hit ? current + 1 : 0;
-    longest = Math.max(longest, current);
-  }
-  return longest;
-}
-
-interface HighConfidenceAccuracy {
-  hits: number;
-  total: number;
-  hitRate: number | null;
-}
-
-// Accuracy on only the model's own most-confident picks (>= 70% win
-// probability for whichever side it favored) — the honest version of "when
-// it says it's sure, how often is it right," computed from the same
-// completed games already on the page rather than a separate backtest
-// endpoint. A well-built model should be MORE accurate here than its
-// overall record, which is exactly why this is worth surfacing next to a
-// plain N/20 that doesn't distinguish a confident call from a toss-up.
-const HIGH_CONFIDENCE_THRESHOLD = 0.7;
-
-// Below this many high-confidence games, the rate is reported as unknown
-// rather than shown — a 0/1 or 1/1 reads as either a damning or a flattering
-// number and is neither; it's just noise from too small a sample.
-const HIGH_CONFIDENCE_MIN_GAMES = 5;
-
-function computeHighConfidenceAccuracy(games: Game[]): HighConfidenceAccuracy {
-  let hits = 0;
-  let total = 0;
-  for (const game of games) {
-    if (!game.prediction || !isCompleted(game)) continue;
-    const confidence = Math.max(game.prediction.homeWinProbability, 1 - game.prediction.homeWinProbability);
-    if (confidence < HIGH_CONFIDENCE_THRESHOLD) continue;
-    total += 1;
-    if (wasModelHit(game, game.prediction)) hits += 1;
-  }
-  return { hits, total, hitRate: total >= HIGH_CONFIDENCE_MIN_GAMES ? hits / total : null };
-}
-
-// "Most predictable" = the team the model has read best; "outlier" = the
-// team it has struggled with most — both need to be genuinely different
-// teams, and both need the minimum sample above, or there's nothing
-// meaningful to say yet.
-function computeTeamInsights(games: Game[]): TeamInsights {
-  const records = computeTeamRecords(games);
-  if (records.length === 0) return { mostPredictable: null, outlier: null };
-
-  const sorted = records.slice().sort((a, b) => b.hitRate - a.hitRate);
-  const best = sorted[0];
-  const worst = sorted[sorted.length - 1];
-
-  return {
-    mostPredictable: best,
-    outlier: worst.team.id !== best.team.id && worst.hitRate < best.hitRate ? worst : null,
-  };
-}
-
-interface RecentFormStripProps {
-  form: RecentFormGame[];
-}
-
-// A concrete, glance-able "how's the model been doing lately" — each game
-// is its own hoverable/focusable tile (glyph + color, never color alone,
-// same CVD rule as HitMissPill) rather than an abstract bucketed rate.
-function RecentFormStrip({ form }: RecentFormStripProps) {
-  const hits = form.filter((entry) => entry.hit).length;
-
-  return (
-    <div>
-      <div className="flex items-baseline gap-2">
-        <span className="font-display text-3xl text-landing-ink tabular-nums">{hits}</span>
-        <span className="font-mono text-[11px] tracking-[0.08em] text-locker-ink-muted uppercase">
-          of {form.length} correct — last {form.length} completed games
-        </span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1">
-        {form.map(({ game, hit }) => (
-          <Link
-            key={game.id}
-            to={`/games/${game.id}`}
-            title={`${game.awayTeam.abbreviation} ${game.awayScore} @ ${game.homeTeam.abbreviation} ${game.homeScore} — model ${hit ? "hit" : "missed"}`}
-            aria-label={`${game.awayTeam.abbreviation} at ${game.homeTeam.abbreviation}, final ${game.awayScore} to ${game.homeScore}, model ${hit ? "hit" : "missed"}`}
-            className={`group relative flex size-6 items-center justify-center transition-transform hover:z-10 hover:scale-110 ${
-              hit ? "bg-locker-good" : "bg-locker-bad"
-            }`}
-          >
-            {hit ? (
-              <Check aria-hidden className="size-3.5 text-white" />
-            ) : (
-              <X aria-hidden className="size-3.5 text-white" />
-            )}
-          </Link>
-        ))}
-      </div>
-      <div className="mt-1.5 flex justify-between font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
-        <span>Oldest</span>
-        <span>Most recent</span>
-      </div>
-    </div>
-  );
-}
-
-interface TeamInsightCardProps {
-  label: string;
-  record: TeamRecord | null;
-  tone: "good" | "bad";
-  emptyReason: string;
-  description: (record: TeamRecord) => string;
-}
-
-function TeamInsightCard({ label, record, tone, emptyReason, description }: TeamInsightCardProps) {
-  return (
-    <div className="border border-landing-light bg-landing-hero p-3">
-      <p className="font-mono text-[9px] tracking-[0.12em] text-locker-ink-muted uppercase">{label}</p>
-      {record ? (
-        <>
-          <div className="mt-1.5 flex items-center gap-2">
-            <TeamBadge team={record.team} size="sm" />
-            <span className="font-display text-sm text-landing-ink uppercase">{record.team.name}</span>
-            <span
-              className={`ml-auto font-mono text-[10.5px] tabular-nums ${tone === "good" ? "text-locker-good" : "text-locker-bad"}`}
-            >
-              {record.hits}/{record.total}
-            </span>
-          </div>
-          <p className="mt-1 text-[11px] leading-snug text-locker-ink-muted">{description(record)}</p>
-        </>
-      ) : (
-        <p className="mt-1.5 text-[11px] leading-snug text-locker-ink-muted">{emptyReason}</p>
-      )}
-    </div>
-  );
 }
 
 function matchesSearch(game: Game, query: string): boolean {
@@ -648,42 +485,272 @@ function HowItWorksSection() {
   );
 }
 
-// Placeholder — this app has no followed-team/watchlist data source wired
-// to Predictions yet (same honest gap HomePage's WatchlistBoard already
-// documents for its own placeholder data). Kept visually present rather
-// than omitted so the shape of the feature is real once there's a
-// GET /v1/me/... endpoint to back it — swap PLACEHOLDER_TAILORED_GAMES for
-// that response and this section needs no other change.
-const PLACEHOLDER_TAILORED_GAMES = [
-  { matchup: "LAL vs BOS", reason: "You're watching Anthony Davis" },
-  { matchup: "DEN vs MIL", reason: "Nuggets are one of your followed teams" },
-  { matchup: "GSW vs PHX", reason: "Close matchup — model favors GSW by only 4%" },
-];
+// Longest run of consecutive correct calls among `recentGames` (already
+// sorted oldest → newest by the caller) — a real, honest number, not a
+// separate cherry-picked lookback. Alongside the plain overall record,
+// this is the flattering-but-true framing: a model that's right 13/20
+// overall can still have strung together a real run of good calls.
+function computeLongestStreak(games: Game[]): number {
+  let longest = 0;
+  let current = 0;
+  for (const game of games) {
+    if (!game.prediction) continue;
+    const hit = wasModelHit(game, game.prediction);
+    if (hit === null) continue;
+    current = hit ? current + 1 : 0;
+    longest = Math.max(longest, current);
+  }
+  return longest;
+}
 
-function TailoredForYouSection() {
+// Accuracy on only the model's own most-confident picks (>= 70% win
+// probability for whichever side it favored) — the honest version of "when
+// it says it's sure, how often is it right." A well-built model should be
+// MORE accurate here than its overall record, which is exactly why this is
+// worth surfacing next to a plain N/20 that doesn't distinguish a confident
+// call from a toss-up.
+const HIGH_CONFIDENCE_THRESHOLD = 0.7;
+
+// Below this many high-confidence games, the rate is reported as unknown
+// rather than shown — a 0/1 or 1/1 reads as either a damning or a
+// flattering number and is neither; it's just noise from too small a sample.
+const HIGH_CONFIDENCE_MIN_GAMES = 5;
+
+function computeHighConfidenceAccuracy(games: Game[]): { hits: number; total: number; hitRate: number | null } {
+  let hits = 0;
+  let total = 0;
+  for (const game of games) {
+    if (!game.prediction) continue;
+    const confidence = Math.max(game.prediction.homeWinProbability, 1 - game.prediction.homeWinProbability);
+    if (confidence < HIGH_CONFIDENCE_THRESHOLD) continue;
+    total += 1;
+    if (wasModelHit(game, game.prediction)) hits += 1;
+  }
+  return { hits, total, hitRate: total >= HIGH_CONFIDENCE_MIN_GAMES ? hits / total : null };
+}
+
+interface ModelTrackRecordSectionProps {
+  recentGames: Game[];
+}
+
+// The model's own track record, independent of any one user — kept as a
+// separate section from Your matchups (which is instead scoped to what a
+// specific signed-in user cares about) so a signed-out visitor, or one
+// with no favorite team/follows set, still sees something here.
+function ModelTrackRecordSection({ recentGames }: ModelTrackRecordSectionProps) {
+  const completedGames = useMemo(
+    () =>
+      recentGames
+        .filter(isCompleted)
+        .slice()
+        .sort((a, b) => new Date(a.gameDate).getTime() - new Date(b.gameDate).getTime()),
+    [recentGames]
+  );
+
+  const longestStreak = useMemo(() => computeLongestStreak(completedGames), [completedGames]);
+  const highConfidenceAccuracy = useMemo(() => computeHighConfidenceAccuracy(completedGames), [completedGames]);
+  const mostPredictable = useMemo(() => {
+    const records = computeTeamRecords(completedGames);
+    if (records.length === 0) return null;
+    return records.slice().sort((a, b) => b.hitRate - a.hitRate)[0];
+  }, [completedGames]);
+
+  if (completedGames.length === 0) return null;
+
   return (
-    <section>
+    <section className="border border-landing-light bg-locker-surface p-4">
       <div className="mb-3 flex items-center gap-3.5">
         <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
-          Tailored for you
+          Model track record
         </h2>
         <span aria-hidden className="h-px flex-1 bg-landing-light" />
-        <span className="font-mono text-[9px] tracking-[0.14em] text-locker-ink-muted uppercase">Preview</span>
       </div>
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-        {PLACEHOLDER_TAILORED_GAMES.map((entry) => (
-          <div
-            key={entry.matchup}
-            className="border border-dashed border-landing-light bg-locker-surface p-4 opacity-70"
-          >
-            <p className="font-display text-sm tracking-[0.01em] text-landing-ink uppercase">{entry.matchup}</p>
-            <p className="mt-1 text-[11.5px] text-locker-ink-muted">{entry.reason}</p>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div className="border border-landing-light bg-landing-hero px-3 py-2.5">
+          <div className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+            Longest correct streak
           </div>
-        ))}
+          <div className="mt-1 font-display text-2xl text-locker-good tabular-nums">
+            {longestStreak} {longestStreak === 1 ? "game" : "games"}
+          </div>
+        </div>
+        <div className="border border-landing-light bg-landing-hero px-3 py-2.5">
+          <div className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+            When confident (70%+), right
+          </div>
+          {highConfidenceAccuracy.hitRate !== null ? (
+            <div
+              className={`mt-1 font-display text-2xl tabular-nums ${
+                highConfidenceAccuracy.hitRate >= 0.6 ? "text-locker-good" : "text-landing-ink"
+              }`}
+            >
+              {PERCENT(highConfidenceAccuracy.hitRate)}{" "}
+              <span className="text-[13px] text-locker-ink-muted">
+                ({highConfidenceAccuracy.hits}/{highConfidenceAccuracy.total})
+              </span>
+            </div>
+          ) : (
+            <div className="mt-1 text-[12.5px] text-locker-ink-muted">
+              Not enough high-confidence calls yet ({highConfidenceAccuracy.total}/{HIGH_CONFIDENCE_MIN_GAMES})
+            </div>
+          )}
+        </div>
+        <div className="border border-landing-light bg-landing-hero px-3 py-2.5">
+          <div className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+            Most predictable team
+          </div>
+          {mostPredictable ? (
+            <div className="mt-1.5 flex items-center gap-2">
+              <TeamBadge team={mostPredictable.team} size="sm" />
+              <span className="font-display text-sm text-landing-ink uppercase">{mostPredictable.team.name}</span>
+              <span className="ml-auto font-mono text-[10.5px] tabular-nums text-locker-good">
+                {mostPredictable.hits}/{mostPredictable.total}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-1 text-[12.5px] text-locker-ink-muted">Needs a few more completed games.</div>
+          )}
+        </div>
       </div>
-      <p className="mt-2 text-[10.5px] text-locker-ink-muted">
-        Illustrative — personalizes once followed teams and watchlists are wired up.
-      </p>
+    </section>
+  );
+}
+
+interface YourMatchupsSectionProps {
+  games: Game[];
+  recentGames: Game[];
+}
+
+// Scoped to what this specific user actually cares about — their favorite
+// team's own next game and the model's history on that team, plus their
+// followed players' next games. Nothing here needs a fetch beyond what the
+// page already loads: `recentGames` is the same always-completed feed
+// ModelTrackRecordSection reads, `games` is the main list.
+function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
+  const { data: me } = useMe();
+
+  const favoriteTeamNextGame = useMemo(() => {
+    if (!me?.favoriteTeam) return null;
+    return games.find((game) => !isCompleted(game) && (game.homeTeamId === me.favoriteTeam!.id || game.awayTeamId === me.favoriteTeam!.id)) ?? null;
+  }, [games, me]);
+
+  const favoriteTeamRecord = useMemo(() => {
+    if (!me?.favoriteTeam) return null;
+    return computeTeamRecords(recentGames).find((record) => record.team.id === me.favoriteTeam!.id) ?? null;
+  }, [recentGames, me]);
+
+  const followedPlayersNextGames = useMemo(() => {
+    if (!me) return [];
+    const upcoming = games.filter((game) => !isCompleted(game));
+    const seenGameIds = new Set<string>();
+    const entries: { game: Game; player: MeProfile["followedPlayers"][number] }[] = [];
+    for (const player of me.followedPlayers) {
+      if (!player.team) continue;
+      const match = upcoming.find((game) => game.homeTeamId === player.team!.id || game.awayTeamId === player.team!.id);
+      if (match && !seenGameIds.has(match.id)) {
+        seenGameIds.add(match.id);
+        entries.push({ game: match, player });
+      }
+    }
+    return entries.slice(0, 3);
+  }, [games, me]);
+
+  // One extra request per followed player's next game — same cost pattern
+  // as useUpcomingPlayerReliability's own per-game fan-out — to read the
+  // followed player's own predictedPoints back out of that game's
+  // predictedScorers, which only GET /v1/games/:id carries (the plain
+  // games list this section otherwise reads from does not).
+  const gameDetailQueries = useQueries({
+    queries: followedPlayersNextGames.map(({ game }) => ({
+      queryKey: ["gameDetail", game.id],
+      queryFn: () => fetchGameDetail(game.id),
+    })),
+  });
+
+  const followedPlayerCards = followedPlayersNextGames.map(({ game, player }, index) => {
+    const detail = gameDetailQueries[index].data;
+    const predictedPoints = detail?.predictedScorers.find((scorer) => scorer.player.id === player.id)?.predictedPoints;
+    return { game, player, predictedPoints };
+  });
+
+  if (!me || (!favoriteTeamNextGame && followedPlayerCards.length === 0)) return null;
+
+  return (
+    <section className="border border-landing-light bg-locker-surface p-4">
+      <div className="mb-3 flex items-center gap-3.5">
+        <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
+          Your matchups
+        </h2>
+        <span aria-hidden className="h-px flex-1 bg-landing-light" />
+      </div>
+
+      {favoriteTeamNextGame && (
+        <Link
+          to={`/games/${favoriteTeamNextGame.id}`}
+          className="mb-3 block border border-landing-light bg-landing-hero p-3 transition-colors hover:border-locker-leather"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+              {me.favoriteTeam!.name}'s next game
+            </span>
+            {favoriteTeamRecord && (
+              <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+                Model's called their games right {PERCENT(favoriteTeamRecord.hitRate)} of the time
+              </span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <span className="font-display text-sm text-landing-ink uppercase">
+              {favoriteTeamNextGame.awayTeam.abbreviation} @ {favoriteTeamNextGame.homeTeam.abbreviation}
+            </span>
+            {favoriteTeamNextGame.prediction && (
+              <span className="text-[11.5px] text-locker-ink-muted">
+                model likes{" "}
+                <span className="font-semibold text-landing-ink">
+                  {favoriteTeamNextGame.prediction.homeWinProbability >= 0.5
+                    ? favoriteTeamNextGame.homeTeam.abbreviation
+                    : favoriteTeamNextGame.awayTeam.abbreviation}{" "}
+                  {PERCENT(
+                    Math.max(
+                      favoriteTeamNextGame.prediction.homeWinProbability,
+                      1 - favoriteTeamNextGame.prediction.homeWinProbability
+                    )
+                  )}
+                </span>
+              </span>
+            )}
+          </div>
+        </Link>
+      )}
+
+      {followedPlayerCards.length > 0 && (
+        <div>
+          <p className="mb-2 font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+            Players you follow
+          </p>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {followedPlayerCards.map(({ game, player, predictedPoints }) => (
+              <Link
+                key={player.id}
+                to={`/players/${player.id}`}
+                className="flex flex-col items-center border border-landing-light bg-landing-hero p-3 text-center transition-colors hover:border-locker-leather"
+              >
+                <PlayerHeadshot player={player} size="sm" />
+                <p className="mt-2 text-[11px] text-landing-ink">
+                  {player.firstName} {player.lastName}
+                </p>
+                <p className="mt-0.5 font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase">
+                  vs {game.homeTeamId === player.team!.id ? game.awayTeam.abbreviation : game.homeTeam.abbreviation}
+                </p>
+                <p className="mt-1.5 font-display text-lg text-landing-ink tabular-nums">
+                  {predictedPoints !== undefined ? predictedPoints : "—"}
+                </p>
+                <p className="font-mono text-[8px] tracking-[0.08em] text-locker-ink-muted uppercase">Pred pts</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -755,10 +822,11 @@ export function PredictionsPage() {
     [recentGames]
   );
 
-  const recentForm = useMemo(() => computeRecentForm(recentGames), [recentGames]);
-  const teamInsights = useMemo(() => computeTeamInsights(recentGames), [recentGames]);
-  const longestStreak = useMemo(() => computeLongestStreak(recentForm), [recentForm]);
-  const highConfidenceAccuracy = useMemo(() => computeHighConfidenceAccuracy(recentGames), [recentGames]);
+  // Recent results/Your matchups render their shell the first time this
+  // query settles, then stay mounted (blurred via SectionLoading) on any
+  // later re-fetch — isSuccess alone would make the whole section vanish
+  // and reappear around every refetch instead of just blurring in place.
+  const hasLoadedRecentGamesOnce = recentGamesQuery.isSuccess || recentGamesQuery.isError;
 
   const upcomingCards = useUpcomingPlayerReliability();
 
@@ -780,138 +848,68 @@ export function PredictionsPage() {
 
         <ModelHighlightsSection />
 
-        {/* Recent results + accuracy-by-confidence, side by side — the
-            page's own track record before asking anyone to trust the live
-            predictions below it. Gated on recentGames (its own dedicated,
-            always-completed-games fetch), not the main, possibly season/
-            status-filtered `games` list below. */}
-        {recentGames.length > 0 && (
-          <div className="mb-6 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-            <section>
-              <div className="mb-3 flex items-center gap-3.5">
-                <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
-                  Recent results
-                </h2>
-                <span aria-hidden className="h-px flex-1 bg-landing-light" />
-              </div>
-              {recentResults.length === 0 ? (
-                <p className="border border-dashed border-landing-light bg-locker-surface p-5 text-center text-[12.5px] text-locker-ink-muted">
-                  No completed games yet.
-                </p>
-              ) : (
-                <div className="border border-landing-light bg-locker-surface">
-                  {recentResults.map((game) => {
-                    const hit = game.prediction ? wasModelHit(game, game.prediction) : null;
-                    return (
-                      <Link
-                        key={game.id}
-                        to={`/games/${game.id}`}
-                        className="flex flex-wrap items-center gap-3 border-b border-landing-light px-4 py-2.5 last:border-b-0 hover:bg-landing-hero"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <TeamBadge team={game.awayTeam} size="sm" />
-                          <span className="font-display text-[13px] text-landing-ink uppercase">
-                            {game.awayTeam.abbreviation}
-                          </span>
-                        </span>
-                        <span className="font-mono text-[10px] text-locker-ink-muted">@</span>
-                        <span className="flex items-center gap-1.5">
-                          <TeamBadge team={game.homeTeam} size="sm" />
-                          <span className="font-display text-[13px] text-landing-ink uppercase">
-                            {game.homeTeam.abbreviation}
-                          </span>
-                        </span>
-                        <span className="font-mono text-[10.5px] tracking-[0.08em] text-locker-ink-muted uppercase">
-                          {game.awayScore}–{game.homeScore}
-                        </span>
-                        {hit !== null && (
-                          <span className="ml-auto">
-                            <HitMissPill hit={hit} />
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
+        {/* Recent results + Your matchups, side by side — the page's own
+            track record before asking anyone to trust the live predictions
+            below it, next to whatever's personally relevant to this user.
+            Shell always renders once recentGamesQuery has settled once (see
+            hasLoadedRecentGamesOnce below) so a re-fetch (e.g. after a
+            mutation elsewhere) blurs this section in place rather than the
+            whole thing disappearing and reappearing. */}
+        {hasLoadedRecentGamesOnce && (
+          <SectionLoading loading={recentGamesQuery.isFetching} label="Loading recent results" className="mb-6">
+            <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+              <section>
+                <div className="mb-3 flex items-center gap-3.5">
+                  <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
+                    Recent results
+                  </h2>
+                  <span aria-hidden className="h-px flex-1 bg-landing-light" />
                 </div>
-              )}
-            </section>
-
-            <section className="border border-landing-light bg-locker-surface p-4">
-              <div className="mb-3 flex items-center gap-3.5">
-                <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
-                  Model track record
-                </h2>
-                <span aria-hidden className="h-px flex-1 bg-landing-light" />
-              </div>
-              {recentForm.length === 0 ? (
-                <p className="border border-dashed border-landing-light bg-landing-hero p-5 text-center text-[12.5px] text-locker-ink-muted">
-                  No completed games yet.
-                </p>
-              ) : (
-                <>
-                  {/* Led with on purpose: a plain N/20 headline doesn't
-                      distinguish a confident call from a toss-up, and says
-                      nothing about a real hot streak buried inside it. Both
-                      numbers below are real, computed from these same
-                      completed games — not a separate cherry-picked stat. */}
-                  <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <div className="border border-landing-light bg-landing-hero px-3 py-2.5">
-                      <div className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
-                        Longest correct streak
-                      </div>
-                      <div className="mt-1 font-display text-2xl text-locker-good tabular-nums">
-                        {longestStreak} {longestStreak === 1 ? "game" : "games"}
-                      </div>
-                    </div>
-                    <div className="border border-landing-light bg-landing-hero px-3 py-2.5">
-                      <div className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
-                        When confident (70%+), right
-                      </div>
-                      {highConfidenceAccuracy.hitRate !== null ? (
-                        <div
-                          className={`mt-1 font-display text-2xl tabular-nums ${
-                            highConfidenceAccuracy.hitRate >= 0.6 ? "text-locker-good" : "text-landing-ink"
-                          }`}
+                {recentResults.length === 0 ? (
+                  <p className="border border-dashed border-landing-light bg-locker-surface p-5 text-center text-[12.5px] text-locker-ink-muted">
+                    No completed games yet.
+                  </p>
+                ) : (
+                  <div className="border border-landing-light bg-locker-surface">
+                    {recentResults.map((game) => {
+                      const hit = game.prediction ? wasModelHit(game, game.prediction) : null;
+                      return (
+                        <Link
+                          key={game.id}
+                          to={`/games/${game.id}`}
+                          className="flex flex-wrap items-center gap-3 border-b border-landing-light px-4 py-2.5 last:border-b-0 hover:bg-landing-hero"
                         >
-                          {PERCENT(highConfidenceAccuracy.hitRate)}{" "}
-                          <span className="text-[13px] text-locker-ink-muted">
-                            ({highConfidenceAccuracy.hits}/{highConfidenceAccuracy.total})
+                          <span className="flex items-center gap-1.5">
+                            <TeamBadge team={game.awayTeam} size="sm" />
+                            <span className="font-display text-[13px] text-landing-ink uppercase">
+                              {game.awayTeam.abbreviation}
+                            </span>
                           </span>
-                        </div>
-                      ) : (
-                        <div className="mt-1 text-[12.5px] text-locker-ink-muted">
-                          Not enough high-confidence calls yet ({highConfidenceAccuracy.total}/
-                          {HIGH_CONFIDENCE_MIN_GAMES})
-                        </div>
-                      )}
-                    </div>
+                          <span className="font-mono text-[10px] text-locker-ink-muted">@</span>
+                          <span className="flex items-center gap-1.5">
+                            <TeamBadge team={game.homeTeam} size="sm" />
+                            <span className="font-display text-[13px] text-landing-ink uppercase">
+                              {game.homeTeam.abbreviation}
+                            </span>
+                          </span>
+                          <span className="font-mono text-[10.5px] tracking-[0.08em] text-locker-ink-muted uppercase">
+                            {game.awayScore}–{game.homeScore}
+                          </span>
+                          {hit !== null && (
+                            <span className="ml-auto">
+                              <HitMissPill hit={hit} />
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
                   </div>
+                )}
+              </section>
 
-                  <RecentFormStrip form={recentForm} />
-                  <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <TeamInsightCard
-                      label="Most predictable"
-                      record={teamInsights.mostPredictable}
-                      tone="good"
-                      emptyReason="Needs a few more completed games before a team stands out."
-                      description={(record) =>
-                        `The model has called ${record.team.name} games right ${PERCENT(record.hitRate)} of the time.`
-                      }
-                    />
-                    <TeamInsightCard
-                      label="Biggest outlier"
-                      record={teamInsights.outlier}
-                      tone="bad"
-                      emptyReason="No team is a clear outlier yet — needs a few more completed games."
-                      description={(record) =>
-                        `The model has struggled with ${record.team.name}, right only ${PERCENT(record.hitRate)} of the time.`
-                      }
-                    />
-                  </div>
-                </>
-              )}
-            </section>
-          </div>
+              <YourMatchupsSection games={games} recentGames={recentGames} />
+            </div>
+          </SectionLoading>
         )}
 
         {/* Filter + search */}
@@ -965,17 +963,17 @@ export function PredictionsPage() {
           </p>
         )}
 
-        {gamesQuery.isPending && (
-          <div className="flex min-h-[16rem] items-center justify-center">
-            <BasketballSpinner size="lg" label="Loading predictions" />
-          </div>
-        )}
-
         {gamesQuery.isError && <ErrorState message="Could not load games." onRetry={() => gamesQuery.refetch()} />}
 
-        {gamesQuery.isSuccess && (
-          <>
-            {filteredGames.length === 0 ? (
+        {(gamesQuery.isSuccess || gamesQuery.isPending) && (
+          <SectionLoading loading={gamesQuery.isFetching}>
+            {gamesQuery.isPending ? (
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: CARDS_PAGE_SIZE }, (_, index) => (
+                  <div key={index} className="h-40 border border-landing-light bg-locker-surface" />
+                ))}
+              </div>
+            ) : filteredGames.length === 0 ? (
               <p className="border border-dashed border-landing-light bg-locker-surface p-6 text-center text-[12.5px] text-locker-ink-muted">
                 No games match that search.
               </p>
@@ -1009,26 +1007,28 @@ export function PredictionsPage() {
                 )}
               </>
             )}
-
-            <div className="mt-8">
-              <PlayerCardsDisplay
-                title="Top 5 to watch"
-                description="The model's standout predicted scorers across the soonest upcoming games — man of the match and consistency picks, pooled across games rather than scoped to just one."
-                players={upcomingCards.players}
-                isPending={upcomingCards.isPending}
-                count={5}
-              />
-            </div>
-
-            <div className="mt-8">
-              <TailoredForYouSection />
-            </div>
-
-            <div className="mt-8">
-              <HowItWorksSection />
-            </div>
-          </>
+          </SectionLoading>
         )}
+
+        <div className="mt-8">
+          <PlayerCardsDisplay
+            title="Top 5 to watch"
+            description="The model's standout predicted scorers across the soonest upcoming games — man of the match and consistency picks, pooled across games rather than scoped to just one."
+            players={upcomingCards.players}
+            isPending={upcomingCards.isPending}
+            count={5}
+          />
+        </div>
+
+        {hasLoadedRecentGamesOnce && (
+          <SectionLoading loading={recentGamesQuery.isFetching} label="Loading model track record" className="mt-8">
+            <ModelTrackRecordSection recentGames={recentGames} />
+          </SectionLoading>
+        )}
+
+        <div className="mt-8">
+          <HowItWorksSection />
+        </div>
       </div>
     </div>
   );
