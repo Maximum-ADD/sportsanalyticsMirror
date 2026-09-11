@@ -44,6 +44,17 @@ describe("AuthStatus", () => {
     expect(signInWithGoogle).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the supplied callback for Google sign-in", async () => {
+    vi.mocked(useSession).mockReturnValue({ data: null, isPending: false } as never);
+    const user = userEvent.setup();
+    const signInCallbackURL = "http://localhost:3000/home";
+
+    render(<AuthStatus signInCallbackURL={signInCallbackURL} />);
+    await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
+
+    expect(signInWithGoogle).toHaveBeenCalledWith(signInCallbackURL);
+  });
+
   it("shows the signed-in user's email and a sign-out button when a session exists", () => {
     vi.mocked(useSession).mockReturnValue({
       data: { user: { email: "player@example.com" } },
