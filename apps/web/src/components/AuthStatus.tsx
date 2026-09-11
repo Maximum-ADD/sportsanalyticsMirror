@@ -4,6 +4,7 @@ import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMe } from "@/lib/useMe";
+import { pingHealth } from "@/lib/apiClient";
 
 // Friendly copy for the BetterAuth error codes we're likely to actually see.
 // Falls back to a generic message for anything else so an unrecognised code
@@ -50,6 +51,24 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
   // Only fired once there's a session — GET /v1/me needs the session cookie
   // this same hook otherwise waits on (see useMe).
   const { data: me } = useMe();
+
+  // BetterAuth's OAuth state row expires 10 minutes after sign-in starts —
+  // hardcoded in the library, not configurable (checked up to the latest
+  // better-auth release). A normal Google sign-in takes seconds, so hitting
+  // that ceiling regularly points at Render's free-tier cold start eating
+  // into the window: the API can idle-spin-down between the 10-minute
+  // pinger hits, then has to wake back up mid-flow when Google redirects
+  // back. This component mounts in the header on every page, so pinging
+  // /health here gives the API a head start waking up before the visitor
+  // has even found the sign-in button — it can only help, never block
+  // rendering, and a failure here is silently ignored since it's just a
+  // warm-up, not a real request. Skipped in tests: this file is rendered
+  // by nearly every page's test suite, and none of them mock this call.
+  useEffect(() => {
+    if (import.meta.env.MODE !== "test") {
+      pingHealth();
+    }
+  }, []);
 
   if (isPending) {
     return <Skeleton className="h-9 w-28" />;

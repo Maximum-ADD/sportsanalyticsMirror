@@ -67,3 +67,11 @@ export async function postFormData<T>(path: string, formData: FormData): Promise
   }
   return response.json() as Promise<T>;
 }
+
+// Fire-and-forget warm-up for Render's free-tier cold start — see the call
+// site in AuthStatus.tsx. Deliberately swallows every failure: this is an
+// optimisation, not a request anything depends on, so a network error here
+// must never surface to the caller or the page.
+export function pingHealth(): void {
+  fetch(`${API_BASE_URL}/health`, { credentials: "include" }).catch(() => {});
+}
