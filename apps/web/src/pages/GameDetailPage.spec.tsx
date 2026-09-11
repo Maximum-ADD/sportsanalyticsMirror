@@ -86,6 +86,8 @@ function makeGameDetail(overrides: Partial<GameDetail> = {}): GameDetail {
     awayTeam: CELTICS,
     homeScore: 119,
     awayScore: 100,
+    seasonType: "REGULAR",
+    playoffRound: null,
     prediction: PREDICTION,
     predictedScorers: [SCORER],
     ...overrides,

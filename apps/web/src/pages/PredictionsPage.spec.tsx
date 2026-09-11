@@ -4,6 +4,7 @@ import { PredictionsPage } from "./PredictionsPage";
 import { fetchGames } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { Game, GamePrediction, PagedResult, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -55,6 +56,8 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     awayTeam: CELTICS,
     homeScore: 119,
     awayScore: 100,
+    seasonType: "REGULAR",
+    playoffRound: null,
     ...overrides,
   };
 }
@@ -62,6 +65,20 @@ function makeGame(overrides: Partial<Game> = {}): Game {
 describe("PredictionsPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("has no automated accessibility violations", async () => {
+    vi.mocked(fetchGames).mockResolvedValue({
+      data: [makeGame({ prediction: PREDICTION })],
+      page: 1,
+      pageSize: 25,
+      total: 1,
+    });
+
+    const { container } = renderWithProviders(<main><PredictionsPage /></main>);
+    await screen.findByText("LAL 62%", { exact: false });
+
+    await expectNoAccessibilityViolations(container);
   });
 
   it("renders each game's win probability and margin from the joined prediction", async () => {

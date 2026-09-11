@@ -9,6 +9,7 @@ import {
   fetchWatchlist,
 } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { HomePage } from "./HomePage";
 
 // Four home-page modules now read the live API; the rest still render from
@@ -53,6 +54,12 @@ beforeEach(() => {
 });
 
 describe("HomePage", () => {
+  it("has no automated accessibility violations", async () => {
+    const { container } = renderWithProviders(<main><HomePage /></main>);
+
+    await expectNoAccessibilityViolations(container);
+  });
+
   it("renders as an app page, not a second landing hero", () => {
     renderWithProviders(<HomePage />);
 

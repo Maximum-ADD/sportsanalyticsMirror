@@ -32,7 +32,6 @@ const SIGNED_OUT = { data: null, isPending: false } as never;
 const SIGNED_IN = { data: { user: { email: "player@example.com" } }, isPending: false } as never;
 
 const PUBLIC_ROUTES = [
-  ["/home", "Home page"],
   ["/players", "Players page"],
   ["/players/player-1", "Player details"],
   ["/teams", "Teams page"],
@@ -40,6 +39,7 @@ const PUBLIC_ROUTES = [
 ] as const;
 
 const PROTECTED_ROUTES = [
+  ["/home", "Home page"],
   ["/optimizer", "Optimizer page"],
   ["/predictions", "Predictions page"],
   ["/games/game-1", "Game details"],
@@ -74,6 +74,8 @@ describe("App routes", () => {
   });
 
   it('serves the app home at "/home", inside the app shell', () => {
+    vi.mocked(useSession).mockReturnValue(SIGNED_IN);
+
     renderAt("/home");
 
     expect(screen.getByText("Home page")).toBeInTheDocument();

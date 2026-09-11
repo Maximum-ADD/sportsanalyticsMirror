@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
-import { fetchPlayer, fetchPlayerStats } from "@/lib/nbaApi";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { fetchPlayer, fetchPlayerStats, fetchPlayerStatsSplits } from "@/lib/nbaApi";
 import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
@@ -12,8 +12,12 @@ import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { FollowPlayerButton } from "@/components/FollowPlayerButton";
+import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
+import { SeasonSplitsTable } from "@/components/SeasonSplitsTable";
 import { formatAge, formatHeight } from "@/lib/playerBio";
-import type { Player, PlayerStatsResponse, SeasonAverages } from "@/types/nba";
+import { formatNumber, formatPercentage, formatPlusMinus } from "@/lib/advancedStats";
+import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
+import type { Player, PlayerStatsResponse, SeasonAverages, SeasonType } from "@/types/nba";
 
 function formatWeight(weightLbs: number | null): string {
   if (weightLbs === null) return "—";
@@ -86,6 +90,18 @@ function BioField({
 
 export function PlayerProfilePage() {
   const { playerId } = useParams<{ playerId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // The selected segment lives in the URL (?segment=playoffs) so a view of
+  // a player's Finals is a shareable link and survives a reload, matching
+  // how the compare page already keeps its selection in the URL.
+  const seasonType = parseUrlSegment(searchParams.get("segment"));
+
+  function selectSeasonType(nextSeasonType: SeasonType) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("segment", toUrlSegment(nextSeasonType));
+    setSearchParams(nextParams, { replace: true });
+  }
 
   const playerQuery = useQuery({
     queryKey: ["player", playerId],
@@ -93,9 +109,18 @@ export function PlayerProfilePage() {
     enabled: !!playerId,
   });
 
+  // seasonType is part of the query key, so each segment is cached
+  // separately and switching segments refetches rather than briefly showing
+  // the previous segment's numbers under the new heading.
   const statsQuery = useQuery({
-    queryKey: ["playerStats", playerId],
-    queryFn: () => fetchPlayerStats(playerId!),
+    queryKey: ["playerStats", playerId, seasonType],
+    queryFn: () => fetchPlayerStats(playerId!, seasonType),
+    enabled: !!playerId,
+  });
+
+  const splitsQuery = useQuery({
+    queryKey: ["playerStatsSplits", playerId],
+    queryFn: () => fetchPlayerStatsSplits(playerId!),
     enabled: !!playerId,
   });
 
@@ -105,10 +130,14 @@ export function PlayerProfilePage() {
   const [isEditingStats, setIsEditingStats] = useState(false);
   const [statOverrides, setStatOverrides] = useState<Partial<SeasonAverages>>({});
 
+  // Cleared when the segment changes as well as the player: an override
+  // typed against a regular-season line has no meaning once the tiles are
+  // showing Finals numbers, and carrying it over would put a hand-entered
+  // regular-season figure inside a postseason view.
   useEffect(() => {
     setIsEditingStats(false);
     setStatOverrides({});
-  }, [playerId]);
+  }, [playerId, seasonType]);
 
   function setStatOverride(field: keyof SeasonAverages, value: number) {
     setStatOverrides((previous) => ({ ...previous, [field]: value }));
@@ -138,6 +167,7 @@ export function PlayerProfilePage() {
   const { seasonAverages, gameLog } = statsQuery.data;
   const effectiveAverages: SeasonAverages = { ...seasonAverages, ...statOverrides };
   const hasStatOverrides = Object.keys(statOverrides).length > 0;
+  const hasGamesInSegment = seasonAverages.gamesPlayed > 0;
   const bioPending = !isBioLoaded(player);
 
   return (
@@ -174,8 +204,11 @@ export function PlayerProfilePage() {
               >
                 {isEditingStats ? "Done editing" : "Edit stats"}
               </Button>
+              {/* Carries the selected segment, so comparing from a Finals
+                  view opens a Finals comparison rather than silently
+                  dropping back to the regular season. */}
               <Link
-                to={`/compare?ids=${player.id}`}
+                to={`/compare?ids=${player.id}&segment=${toUrlSegment(seasonType)}`}
                 className="rounded-md border border-border-subtle px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-card hover:text-text-primary"
               >
                 Compare
@@ -183,13 +216,32 @@ export function PlayerProfilePage() {
             </div>
           </div>
 
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <SeasonSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
+            <span className="text-xs text-text-muted">
+              Showing {formatSeasonType(seasonType).toLowerCase()} figures only
+            </span>
+          </div>
+
           {isEditingStats && (
             <p className="mt-3 text-xs text-text-muted">
-              Editing locally — not saved, resets when you refresh or leave this page.
+              Editing locally — not saved, resets when you refresh, change segment, or leave this page.
             </p>
           )}
 
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {!hasGamesInSegment && (
+            <p className="mt-4 rounded-lg border border-border-subtle bg-surface-raised px-4 py-3 text-sm text-text-secondary">
+              {player.firstName} {player.lastName} did not play in the {formatSeasonType(seasonType)} this season —
+              the figures below are all zero because there are no games to derive them from, not because they were
+              poor.
+            </p>
+          )}
+
+          {/* Six columns rather than five: the four advanced tiles below
+              (usage, +/-, and the two ratings) bring the count to twelve,
+              which fills two clean rows at six across instead of leaving a
+              ragged trailing row. */}
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile
               label="PPG"
               value={effectiveAverages.pointsPerGame}
@@ -246,10 +298,22 @@ export function PlayerProfilePage() {
               editValue={effectiveAverages.turnoversPerGame}
               onEditValueChange={(value) => setStatOverride("turnoversPerGame", value)}
             />
+            {/* Not editable, unlike the counting stats above. The local
+                "what if" overlay exists to explore how a player's own
+                production would change; usage rate and the ratings are
+                measured against the rest of the team and the opponent, so a
+                hand-typed value wouldn't mean anything. They also render
+                "—" when absent, which an editable number input can't. */}
+            <StatTile label="USG%" value={formatPercentage(effectiveAverages.usagePercentage)} />
+            <StatTile label="+/-" value={formatPlusMinus(effectiveAverages.plusMinusPerGame)} />
+            <StatTile label="ORTG" value={formatNumber(effectiveAverages.offensiveRating)} />
+            <StatTile label="DRTG" value={formatNumber(effectiveAverages.defensiveRating)} />
           </div>
 
           <div className="mt-6">
-            <h2 className="mb-2 text-sm font-medium text-text-secondary">Points trend</h2>
+            <h2 className="mb-2 text-sm font-medium text-text-secondary">
+              Points trend · {formatSeasonType(seasonType)}
+            </h2>
             <PointsTrendChart data={toTrendData(gameLog)} />
           </div>
         </CardContent>
@@ -265,7 +329,10 @@ export function PlayerProfilePage() {
       <Card className="xl:col-span-3">
         <CardContent className="p-6">
           <h2 className="mb-4 text-sm font-medium text-text-secondary">Shooting splits</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Six across so the two efficiency measures sit on the same line
+              as the raw percentages they contextualise — TS% and eFG% are
+              only meaningful next to FG% and 3P%. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile
               label="FG%"
               value={`${effectiveAverages.fieldGoalPercentage}%`}
@@ -294,7 +361,38 @@ export function PlayerProfilePage() {
               editValue={effectiveAverages.freeThrowsAttemptedPerGame}
               onEditValueChange={(value) => setStatOverride("freeThrowsAttemptedPerGame", value)}
             />
+            {/* Derived from the same makes/attempts the tiles above show,
+                so editing them directly would let the overlay contradict
+                itself — a hand-set TS% next to an unchanged FG%. */}
+            <StatTile label="TS%" value={`${effectiveAverages.trueShootingPercentage}%`} />
+            <StatTile label="eFG%" value={`${effectiveAverages.effectiveFieldGoalPercentage}%`} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* The one place segments are deliberately shown side by side: how a
+          player's production shifted once the postseason started is the
+          question the segment views exist to answer, so comparing them here
+          is the point rather than a bleed. Rendered independently of the
+          segment selector above — this section is about the change between
+          segments, not about whichever one is currently selected. */}
+      <Card className="xl:col-span-3">
+        <CardContent className="p-6">
+          <h2 className="mb-1 text-sm font-medium text-text-secondary">Regular season vs. postseason</h2>
+          <p className="mb-4 text-xs text-text-muted">
+            Change from this player's regular-season line. Postseason samples are small, so rates from fewer than
+            four games are dimmed.
+          </p>
+          {splitsQuery.isPending && <p className="text-sm text-text-muted">Loading splits…</p>}
+          {splitsQuery.isError && (
+            <p className="text-sm text-text-muted">Could not load postseason splits for this player.</p>
+          )}
+          {splitsQuery.data && (
+            <SeasonSplitsTable
+              splits={splitsQuery.data.splits}
+              playerName={`${player.firstName} ${player.lastName}`}
+            />
+          )}
         </CardContent>
       </Card>
 

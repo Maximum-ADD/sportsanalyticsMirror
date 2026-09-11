@@ -50,6 +50,13 @@ import numpy as np
 # data always exercises the heuristic path, not the regression path.
 MINIMUM_GAMES_FOR_REGRESSION = 30
 
+# Only this Game.seasonType feeds the running averages and the regression's
+# training rows. Same reasoning as elo.py's REGULAR_SEASON_TYPE: postseason
+# Four Factors come from a different distribution, and mixing them into
+# regular-season training rows degrades the fit rather than enriching it.
+# Postseason games are ingested but excluded from every model input.
+REGULAR_SEASON_TYPE = "REGULAR"
+
 # Points a 3-pointer counts as, above the 1.0 implicit weight of a
 # 2-pointer, in effective FG% (Oliver's standard formula:
 # eFG% = (FGM + 0.5*3PM) / FGA).
@@ -108,6 +115,8 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
     matchup. Ordering by date is load-bearing here, not cosmetic — every
     chronological computation downstream (running averages, regression
     training rows) depends on processing games oldest-first.
+
+    Postseason games are excluded — see REGULAR_SEASON_TYPE.
     """
     cursor.execute(
         """
@@ -122,9 +131,11 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
         JOIN "PlayerGameStat" pgs ON pgs."gameId" = g."id"
           AND pgs."playerId" IN (SELECT "id" FROM "Player" WHERE "teamId" = t."id")
         WHERE g."homeScore" IS NOT NULL AND g."awayScore" IS NOT NULL
+          AND g."seasonType" = %(season_type)s
         GROUP BY g."id", g."gameDate", t."id", g."homeTeamId", g."awayTeamId", g."homeScore", g."awayScore"
         ORDER BY g."gameDate" ASC
-        """
+        """,
+        {"season_type": REGULAR_SEASON_TYPE},
     )
     return cursor.fetchall()
 

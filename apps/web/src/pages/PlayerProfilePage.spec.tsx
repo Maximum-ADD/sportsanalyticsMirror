@@ -2,10 +2,10 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayerProfilePage } from "./PlayerProfilePage";
-import { fetchPlayer, fetchPlayerStats, fetchWatchedPlayerIds } from "@/lib/nbaApi";
+import { fetchPlayer, fetchPlayerStats, fetchPlayerStatsSplits, fetchWatchedPlayerIds } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
-import type { Player, PlayerStatsResponse, Team } from "@/types/nba";
+import type { PlayerSeasonSplits, Player, PlayerStatsResponse, SeasonAverages, Team } from "@/types/nba";
 
 // The header now carries FollowPlayerButton, which reads the watchlist id
 // list. Its own behaviour lives in FollowPlayerButton.spec; here it only has
@@ -13,6 +13,7 @@ import type { Player, PlayerStatsResponse, Team } from "@/types/nba";
 vi.mock("@/lib/nbaApi", () => ({
   fetchPlayer: vi.fn(),
   fetchPlayerStats: vi.fn(),
+  fetchPlayerStatsSplits: vi.fn(),
   fetchWatchedPlayerIds: vi.fn(),
   followPlayer: vi.fn(),
   unfollowPlayer: vi.fn(),
@@ -82,7 +83,15 @@ const STATS: PlayerStatsResponse = {
     freeThrowsMadePerGame: 5.4,
     freeThrowsAttemptedPerGame: 7.2,
     freeThrowPercentage: 75,
+    trueShootingPercentage: 0,
+    effectiveFieldGoalPercentage: 0,
+    assistToTurnoverRatio: null,
+    plusMinusPerGame: null,
+    usagePercentage: null,
+    offensiveRating: null,
+    defensiveRating: null,
   },
+  seasonType: "REGULAR" as const,
   gameLog: [{ gameId: "game-1", gameDate: "2026-01-01T00:00:00.000Z", points: 30 }],
 };
 
@@ -157,5 +166,160 @@ describe("PlayerProfilePage local stat editing", () => {
 
     await user.click(screen.getByRole("button", { name: "Reset" }));
     expect(screen.getByText("27.1")).toBeInTheDocument();
+  });
+});
+
+// Zeroed line for a segment the player didn't appear in — what the splits
+// endpoint returns for an absent segment (gamesPlayed: 0), not a missing key.
+function makeEmptyAverages(): SeasonAverages {
+  return {
+    gamesPlayed: 0,
+    minutesPerGame: 0,
+    pointsPerGame: 0,
+    reboundsPerGame: 0,
+    assistsPerGame: 0,
+    stealsPerGame: 0,
+    blocksPerGame: 0,
+    turnoversPerGame: 0,
+    fieldGoalsMadePerGame: 0,
+    fieldGoalsAttemptedPerGame: 0,
+    fieldGoalPercentage: 0,
+    threesMadePerGame: 0,
+    threesAttemptedPerGame: 0,
+    threePointPercentage: 0,
+    freeThrowsMadePerGame: 0,
+    freeThrowsAttemptedPerGame: 0,
+    freeThrowPercentage: 0,
+    trueShootingPercentage: 0,
+    effectiveFieldGoalPercentage: 0,
+    assistToTurnoverRatio: null,
+    plusMinusPerGame: null,
+    usagePercentage: null,
+    offensiveRating: null,
+    defensiveRating: null,
+  };
+}
+
+function makeSplits(overrides: Partial<PlayerSeasonSplits> = {}): PlayerSeasonSplits {
+  return {
+    REGULAR: STATS.seasonAverages,
+    PLAY_IN: makeEmptyAverages(),
+    PLAYOFFS: makeEmptyAverages(),
+    FINALS: makeEmptyAverages(),
+    ...overrides,
+  };
+}
+
+describe("PlayerProfilePage season segments", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("requests the regular season by default", async () => {
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />);
+
+    expect(await screen.findByText(/Showing regular season figures only/)).toBeInTheDocument();
+    expect(fetchPlayerStats).toHaveBeenCalledWith("player-1", "REGULAR");
+  });
+
+  it("reads the selected segment from the URL so a postseason view is shareable", async () => {
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue({ ...STATS, seasonType: "FINALS" });
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=finals"]);
+
+    await screen.findByText(/Showing finals figures only/);
+    expect(fetchPlayerStats).toHaveBeenCalledWith("player-1", "FINALS");
+  });
+
+  it("refetches for the newly selected segment rather than reusing the current one", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />);
+    await screen.findByRole("radio", { name: "Playoffs" });
+
+    await user.click(screen.getByRole("radio", { name: "Playoffs" }));
+
+    expect(fetchPlayerStats).toHaveBeenCalledWith("player-1", "PLAYOFFS");
+  });
+
+  it("says the player was absent rather than presenting zeros as a bad performance", async () => {
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue({
+      ...STATS,
+      seasonType: "PLAY_IN",
+      seasonAverages: makeEmptyAverages(),
+      gameLog: [],
+    });
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=play-in"]);
+
+    expect(await screen.findByText(/did not play in the Play-In this season/)).toBeInTheDocument();
+  });
+
+  it("clears local stat edits when the segment changes, so an edited regular-season figure can't appear in a postseason view", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />);
+    await screen.findByRole("button", { name: "Edit stats" });
+
+    await user.click(screen.getByRole("button", { name: "Edit stats" }));
+    const ppgInput = screen.getByRole("spinbutton", { name: "Edit PPG" });
+    await user.clear(ppgInput);
+    await user.type(ppgInput, "99");
+    await user.click(screen.getByRole("button", { name: "Done editing" }));
+    expect(screen.getByText("99")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "Playoffs" }));
+
+    expect(screen.queryByText("99")).not.toBeInTheDocument();
+  });
+
+  it("carries the selected segment into the Compare link", async () => {
+    // Reported in review: comparing from a Finals view opened a
+    // regular-season comparison. The compare page reads ?segment, so the
+    // link that navigates to it has to set one.
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue({ ...STATS, seasonType: "FINALS" });
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=finals"]);
+
+    const compareLink = await screen.findByRole("link", { name: "Compare" });
+    expect(compareLink).toHaveAttribute("href", expect.stringContaining("segment=finals"));
+    expect(compareLink).toHaveAttribute("href", expect.stringContaining("ids=player-1"));
+  });
+
+  it("updates the Compare link when the segment changes", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />);
+    await screen.findByRole("radio", { name: "Playoffs" });
+    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("segment=regular")
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Playoffs" }));
+
+    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("segment=playoffs")
+    );
   });
 });
