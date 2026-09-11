@@ -16,6 +16,7 @@ export async function resetDatabase() {
   await testPrisma.playerGameStat.deleteMany();
   await testPrisma.gameEvent.deleteMany();
   await testPrisma.game.deleteMany();
+  await testPrisma.userFollowedPlayer.deleteMany();
   await testPrisma.player.deleteMany();
   await testPrisma.team.deleteMany();
   await testPrisma.session.deleteMany();

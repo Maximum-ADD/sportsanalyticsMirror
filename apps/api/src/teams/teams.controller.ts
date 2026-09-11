@@ -1,7 +1,12 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
-import { TeamsService } from "./teams.service.js";
+import { TeamsService, type SuggestedPlayer } from "./teams.service.js";
+
+// Upper bound on the onboarding step's "suggested players" prompt — see
+// TeamsService.getSuggestedPlayers' own doc comment for why ranking by
+// usage percentage in the first place.
+const MAX_SUGGESTED_PLAYERS = 20;
 
 @ApiTags("teams")
 @Controller("v1/teams")
@@ -25,6 +30,35 @@ export class TeamsController {
   @Get("elo-ratings")
   listEloRatings() {
     return this.teamsService.getEloRatings();
+  }
+
+  // GET /v1/teams/:id/suggested-players?count= — a team's current roster
+  // ranked by usage percentage, highest first. Backs the onboarding step's
+  // "suggested players to follow" prompt (see TeamsService.getSuggestedPlayers).
+  // Declared before the plain :id route below so "suggested-players" on a
+  // *different* team id path segment still routes correctly — Nest matches
+  // ":id/suggested-players" only when both segments are present, so ordering
+  // relative to ":id" alone doesn't actually matter here, but kept above it
+  // anyway to group the two team-scoped detail routes together.
+  @Get(":id/suggested-players")
+  @ApiOperation({ summary: "Get a team's roster ranked by usage percentage" })
+  @ApiParam({ name: "id", description: "Team UUID" })
+  @ApiQuery({ name: "count", required: false, type: Number, description: "Max players to return (default 8, max 20)" })
+  @ApiResponse({ status: 200, description: "Ranked roster players" })
+  @ApiResponse({ status: 404, description: "Team not found" })
+  async getSuggestedPlayers(
+    @Param("id") id: string,
+    @Query("count") rawCount: unknown
+  ): Promise<{ players: SuggestedPlayer[] }> {
+    const team = await this.teamsService.getTeamById(id);
+    if (!team) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Team not found");
+    }
+
+    const requestedCount = Number(rawCount);
+    const count = Number.isFinite(requestedCount) && requestedCount > 0 ? Math.min(MAX_SUGGESTED_PLAYERS, requestedCount) : undefined;
+    const players = await this.teamsService.getSuggestedPlayers(id, count);
+    return { players };
   }
 
   @Get(":id")

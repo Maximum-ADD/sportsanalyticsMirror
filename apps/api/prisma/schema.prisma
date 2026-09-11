@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -52,8 +53,36 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions Session[]
-  accounts Account[]
+  // Below fields are this project's own additions on top of BetterAuth's
+  // core schema (see the module doc comment above) — the personalization
+  // step every user completes once, right after their first Google
+  // sign-in.
+  //
+  // Nullable because every account that existed before this feature
+  // predates onboarding and has never set one: null/missing username is
+  // exactly the signal the frontend gates the /onboarding redirect on
+  // (see ProfileGate), not a separate "onboarded" boolean that could drift
+  // out of sync with it.
+  username String? @unique
+
+  // The Supabase Storage OBJECT PATH ("{userId}/{uuid}.{ext}"), not a full
+  // URL — the "profile pictures" bucket is private, so a real, renderable
+  // URL only exists for as long as a signed URL is valid. The API
+  // constructs that signed URL at request time from this path (see
+  // AvatarStorageService); never persisted here since it would go stale.
+  avatarUrl String?
+
+  // The one team a user "supports" — onDelete: SetNull so neither side ever
+  // blocks the other: deleting a Team (re-ingestion, data fix) shouldn't be
+  // able to fail because some user favorited it, and a user is free to have
+  // no favorite team at all (not yet onboarded, or the team they favorited
+  // was removed).
+  favoriteTeamId String?
+  favoriteTeam   Team?   @relation(fields: [favoriteTeamId], references: [id], onDelete: SetNull)
+
+  sessions        Session[]
+  accounts        Account[]
+  followedPlayers UserFollowedPlayer[]
 }
 
 model Session {
@@ -97,6 +126,24 @@ model Verification {
   updatedAt  DateTime @updatedAt
 }
 
+// A user following a player — the app's one "favorite/follow" concept (see
+// User.favoriteTeam for the equivalent, singular relationship to a team).
+// FKs cascade from the User side only: deleting a user must cleanly drop
+// every row here (mirrors Session/Account above, and is what lets
+// authClient.deleteUser() hard-delete without a separate cleanup step), but
+// deleting a Player is expected to cascade too since a follow of a
+// no-longer-existing player is meaningless — there's no SetNull equivalent
+// for "who this row is about" the way there is for User.favoriteTeamId.
+model UserFollowedPlayer {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, playerId])
+}
+
 model Team {
   id           String   @id @default(uuid())
   nbaTeamId    Int      @unique
@@ -109,6 +156,7 @@ model Team {
 
   players Player[]
   homeGames Game[] @relation("HomeTeam")
+  favoritedBy User[]
   awayGames Game[] @relation("AwayTeam")
   playerGameStats PlayerGameStat[]
 }
@@ -142,9 +190,10 @@ model Player {
   draftRound      Int?
   draftNumber     Int?
 
-  gameStats   PlayerGameStat[]
-  predictions PlayerPrediction[]
-  lineupSlots LineupSlot[]
+  gameStats       PlayerGameStat[]
+  predictions     PlayerPrediction[]
+  lineupSlots     LineupSlot[]
+  followedByUsers UserFollowedPlayer[]
 }
 
 model Game {

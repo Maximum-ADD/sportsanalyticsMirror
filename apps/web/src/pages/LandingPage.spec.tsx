@@ -108,6 +108,13 @@ describe("LandingPage", () => {
     expect(screen.getAllByTestId("screenshot-placeholder")).toHaveLength(5);
   });
 
+  it("keeps feature-only destinations in the app header", () => {
+    renderLanding();
+
+    expect(screen.queryByRole("link", { name: "Optimizer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Predictions" })).not.toBeInTheDocument();
+  });
+
   it("shows the real home-page screenshot in the hero cascade", () => {
     renderLanding();
 
@@ -117,10 +124,4 @@ describe("LandingPage", () => {
     expect(shot).toHaveAttribute("src", "/screenshots/home-locker.webp");
   });
 
-  it("keeps feature-only destinations in the app header", () => {
-    renderLanding();
-
-    expect(screen.queryByRole("link", { name: "Optimizer" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Predictions" })).not.toBeInTheDocument();
-  });
 });

@@ -3,10 +3,16 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { fetchGames } from "@/lib/nbaApi";
+import { fetchMe } from "@/lib/meApi";
 import { useSession } from "@/lib/authClient";
+import type { MeProfile } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchGames: vi.fn(),
+}));
+
+vi.mock("@/lib/meApi", () => ({
+  fetchMe: vi.fn(),
 }));
 
 vi.mock("@/lib/authClient", () => ({
@@ -27,9 +33,17 @@ vi.mock("./pages/TeamProfilePage", () => ({ TeamProfilePage: () => <div>Team det
 vi.mock("./pages/OptimizerPage", () => ({ OptimizerPage: () => <div>Optimizer page</div> }));
 vi.mock("./pages/PredictionsPage", () => ({ PredictionsPage: () => <div>Predictions page</div> }));
 vi.mock("./pages/GameDetailPage", () => ({ GameDetailPage: () => <div>Game details</div> }));
+vi.mock("./pages/OnboardingPage", () => ({ OnboardingPage: () => <div>Onboarding page</div> }));
+vi.mock("./pages/ProfilePage", () => ({ ProfilePage: () => <div>Profile page</div> }));
 
 const SIGNED_OUT = { data: null, isPending: false } as never;
-const SIGNED_IN = { data: { user: { email: "player@example.com" } }, isPending: false } as never;
+const SIGNED_IN = { data: { user: { email: "player@example.com", name: "Player" } }, isPending: false } as never;
+
+// A fully onboarded user (real username) — ProfileGate only redirects to
+// /onboarding when username is null, so every "signed-in visitor" test
+// below needs this to reach its target route instead of bouncing to
+// onboarding.
+const ONBOARDED_ME = { username: "playerone", avatarUrl: null, favoriteTeam: null, followedPlayers: [] } as unknown as MeProfile;
 
 const PUBLIC_ROUTES = [
   ["/players", "Players page"],
@@ -58,6 +72,7 @@ function renderAt(path: string) {
 beforeEach(() => {
   vi.mocked(fetchGames).mockResolvedValue({ data: [], page: 1, pageSize: 1, total: 0 });
   vi.mocked(useSession).mockReturnValue(SIGNED_OUT);
+  vi.mocked(fetchMe).mockResolvedValue(ONBOARDED_ME);
 });
 
 afterEach(() => {
@@ -71,15 +86,6 @@ describe("App routes", () => {
 
     expect(screen.getByText("Landing page")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Primary" })).not.toBeInTheDocument();
-  });
-
-  it('serves the app home at "/home", inside the app shell', () => {
-    vi.mocked(useSession).mockReturnValue(SIGNED_IN);
-
-    renderAt("/home");
-
-    expect(screen.getByText("Home page")).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
   });
 
   it("keeps the shared header's Home link inside the app", () => {
@@ -104,11 +110,39 @@ describe("App routes", () => {
     expect(screen.queryByText(pageText)).not.toBeInTheDocument();
   });
 
-  it.each(PROTECTED_ROUTES)("renders %s for a signed-in visitor", (path, pageText) => {
+  it.each(PROTECTED_ROUTES)("renders %s for a signed-in, onboarded visitor", async (path, pageText) => {
     vi.mocked(useSession).mockReturnValue(SIGNED_IN);
 
     renderAt(path);
 
-    expect(screen.getByText(pageText)).toBeInTheDocument();
+    expect(await screen.findByText(pageText)).toBeInTheDocument();
+  });
+
+  it('serves the app home at "/home" for a signed-in visitor, inside the app shell', async () => {
+    vi.mocked(useSession).mockReturnValue(SIGNED_IN);
+
+    renderAt("/home");
+
+    expect(await screen.findByText("Home page")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+  });
+
+  it("redirects a signed-in visitor with no username to /onboarding", async () => {
+    vi.mocked(useSession).mockReturnValue(SIGNED_IN);
+    vi.mocked(fetchMe).mockResolvedValue({ ...ONBOARDED_ME, username: null });
+
+    renderAt("/home");
+
+    expect(await screen.findByText("Onboarding page")).toBeInTheDocument();
+    expect(screen.queryByText("Home page")).not.toBeInTheDocument();
+  });
+
+  it("does not redirect away from /onboarding itself for a not-yet-onboarded visitor", async () => {
+    vi.mocked(useSession).mockReturnValue(SIGNED_IN);
+    vi.mocked(fetchMe).mockResolvedValue({ ...ONBOARDED_ME, username: null });
+
+    renderAt("/onboarding");
+
+    expect(await screen.findByText("Onboarding page")).toBeInTheDocument();
   });
 });

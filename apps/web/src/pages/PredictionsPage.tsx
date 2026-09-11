@@ -7,7 +7,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { HitMissPill } from "@/components/HitMissPill";
 import { PlayerCardsDisplay, useUpcomingPlayerReliability } from "@/components/PlayerCards";
-import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
+import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PERCENT, formatMargin, isCompleted, wasModelHit } from "@/lib/predictions";
 import {
@@ -946,7 +946,7 @@ export function PredictionsPage() {
               </option>
             ))}
           </select>
-          <SeasonSegmentControl
+          <LockerSegmentControl
             value={segment}
             onChange={selectSegment}
             options={GAME_SEGMENT_OPTIONS}

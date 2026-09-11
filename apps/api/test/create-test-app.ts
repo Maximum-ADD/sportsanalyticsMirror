@@ -18,7 +18,10 @@ export async function createTestApp(): Promise<INestApplication> {
   const server = expressFactory();
   server.use(expressFactory.json());
 
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { logger: false });
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    logger: false,
+    abortOnError: false,
+  });
   app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();
   return app;

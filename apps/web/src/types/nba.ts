@@ -106,6 +106,16 @@ export interface PlayerStatsResponse {
   gameLog: GameLogEntry[];
 }
 
+// GET /v1/players/stats-batch's per-player entry — same shape as
+// PlayerStatsResponse minus `seasonType`: the batch endpoint always derives
+// from the default (regular season) segment and doesn't echo one back, so
+// there's nothing here for a caller to mislabel.
+export interface PlayerStatsBatchEntry {
+  playerId: string;
+  seasonAverages: SeasonAverages;
+  gameLog: GameLogEntry[];
+}
+
 // Every segment's season line at once, from GET /v1/players/:id/stats/splits.
 // A segment the player didn't appear in is present with gamesPlayed: 0
 // rather than missing, so the comparison table renders a stable set of
@@ -211,4 +221,29 @@ export interface TeamEloRating {
   elo: number;
   asOfGameId: string;
   asOfGameDate: string;
+}
+
+// GET /v1/me's full response — the current user's personalization state.
+// avatarUrl is already a signed, directly-renderable URL (the API never
+// exposes the underlying private Supabase Storage object path) — see
+// MeService.getProfile. username: null is the onboarding gate signal (see
+// useMe/ProfileGate): a signed-in user with no username hasn't completed
+// onboarding yet.
+export interface MeProfile {
+  id: string;
+  email: string;
+  name: string;
+  username: string | null;
+  avatarUrl: string | null;
+  favoriteTeam: Team | null;
+  followedPlayers: Player[];
+}
+
+// GET /v1/teams/:id/suggested-players' per-player entry — a team's roster
+// ranked by usage percentage, for the onboarding step's "suggested players
+// to follow" prompt. null usagePercentage means no stats exist yet for that
+// player (see TeamsService.getSuggestedPlayers), not a zero rate.
+export interface SuggestedPlayer {
+  player: Player;
+  usagePercentage: number | null;
 }

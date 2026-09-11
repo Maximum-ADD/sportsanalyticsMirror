@@ -25,7 +25,17 @@ services:
         value: production
       # Set the secret values in the Render Dashboard (sync: false keeps the
       # YAML from overwriting them). Never commit real values here.
+      # Supavisor pooler in transaction mode (port 6543, pgbouncer=true) — the
+      # app holds many short-lived logical connections multiplexed over a
+      # handful of real ones, unlike session mode (port 5432 on the pooler
+      # host) which pins one real connection per client for its whole
+      # lifetime and hits the project's pool_size cap almost immediately.
       - key: DATABASE_URL
+        sync: false
+      # Direct connection (port 5432 on the db.<ref>.supabase.co host, not
+      # the pooler host) — `prisma migrate deploy` needs the session-level
+      # advisory locks that transaction-mode pooling doesn't support.
+      - key: DIRECT_URL
         sync: false
       - key: BETTER_AUTH_SECRET
         sync: false
@@ -36,4 +46,13 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: WEB_ORIGIN
+        sync: false
+      # Supabase Storage — server-side only, used for avatar uploads
+      # (see apps/api/src/me/avatar-storage.service.ts). SUPABASE_SECRET_KEY
+      # bypasses Row Level Security; never expose it to the frontend.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_AVATARS_BUCKET
         sync: false

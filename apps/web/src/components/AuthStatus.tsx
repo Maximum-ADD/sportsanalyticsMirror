@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { authClient, signInWithGoogle, useSession } from "@/lib/authClient";
+import { Link } from "react-router-dom";
+import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMe } from "@/lib/useMe";
 import { pingHealth } from "@/lib/apiClient";
 
 // Friendly copy for the BetterAuth error codes we're likely to actually see.
@@ -46,6 +48,9 @@ interface AuthStatusProps {
 export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
   const { data: session, isPending } = useSession();
   const authError = useAuthErrorFromUrl();
+  // Only fired once there's a session — GET /v1/me needs the session cookie
+  // this same hook otherwise waits on (see useMe).
+  const { data: me } = useMe();
 
   // BetterAuth's OAuth state row expires 10 minutes after sign-in starts —
   // hardcoded in the library, not configurable (checked up to the latest
@@ -87,90 +92,33 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
     );
   }
 
+  // A brand-new user hasn't onboarded yet (no username/avatar from GET
+  // /v1/me), so this falls back to the session's own name — still a real
+  // identity to show, not a placeholder, for the brief window before
+  // onboarding sets a username.
+  const displayName = me?.username ?? session.user.name;
+  const initial = displayName?.[0]?.toUpperCase() ?? "?";
+
   return (
-    <div className="flex items-center gap-3">
-      <span className="max-w-40 truncate text-sm text-text-secondary" title={session.user.email}>
-        {session.user.email}
-      </span>
-      <Button type="button" variant="ghost" size="sm" onClick={() => authClient.signOut()}>
-        Sign out
-      </Button>
-      <DeleteAccountControl />
-    </div>
-  );
-}
-
-// Two-click confirm rather than a modal, since this app has no dialog
-// component yet (see components/ui) and pulling one in just for this felt
-// heavier than the feature warrants. Clicking "Delete account" arms it;
-// a second click within the same render actually deletes.
-function DeleteAccountControl() {
-  const [confirming, setConfirming] = useState(false);
-  const [status, setStatus] = useState<"idle" | "pending" | "error">("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  async function handleConfirmDelete() {
-    setStatus("pending");
-    setErrorMessage(null);
-    // deleteUser is enabled with no password (see auth.config.ts — every
-    // account here is Google-only) and instead requires a "fresh" session.
-    // If the user hasn't signed in within session.freshAge, BetterAuth
-    // rejects this with SESSION_EXPIRED rather than deleting, so we surface
-    // that as a message rather than a silent failure.
-    const { error } = await authClient.deleteUser();
-    if (error) {
-      setStatus("error");
-      setErrorMessage(error.message ?? "Couldn't delete your account. Please try again.");
-      return;
-    }
-    // On success BetterAuth clears the session cookie itself; useSession()
-    // will pick that up and this whole branch stops rendering.
-  }
-
-  if (confirming) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-red-400">
-          {errorMessage ?? "Delete your account? This can't be undone."}
+    <Link
+      to="/profile"
+      className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
+    >
+      {me?.avatarUrl ? (
+        <img
+          src={me.avatarUrl}
+          alt=""
+          aria-hidden
+          className="size-7 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-locker-leather text-[11px] font-semibold text-white">
+          {initial}
         </span>
-        {!errorMessage && (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-red-400 text-red-400 hover:bg-red-950"
-              disabled={status === "pending"}
-              onClick={handleConfirmDelete}
-            >
-              {status === "pending" ? "Deleting…" : "Yes, delete"}
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-          </>
-        )}
-        {errorMessage && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setConfirming(false);
-              setStatus("idle");
-              setErrorMessage(null);
-            }}
-          >
-            Dismiss
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <Button type="button" variant="ghost" size="sm" className="text-red-400" onClick={() => setConfirming(true)}>
-      Delete account
-    </Button>
+      )}
+      <span className="max-w-32 truncate text-[11px] font-medium tracking-[0.1em] text-white uppercase">
+        {displayName}
+      </span>
+    </Link>
   );
 }

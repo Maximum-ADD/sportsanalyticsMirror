@@ -66,6 +66,7 @@ async function bootstrap() {
     .addTag("teams", "Team data (public)")
     .addTag("games", "Game data and predictions (auth required)")
     .addTag("optimizer", "Fantasy lineup optimiser (auth required)")
+    .addTag("me", "Current user's profile, avatar, and followed players (auth required)")
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

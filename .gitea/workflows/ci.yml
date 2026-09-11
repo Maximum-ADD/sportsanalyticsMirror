@@ -130,6 +130,12 @@ jobs:
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
       WEB_ORIGIN: http://localhost:5173
+      # The API constructs AvatarStorageService during Nest bootstrap. These
+      # disposable values make that constructor valid; the coverage suite
+      # never performs a real Supabase Storage operation.
+      SUPABASE_URL: https://test-project.supabase.co
+      SUPABASE_SECRET_KEY: ci-secret-not-for-production-use
+      SUPABASE_AVATARS_BUCKET: profile pictures
 
     steps:
       - name: Checkout
@@ -272,16 +278,25 @@ jobs:
           # port published on the host is the right answer instead.
           if [ -z "$TARGET" ]; then
             echo "==> attempt 3: port published on 127.0.0.1 (for a host-network runner)"
-            start_pg -p 127.0.0.1::5432
+            start_pg -p 0.0.0.0::5432
             if ! wait_server_up; then
               echo "::error title=Postgres did not start on the final attempt::"
               diagnose
               exit 1
             fi
             HOSTPORT="$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')"
-            if [ -n "$HOSTPORT" ] && try_target 127.0.0.1 "$HOSTPORT"; then
+            # `ip` (iproute2) isn't guaranteed to be installed in the job's own
+            # container — under `set -e`, a missing binary inside this command
+            # substitution would exit the whole step with code 127 rather than
+            # falling through to the loopback attempt below, so failure here
+            # must degrade to an empty HOSTGATEWAY instead of killing the step.
+            HOSTGATEWAY="$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')" || HOSTGATEWAY=""
+            if [ -n "$HOSTPORT" ] && [ -n "$HOSTGATEWAY" ] && try_target "$HOSTGATEWAY" "$HOSTPORT"; then
+              TARGET="$HOSTGATEWAY:$HOSTPORT"
+              echo "reachable on the published port through host gateway $HOSTGATEWAY"
+            elif [ -n "$HOSTPORT" ] && try_target 127.0.0.1 "$HOSTPORT"; then
               TARGET="127.0.0.1:$HOSTPORT"
-              echo "reachable on the published port"
+              echo "reachable on the published port through loopback"
             fi
           fi
 
@@ -292,6 +307,16 @@ jobs:
           fi
 
           echo "DATABASE_URL=postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public" >> "$GITHUB_ENV"
+          cat > apps/api/.env.test <<EOF
+          DATABASE_URL="postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public"
+          DIRECT_URL="postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public"
+          BETTER_AUTH_SECRET="ci-secret-not-for-production-use"
+          BETTER_AUTH_URL="http://localhost:4000"
+          WEB_ORIGIN="http://localhost:5173"
+          SUPABASE_URL="https://test-project.supabase.co"
+          SUPABASE_SECRET_KEY="ci-secret-not-for-production-use"
+          SUPABASE_AVATARS_BUCKET="profile pictures"
+          EOF
           echo "using $TARGET"
 
       - name: Set up Node
