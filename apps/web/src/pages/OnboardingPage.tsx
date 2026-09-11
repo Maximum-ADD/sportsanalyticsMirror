@@ -278,7 +278,7 @@ export function OnboardingPage() {
 
   if (isMePending) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-landing-hero">
+      <div className="flex min-h-full items-center justify-center bg-landing-hero">
         <BasketballSpinner size="lg" label="Loading" />
       </div>
     );

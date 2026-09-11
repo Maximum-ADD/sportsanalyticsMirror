@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-
 interface ErrorStateProps {
   message: string;
   onRetry: () => void;
@@ -7,11 +5,15 @@ interface ErrorStateProps {
 
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-start gap-3 p-8">
-      <p className="text-red-400">{message}</p>
-      <Button variant="secondary" onClick={onRetry}>
+    <div className="flex flex-col items-start gap-3 border border-landing-light bg-locker-surface p-5">
+      <p className="text-[12.5px] text-locker-bad">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
+      >
         Retry
-      </Button>
+      </button>
     </div>
   );
 }
