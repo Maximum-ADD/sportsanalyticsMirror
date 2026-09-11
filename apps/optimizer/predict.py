@@ -105,6 +105,23 @@ MINUTES_TREND_DEVIATION_CAP = 1.0
 # Postseason games are ingested but excluded from every model input.
 REGULAR_SEASON_TYPE = "REGULAR"
 
+# Minutes-trend adjustment (see module docstring for the backtest behind
+# these values): compares a player's mean minutes over their last
+# MINUTES_TREND_RECENT_WINDOW games against their last
+# MINUTES_TREND_BASELINE_WINDOW games, and nudges the fantasy-point
+# prediction by MINUTES_TREND_ADJUSTMENT_STRENGTH times that ratio's
+# deviation from 1.0 (clamped to +/-MINUTES_TREND_DEVIATION_CAP so one
+# extreme recent game can't dominate). A player whose minutes just went up
+# gets a small upward nudge on top of the existing recency-weighted
+# prediction; a player whose minutes just went down gets a small downward
+# one. Requires at least MINUTES_TREND_BASELINE_WINDOW games of history —
+# a player with less is left unadjusted (trend is undefined with too
+# little baseline to compare against).
+MINUTES_TREND_RECENT_WINDOW = 3
+MINUTES_TREND_BASELINE_WINDOW = 10
+MINUTES_TREND_ADJUSTMENT_STRENGTH = 0.15
+MINUTES_TREND_DEVIATION_CAP = 1.0
+
 # Calibrated so this mock dataset's predicted-points range (roughly 20-45)
 # maps onto a DraftKings-like salary spread ($4,000-$10,500), not derived
 # from any real pricing model.

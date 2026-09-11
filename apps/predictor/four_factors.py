@@ -139,6 +139,24 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
     write-up.
 
     Postseason games are excluded — see REGULAR_SEASON_TYPE.
+
+    Joins on PlayerGameStat.teamId (the team a player suited up for IN
+    THAT GAME), not Player.teamId (a player's current team) — an earlier
+    version of this query joined on Player.teamId, which silently
+    misattributed every traded player's past games to whichever team they
+    play for now. Confirmed live before the fix: ~7.7% of PlayerGameStat
+    rows had a Player.teamId that didn't match either team in that row's
+    own game. See PlayerGameStat.teamId's schema doc comment.
+
+    Backtested impact of this fix on this project's single-season dataset:
+    MAE 12.52 -> 12.51 (walk-forward 12.65 -> 12.62) — a real but small
+    change, since only ~7.7% of rows were affected and correcting them
+    redistributes stats between two teams' season averages rather than
+    adding new signal. This was still worth fixing on correctness grounds
+    alone (a team's Four Factors average should reflect the players who
+    actually played for them), and matters more as more seasons of data
+    with more real trades are added — see docs/reports for the full
+    write-up.
     """
     cursor.execute(
         """

@@ -122,6 +122,16 @@ export interface PlayerStatsBatchEntry {
 // columns.
 export type PlayerSeasonSplits = Record<SeasonType, SeasonAverages>;
 
+// GET /v1/players/stats-batch's per-player entry — same shape as
+// PlayerStatsResponse minus `seasonType`: the batch endpoint always derives
+// from the default (regular season) segment and doesn't echo one back, so
+// there's nothing here for a caller to mislabel.
+export interface PlayerStatsBatchEntry {
+  playerId: string;
+  seasonAverages: SeasonAverages;
+  gameLog: GameLogEntry[];
+}
+
 export interface PlayerStatsSplitsResponse {
   playerId: string;
   splits: PlayerSeasonSplits;

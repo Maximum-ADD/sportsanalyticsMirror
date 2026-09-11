@@ -336,7 +336,9 @@ OPTIONAL_STAT_KEYS = (
 )
 
 
-def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: str, team_internal_id: str, stats: dict) -> None:
+def upsert_player_game_stat(
+    cursor, player_internal_id: str, game_internal_id: str, team_internal_id: str, stats: dict
+) -> None:
     """Upserts one PlayerGameStat row for (player, game).
 
     team_internal_id is the internal Team id this player suited up for IN
