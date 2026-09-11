@@ -203,14 +203,28 @@ def ingest_games_and_stats(
                 # stat row rather than failing the whole game.
                 skipped_unknown_players += 1
                 continue
-            traditional_stats = {key: value for key, value in player_stats.items() if key != "nba_player_id"}
+            # The team this player suited up for IN THIS GAME (from the
+            # boxscore itself, via games.py's nba_team_id), not their
+            # current roster team — see PlayerGameStat.teamId's schema
+            # doc comment. home_team_id/away_team_id above are already
+            # known-non-None at this point (checked before the loop).
+            team_internal_id = team_id_by_nba_id.get(player_stats["nba_team_id"])
+            traditional_stats = {
+                key: value for key, value in player_stats.items() if key not in ("nba_player_id", "nba_team_id")
+            }
             extra_figures = extra_figures_by_player_game.get((nba_game_id, player_stats["nba_player_id"]))
             if extra_figures is None:
                 # A player-game the leaguewide feed doesn't carry — most
                 # often a DNP, which genuinely has no usage rate.
                 extra_figures = {}
                 player_games_missing_extra_figures += 1
-            upsert_player_game_stat(cursor, player_internal_id, game_internal_id, {**traditional_stats, **extra_figures})
+            upsert_player_game_stat(
+                cursor,
+                player_internal_id,
+                game_internal_id,
+                team_internal_id,
+                {**traditional_stats, **extra_figures},
+            )
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
     if player_games_missing_extra_figures:

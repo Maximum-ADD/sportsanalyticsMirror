@@ -88,15 +88,21 @@ PLAYOFF_ROUND_DIGIT_INDEX = 7
 FINALS_ROUND = 4
 
 
-def fetch_recent_games(nba_team_id: int, season: str) -> list[dict]:
-    """Fetches a team's GAMES_PER_TEAM most recent completed Regular Season games.
+def fetch_recent_games(nba_team_id: int, season: str, limit: int = GAMES_PER_TEAM) -> list[dict]:
+    """Fetches a team's `limit` most recent completed Regular Season games.
 
     Returns {nba_game_id, game_date} pairs — fetch_game_boxscore is the
     single source of truth for everything else about a game (scores,
     teams, player stats; see module docstring), but BoxScoreTraditionalV3
     doesn't include the game's date, so that one field comes from here.
     A game shared between two teams in scope reports the same date from
-    both teams' calls — ingest.py dedupes by nba_game_id regardless.
+    both teams' calls — callers dedupe by nba_game_id regardless.
+
+    Default `limit` (GAMES_PER_TEAM) is right for the CURRENT season,
+    where "most recent N" is the point. A historical (fully completed)
+    season needs every game, not a 15-game slice of it, to be useful Elo
+    training signal — pass a limit comfortably above a season's real game
+    count (e.g. 100) for that case. See ingest_historical_season.py.
     """
     result = call_with_rate_limit(
         lambda: leaguegamefinder.LeagueGameFinder(
@@ -104,7 +110,7 @@ def fetch_recent_games(nba_team_id: int, season: str) -> list[dict]:
         )
     )
     rows = result.get_normalized_dict()["LeagueGameFinderResults"]
-    return [{"nba_game_id": row["GAME_ID"], "game_date": row["GAME_DATE"]} for row in rows[:GAMES_PER_TEAM]]
+    return [{"nba_game_id": row["GAME_ID"], "game_date": row["GAME_DATE"]} for row in rows[:limit]]
 
 
 def fetch_season_segment_games(season: str, nba_season_type: str) -> list[dict]:
@@ -172,14 +178,20 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
     """Fetches one game's full boxscore via BoxScoreTraditionalV3.
 
     Returns home_team_nba_id/away_team_nba_id/home_score/away_score plus
-    players: a list of dicts with nba_player_id/minutes/points/rebounds/
-    assists/steals/blocks/turnovers/field_goals_made/field_goals_attempted/
-    threes_made/threes_attempted/free_throws_made/free_throws_attempted —
-    everything Game and PlayerGameStat need for this one game. A player
-    whose team isn't in this project's ingested rosters (e.g. a two-way/
-    G-League call-up not on the standard roster endpoint) still gets a
-    stat row here; ingest.py skips rows for any nba_player_id it doesn't
-    recognize rather than failing the whole game.
+    players: a list of dicts with nba_player_id/nba_team_id/minutes/points/
+    rebounds/assists/steals/blocks/turnovers/field_goals_made/
+    field_goals_attempted/threes_made/threes_attempted/free_throws_made/
+    free_throws_attempted — everything Game and PlayerGameStat need for
+    this one game. nba_team_id is which team this player suited up for IN
+    THIS GAME specifically (the boxscore's own home/away split, read here
+    rather than falling back to a player's current roster team later) —
+    load-bearing for a traded player's historical games to stay attributed
+    to the team they actually played for, not whichever team they're on by
+    the time this script runs. A player whose team isn't in this project's
+    ingested rosters (e.g. a two-way/G-League call-up not on the standard
+    roster endpoint) still gets a stat row here; ingest.py skips rows for
+    any nba_player_id it doesn't recognize rather than failing the whole
+    game.
 
     See module docstring for why this parses raw JSON instead of using
     get_normalized_dict().
@@ -188,12 +200,13 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
     box = json.loads(response.nba_response.get_json())["boxScoreTraditional"]
 
     players = []
-    for team in (box["homeTeam"], box["awayTeam"]):
-        for player in team["players"]:
+    for team_side, nba_team_id in (("homeTeam", box["homeTeamId"]), ("awayTeam", box["awayTeamId"])):
+        for player in box[team_side]["players"]:
             stats = player["statistics"]
             players.append(
                 {
                     "nba_player_id": player["personId"],
+                    "nba_team_id": nba_team_id,
                     "minutes": _parse_minutes_to_int(stats["minutes"]),
                     "points": stats["points"],
                     "rebounds": stats["reboundsTotal"],
@@ -323,8 +336,17 @@ OPTIONAL_STAT_KEYS = (
 )
 
 
-def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: str, stats: dict) -> None:
+def upsert_player_game_stat(
+    cursor, player_internal_id: str, game_internal_id: str, team_internal_id: str, stats: dict
+) -> None:
     """Upserts one PlayerGameStat row for (player, game).
+
+    team_internal_id is the internal Team id this player suited up for IN
+    THIS GAME (resolved by the caller from the boxscore's nba_team_id via
+    team_id_by_nba_id) — not looked up from Player.teamId here or anywhere
+    downstream, so a player's historical rows stay correct across trades.
+    See the schema's PlayerGameStat.teamId doc comment for why this field
+    exists.
 
     `stats` carries the traditional boxscore figures plus, when an advanced
     boxscore was fetched for this game, the advanced ones. Anything in
@@ -336,17 +358,18 @@ def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: s
     cursor.execute(
         """
         INSERT INTO "PlayerGameStat"
-            ("id", "playerId", "gameId", "minutes", "points", "rebounds", "assists", "steals", "blocks",
+            ("id", "playerId", "gameId", "teamId", "minutes", "points", "rebounds", "assists", "steals", "blocks",
              "turnovers", "fieldGoalsMade", "fieldGoalsAttempted", "threesMade", "threesAttempted",
              "freeThrowsMade", "freeThrowsAttempted", "offensiveRebounds", "defensiveRebounds", "plusMinus",
              "usagePercentage", "offensiveRating", "defensiveRating")
         VALUES
-            (gen_random_uuid(), %(player_id)s, %(game_id)s, %(minutes)s, %(points)s, %(rebounds)s, %(assists)s,
+            (gen_random_uuid(), %(player_id)s, %(game_id)s, %(team_id)s, %(minutes)s, %(points)s, %(rebounds)s, %(assists)s,
              %(steals)s, %(blocks)s, %(turnovers)s, %(field_goals_made)s, %(field_goals_attempted)s,
              %(threes_made)s, %(threes_attempted)s, %(free_throws_made)s, %(free_throws_attempted)s,
              %(offensive_rebounds)s, %(defensive_rebounds)s, %(plus_minus)s,
              %(usage_percentage)s, %(offensive_rating)s, %(defensive_rating)s)
         ON CONFLICT ("playerId", "gameId") DO UPDATE SET
+            "teamId" = EXCLUDED."teamId",
             "minutes" = EXCLUDED."minutes",
             "points" = EXCLUDED."points",
             "rebounds" = EXCLUDED."rebounds",
@@ -369,5 +392,5 @@ def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: s
             "offensiveRating" = COALESCE(EXCLUDED."offensiveRating", "PlayerGameStat"."offensiveRating"),
             "defensiveRating" = COALESCE(EXCLUDED."defensiveRating", "PlayerGameStat"."defensiveRating")
         """,
-        {"player_id": player_internal_id, "game_id": game_internal_id, **stats},
+        {"player_id": player_internal_id, "game_id": game_internal_id, "team_id": team_internal_id, **stats},
     )

@@ -1,0 +1,83 @@
+@startuml sequence-game-prediction
+title GET /v1/games/:id/prediction — request flow (cross-origin auth + read path)
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam participant {
+  BackgroundColor White
+  BorderColor Black
+}
+
+actor "Browser\n(apps/web on Cloudflare Pages)" as Browser
+participant "Express CORS\nmiddleware" as Cors
+participant "SessionAuthGuard" as Guard
+participant "GamesController" as Controller
+participant "GamesService" as GamesSvc
+participant "PredictionsService" as PredSvc
+database "Supabase Postgres\n(via PrismaService)" as DB
+
+== Offline / earlier, out of band ==
+note over DB
+  apps/predictor's predict_games.py
+  already ran and upserted a
+  GamePrediction row (Elo win prob +
+  Four Factors margin) for this game.
+end note
+
+== Request (production: web + api on different domains) ==
+Browser -> Cors : GET /v1/games/{id}/prediction\nOrigin: https://<site>.pages.dev\ncookie: session token\n(credentials: "include")
+activate Cors
+Cors -> Cors : origin in allowedOrigins\n(WEB_ORIGIN, comma-split)?
+
+alt origin not allowed
+  Cors --> Browser : CORS error\n(request never reaches Nest)
+else origin allowed
+  Cors -> Guard : credentials: true\n(cookie forwarded)
+  deactivate Cors
+  activate Guard
+  Guard -> Guard : auth.api.getSession(headers)
+  note right of Guard
+    Session cookie only survives this
+    cross-origin request because
+    auth.config.ts sets
+    defaultCookieAttributes:
+    { sameSite: "none" } in production
+    (paired with Secure, derived from
+    baseURL's https:// scheme).
+  end note
+
+  alt no valid session
+    Guard --> Browser : 401 UNAUTHENTICATED\n{ error: { code, message } }
+  else valid session
+    Guard -> Controller : request.user = session.user\n(canActivate -> true)
+    deactivate Guard
+    activate Controller
+
+    Controller -> GamesSvc : getGameById(id)
+    activate GamesSvc
+    GamesSvc -> DB : SELECT game\nJOIN homeTeam, awayTeam, prediction
+    DB --> GamesSvc : GameWithTeamsAndPrediction | null
+    GamesSvc --> Controller : game
+    deactivate GamesSvc
+
+    alt game not found
+      Controller --> Browser : 404 NOT_FOUND "Game not found"
+    else game found
+      Controller -> PredSvc : getPredictionForGame(id)
+      activate PredSvc
+      PredSvc -> DB : SELECT GamePrediction\nWHERE gameId = id
+      DB --> PredSvc : GamePrediction | null
+      PredSvc --> Controller : prediction
+      deactivate PredSvc
+
+      alt prediction not found
+        Controller --> Browser : 404 NOT_FOUND\n"run predict_games.py in apps/predictor"
+      else prediction found
+        Controller --> Browser : 200 OK\nGamePrediction JSON
+      end
+    end
+    deactivate Controller
+  end
+end
+
+@enduml

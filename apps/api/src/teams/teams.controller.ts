@@ -19,6 +19,14 @@ export class TeamsController {
     return this.teamsService.getTeams(query);
   }
 
+  // GET /v1/teams/elo-ratings — every team's current Elo rating, highest
+  // first. Declared before the :id route below so "elo-ratings" isn't
+  // swallowed as a team id — Nest matches routes in declaration order.
+  @Get("elo-ratings")
+  listEloRatings() {
+    return this.teamsService.getEloRatings();
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Get team by ID" })
   @ApiParam({ name: "id", description: "Team UUID" })

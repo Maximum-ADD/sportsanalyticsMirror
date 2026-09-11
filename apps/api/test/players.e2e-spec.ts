@@ -471,4 +471,56 @@ describe("Players API", () => {
       expect(response.body.error.code).toBe("NOT_FOUND");
     });
   });
+
+  describe("GET /v1/players/stats-batch", () => {
+    it("returns season averages and game log for every requested player in one request", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const first = await createPlayer({ teamId: home.id, lastName: "James" });
+      const second = await createPlayer({ teamId: away.id, lastName: "Tatum" });
+      const game = await createGame(home.id, away.id, new Date("2025-10-15"));
+      await createGameStat(first.id, game.id, { points: 30 });
+      await createGameStat(second.id, game.id, { points: 20 });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/stats-batch?ids=${first.id},${second.id}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.players).toEqual([
+        expect.objectContaining({ playerId: first.id, seasonAverages: expect.objectContaining({ pointsPerGame: 30 }) }),
+        expect.objectContaining({ playerId: second.id, seasonAverages: expect.objectContaining({ pointsPerGame: 20 }) }),
+      ]);
+      expect(response.body.players[0].gameLog).toHaveLength(1);
+    });
+
+    it("returns a zeroed entry rather than a 404 for a player id with no ingested stats", async () => {
+      const player = await createPlayer({ lastName: "NoGamesYet" });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/stats-batch?ids=${player.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.players).toEqual([
+        expect.objectContaining({ playerId: player.id, seasonAverages: expect.objectContaining({ gamesPlayed: 0 }), gameLog: [] }),
+      ]);
+    });
+
+    it("de-duplicates repeated ids", async () => {
+      const player = await createPlayer({ lastName: "Solo" });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/stats-batch?ids=${player.id},${player.id}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.players).toHaveLength(1);
+    });
+
+    it("returns a 400 when no ids are given", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/players/stats-batch");
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+    });
+  });
 });
