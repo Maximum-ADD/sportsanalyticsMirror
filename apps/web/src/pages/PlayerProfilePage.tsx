@@ -11,6 +11,7 @@ import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { FollowPlayerButton } from "@/components/FollowPlayerButton";
 import { formatAge, formatHeight } from "@/lib/playerBio";
 import type { Player, PlayerStatsResponse, SeasonAverages } from "@/types/nba";
 
@@ -155,6 +156,7 @@ export function PlayerProfilePage() {
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
+              <FollowPlayerButton playerId={player.id} />
               {hasStatOverrides && (
                 <button
                   type="button"

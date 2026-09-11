@@ -1,15 +1,24 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayerProfilePage } from "./PlayerProfilePage";
-import { fetchPlayer, fetchPlayerStats } from "@/lib/nbaApi";
+import { fetchPlayer, fetchPlayerStats, fetchWatchedPlayerIds } from "@/lib/nbaApi";
+import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { Player, PlayerStatsResponse, Team } from "@/types/nba";
 
+// The header now carries FollowPlayerButton, which reads the watchlist id
+// list. Its own behaviour lives in FollowPlayerButton.spec; here it only has
+// to have something to call.
 vi.mock("@/lib/nbaApi", () => ({
   fetchPlayer: vi.fn(),
   fetchPlayerStats: vi.fn(),
+  fetchWatchedPlayerIds: vi.fn(),
+  followPlayer: vi.fn(),
+  unfollowPlayer: vi.fn(),
 }));
+
+vi.mock("@/lib/authClient", () => ({ signInWithGoogle: vi.fn() }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();
@@ -78,6 +87,12 @@ const STATS: PlayerStatsResponse = {
 };
 
 describe("PlayerProfilePage bio section", () => {
+  beforeEach(() => {
+    // Signed out: the follow control renders a sign-in prompt and stays out
+    // of the way of what this file is actually about.
+    vi.mocked(fetchWatchedPlayerIds).mockRejectedValue(new ApiError("Sign in required", 401));
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });

@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { allowedOrigins } from "../common/allowed-origins.js";
 
 // A dedicated Prisma client for BetterAuth's own use. This module is a
 // plain singleton instantiated at import time (by main.ts and by
@@ -9,13 +10,11 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 // the standard, documented way to wire BetterAuth's Prisma adapter.
 const prisma = new PrismaClient();
 
-// WEB_ORIGIN can be a single URL or a comma-separated list
-// (e.g. "https://app.pages.dev,http://localhost:5173").
-// Both BetterAuth (trustedOrigins) and the Express CORS middleware in
-// main.ts read from this shared array so the two layers stay in sync.
-export const allowedOrigins = (process.env.WEB_ORIGIN ?? "http://localhost:5173")
-  .split(",")
-  .map((s) => s.trim());
+// The trusted browser origins, defined in common/allowed-origins.ts and
+// re-exported here so existing importers (main.ts) keep working while the
+// list stays readable from modules that must not import this one — see
+// that file for why.
+export { allowedOrigins } from "../common/allowed-origins.js";
 
 // Mounted at /auth (not the BetterAuth default /api/auth) to match this
 // project's existing routing convention — see main.ts for where the raw
