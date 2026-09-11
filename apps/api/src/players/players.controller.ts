@@ -3,7 +3,12 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/
 import { ApiException } from "../common/api-exception.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService } from "./players.service.js";
-import { StatsService, type PlayerComparisonEntry, type PlayerSeasonSplits } from "./stats.service.js";
+import {
+  StatsService,
+  type PlayerComparisonEntry,
+  type PlayerSeasonSplits,
+  type PlayerStatsEntry,
+} from "./stats.service.js";
 
 // A comparison needs at least two players to be a comparison, and the UI
 // lays out at most four tiles side by side before it stops being readable.
@@ -23,6 +28,30 @@ function parseComparisonIds(ids: unknown): string[] {
       HttpStatus.BAD_REQUEST,
       "BAD_REQUEST",
       `A comparison needs between ${MIN_COMPARISON_PLAYERS} and ${MAX_COMPARISON_PLAYERS} player ids`
+    );
+  }
+  return uniqueIds;
+}
+
+// Generous relative to /compare's 4-player cap on purpose — this backs
+// cross-game highlight pools (see PlayerCards.tsx's usePlayerReliability),
+// not a side-by-side UI that stops being readable past a handful of tiles.
+// Still bounded so a caller can't turn this into an unbounded full-table
+// scan.
+const MAX_BATCH_STATS_PLAYERS = 50;
+
+function parseBatchStatsIds(ids: unknown): string[] {
+  const rawIds = typeof ids === "string" ? ids.split(",").map((id) => id.trim()).filter(Boolean) : [];
+  const uniqueIds = [...new Set(rawIds)];
+
+  if (uniqueIds.length === 0) {
+    throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "At least one player id is required");
+  }
+  if (uniqueIds.length > MAX_BATCH_STATS_PLAYERS) {
+    throw new ApiException(
+      HttpStatus.BAD_REQUEST,
+      "BAD_REQUEST",
+      `At most ${MAX_BATCH_STATS_PLAYERS} player ids are supported per request`
     );
   }
   return uniqueIds;
@@ -83,6 +112,23 @@ export class PlayersController {
       })
     );
     return { seasonType, players };
+  }
+
+  // GET /v1/players/stats-batch?ids=a,b,c — season averages + game log for
+  // up to MAX_BATCH_STATS_PLAYERS players in one request, one query instead
+  // of N (see PlayersService.getPlayerSeasonStatsBatch). Declared before
+  // ":id" so "stats-batch" is never swallowed as a player id. Unlike
+  // /compare, a player id with no matching Player row is silently skipped
+  // rather than 404ing the whole batch — this endpoint backs a highlight
+  // pool built from predicted scorers already known to exist (see
+  // GameDetailService), not a user-typed id, so a mismatch here would be
+  // this app's own bug, not bad input worth surfacing to the caller as an
+  // error.
+  @Get("stats-batch")
+  async getPlayerStatsBatch(@Query("ids") ids: unknown): Promise<{ players: PlayerStatsEntry[] }> {
+    const playerIds = parseBatchStatsIds(ids);
+    const players = await this.statsService.getPlayerStatsBatch(playerIds);
+    return { players };
   }
 
   @Get(":id")

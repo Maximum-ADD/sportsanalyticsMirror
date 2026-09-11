@@ -9,6 +9,18 @@ export interface GameLogEntry {
   points: number;
 }
 
+// One player's identity-independent stats line — the unit the batch
+// endpoint returns, one per requested player id (a player with zero
+// PlayerGameStat rows still gets an entry: zeroed averages, empty log —
+// same "always present, zeroed rather than omitted" contract
+// deriveSeasonAverages already has for a single player, so callers never
+// need to special-case a missing map entry vs. a genuinely stat-less player).
+export interface PlayerStatsEntry {
+  playerId: string;
+  seasonAverages: DerivedSeasonAverages;
+  gameLog: GameLogEntry[];
+}
+
 export interface DerivedSeasonAverages {
   gamesPlayed: number;
   minutesPerGame: number;
@@ -217,6 +229,31 @@ export class StatsService {
   async getPlayerGameLog(playerId: string, seasonType: SeasonType = DEFAULT_SEASON_TYPE): Promise<GameLogEntry[]> {
     const gameStats = await this.playersService.getPlayerSeasonStats(playerId, seasonType);
     return this.deriveGameLog(gameStats);
+  }
+
+  // Season averages + game log for many players in one request — see
+  // PlayersService.getPlayerSeasonStatsBatch for why this exists. Every
+  // requested id gets an entry (zeroed/empty for a player with no stat
+  // rows), in the same order as `playerIds`, so a caller can zip the
+  // response back up against its own request list without a lookup.
+  async getPlayerStatsBatch(playerIds: string[]): Promise<PlayerStatsEntry[]> {
+    const allGameStats = await this.playersService.getPlayerSeasonStatsBatch(playerIds);
+
+    const gameStatsByPlayerId = new Map<string, typeof allGameStats>();
+    for (const stat of allGameStats) {
+      const existing = gameStatsByPlayerId.get(stat.playerId);
+      if (existing) existing.push(stat);
+      else gameStatsByPlayerId.set(stat.playerId, [stat]);
+    }
+
+    return playerIds.map((playerId) => {
+      const gameStats = gameStatsByPlayerId.get(playerId) ?? [];
+      return {
+        playerId,
+        seasonAverages: this.deriveSeasonAverages(gameStats),
+        gameLog: this.deriveGameLog(gameStats),
+      };
+    });
   }
 
   // Every segment's season line in one response, for the "how did this
