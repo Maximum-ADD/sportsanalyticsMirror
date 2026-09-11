@@ -162,16 +162,16 @@ model Player {
 }
 
 model Game {
-  id         String   @id @default(uuid())
-  nbaGameId  String   @unique
-  gameDate   DateTime
-  season     String
-  homeTeamId String
-  awayTeamId String
-  homeTeam   Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeam   Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  homeScore  Int?
-  awayScore  Int?
+  id           String   @id @default(uuid())
+  nbaGameId    String   @unique
+  gameDate     DateTime
+  season       String
+  homeTeamId   String
+  awayTeamId   String
+  homeTeam     Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam     Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeScore    Int?
+  awayScore    Int?
 
   // Defaulting to REGULAR is exactly right for backfill, not just a
   // convenient fallback: every Game row that existed before this column
@@ -188,7 +188,7 @@ model Game {
   events       GameEvent[]
   prediction   GamePrediction?
 
-  picks GamePick[]
+  picks        GamePick[]
 
   @@index([seasonType])
 }

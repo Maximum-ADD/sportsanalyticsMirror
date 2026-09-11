@@ -2,7 +2,12 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayerProfilePage } from "./PlayerProfilePage";
-import { fetchPlayer, fetchPlayerStats, fetchPlayerStatsSplits, fetchWatchedPlayerIds } from "@/lib/nbaApi";
+import {
+  fetchPlayer,
+  fetchPlayerStats,
+  fetchPlayerStatsSplits,
+  fetchWatchedPlayerIds,
+} from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { PlayerSeasonSplits, Player, PlayerStatsResponse, SeasonAverages, Team } from "@/types/nba";
