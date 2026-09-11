@@ -112,6 +112,16 @@ export interface PlayerStatsResponse {
 // columns.
 export type PlayerSeasonSplits = Record<SeasonType, SeasonAverages>;
 
+// GET /v1/players/stats-batch's per-player entry — same shape as
+// PlayerStatsResponse minus `seasonType`: the batch endpoint always derives
+// from the default (regular season) segment and doesn't echo one back, so
+// there's nothing here for a caller to mislabel.
+export interface PlayerStatsBatchEntry {
+  playerId: string;
+  seasonAverages: SeasonAverages;
+  gameLog: GameLogEntry[];
+}
+
 export interface PlayerStatsSplitsResponse {
   playerId: string;
   splits: PlayerSeasonSplits;
@@ -190,4 +200,15 @@ export interface GamePrediction {
   predictedMarginHome: number | null;
   marginMethod: "regression" | "heuristic" | null;
   createdAt: string;
+}
+
+// A team's current Elo rating, read from its own most recent predicted
+// game (upcoming if it has one — the real, live rating — otherwise its
+// last completed game's pre-kickoff snapshot). See TeamsService.getEloRatings
+// for why there's no dedicated "current rating" column to read instead.
+export interface TeamEloRating {
+  team: Team;
+  elo: number;
+  asOfGameId: string;
+  asOfGameDate: string;
 }

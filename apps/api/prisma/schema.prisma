@@ -110,6 +110,7 @@ model Team {
   players Player[]
   homeGames Game[] @relation("HomeTeam")
   awayGames Game[] @relation("AwayTeam")
+  playerGameStats PlayerGameStat[]
 }
 
 model Player {
@@ -199,6 +200,19 @@ model PlayerGameStat {
   player    Player  @relation(fields: [playerId], references: [id])
   gameId    String
   game      Game    @relation(fields: [gameId], references: [id])
+
+  // The team this player suited up for IN THIS GAME — not necessarily
+  // Player.teamId (a player's current team), which drifts out of sync the
+  // moment they're traded. apps/ingestion/games.py already knows this per
+  // boxscore row (it iterates each team's own player list) but discarded
+  // it before this field existed; four_factors.py used to join on
+  // Player.teamId instead, which silently misattributed every traded
+  // player's past games to their new team (~7.7% of rows, confirmed via a
+  // one-off audit query before this field was added). Nullable because
+  // older rows ingested before this field existed may not have a
+  // reliable backfill source without a boxscore re-fetch.
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id])
 
   minutes      Int
   points       Int

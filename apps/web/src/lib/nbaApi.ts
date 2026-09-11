@@ -7,11 +7,13 @@ import type {
   Player,
   PlayerComparisonResponse,
   PlayerPredictionSummary,
+  PlayerStatsBatchEntry,
   PlayerStatsResponse,
   PlayerStatsSplitsResponse,
   PagedResult,
   SeasonType,
   Team,
+  TeamEloRating,
 } from "@/types/nba";
 
 function toQueryString(params: object): string {
@@ -55,6 +57,17 @@ export function fetchPlayerStatsSplits(playerId: string): Promise<PlayerStatsSpl
   return fetchJson<PlayerStatsSplitsResponse>(`/v1/players/${playerId}/stats/splits`);
 }
 
+// Season averages + game log for up to 50 players in one request — see
+// PlayersController's stats-batch route for why this exists (a highlight
+// pool built from ~15-30 predicted scorers was firing that many sequential
+// GET /v1/players/:id/stats calls). A requested id with no ingested stats
+// still gets an entry (zeroed averages, empty log), same contract as the
+// single-player endpoint, so callers never need to special-case a missing
+// map entry.
+export function fetchPlayerStatsBatch(playerIds: string[]): Promise<{ players: PlayerStatsBatchEntry[] }> {
+  return fetchJson<{ players: PlayerStatsBatchEntry[] }>(`/v1/players/stats-batch?ids=${playerIds.join(",")}`);
+}
+
 // Season lines for 2-4 players in one request, for the compare page. Order
 // of `playerIds` is preserved in the response.
 export function fetchPlayerComparison(
@@ -79,9 +92,23 @@ export function fetchTeam(teamId: string): Promise<Team> {
   return fetchJson<Team>(`/v1/teams/${teamId}`);
 }
 
+// Every team's current Elo rating, highest first — see TeamEloRating for
+// what "current" means here (an upcoming game's snapshot when a team has
+// one, since that IS the live rating; otherwise its last completed game's).
+export function fetchEloRatings(): Promise<TeamEloRating[]> {
+  return fetchJson<TeamEloRating[]>("/v1/teams/elo-ratings");
+}
+
 export interface FetchGamesParams {
   page?: number;
   pageSize?: number;
+  // "upcoming"/"completed" narrow to one group; omitted (or "all") returns
+  // soonest-upcoming-first then most-recent-completed — see
+  // GamesService.getGames for why this can't just be a gameDate sort.
+  status?: "upcoming" | "completed" | "all";
+  // Exact Game.season match (e.g. "2025-26") — see fetchSeasons for real,
+  // available options rather than guessing a season string.
+  season?: string;
   // Omitted means every segment — unlike the player endpoints, the games
   // list has no default segment. See GamesService.getGames.
   seasonType?: SeasonType;
@@ -89,6 +116,12 @@ export interface FetchGamesParams {
 
 export function fetchGames(params: FetchGamesParams = {}): Promise<PagedResult<Game>> {
   return fetchJson<PagedResult<Game>>(`/v1/games${toQueryString(params)}`);
+}
+
+// Every season with at least one ingested game, most recent first — backs
+// a season filter with real options instead of a hardcoded/guessed list.
+export function fetchSeasons(): Promise<string[]> {
+  return fetchJson<string[]>("/v1/games/seasons");
 }
 
 export function fetchLatestLineup(): Promise<Lineup> {
