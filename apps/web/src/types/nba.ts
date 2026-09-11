@@ -212,3 +212,28 @@ export interface TeamEloRating {
   asOfGameId: string;
   asOfGameDate: string;
 }
+
+// GET /v1/me's full response — the current user's personalization state.
+// avatarUrl is already a signed, directly-renderable URL (the API never
+// exposes the underlying private Supabase Storage object path) — see
+// MeService.getProfile. username: null is the onboarding gate signal (see
+// useMe/ProfileGate): a signed-in user with no username hasn't completed
+// onboarding yet.
+export interface MeProfile {
+  id: string;
+  email: string;
+  name: string;
+  username: string | null;
+  avatarUrl: string | null;
+  favoriteTeam: Team | null;
+  followedPlayers: Player[];
+}
+
+// GET /v1/teams/:id/suggested-players' per-player entry — a team's roster
+// ranked by usage percentage, for the onboarding step's "suggested players
+// to follow" prompt. null usagePercentage means no stats exist yet for that
+// player (see TeamsService.getSuggestedPlayers), not a zero rate.
+export interface SuggestedPlayer {
+  player: Player;
+  usagePercentage: number | null;
+}

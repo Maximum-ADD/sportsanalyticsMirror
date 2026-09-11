@@ -23,3 +23,47 @@ export async function fetchJson<T>(path: string): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
+
+// Reads this app's { error: { code, message } } envelope (see ApiException
+// on the API) when present, falling back to a generic message for anything
+// that isn't — a network failure or an unrelated 5xx won't have that shape.
+async function errorMessageFrom(response: Response, fallbackPath: string): Promise<string> {
+  try {
+    const body = await response.json();
+    if (body?.error?.message) return body.error.message as string;
+  } catch {
+    // Response body wasn't JSON (or was empty) — fall through to the generic message.
+  }
+  return `Request to ${fallbackPath} failed with status ${response.status}`;
+}
+
+// PATCH/PUT/DELETE with a JSON body — mutations that aren't a file upload
+// (see postFormData below for that case). Shares ApiError/credentials
+// behaviour with fetchJson so callers can handle both the same way.
+export async function sendJson<T>(path: string, method: "PATCH" | "PUT" | "DELETE" | "POST", body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    credentials: "include",
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    throw new ApiError(await errorMessageFrom(response, path), response.status);
+  }
+  return response.json() as Promise<T>;
+}
+
+// Multipart upload — deliberately does NOT set a Content-Type header itself
+// so the browser can set multipart/form-data with the correct boundary,
+// which it only does when the header is left unset.
+export async function postFormData<T>(path: string, formData: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new ApiError(await errorMessageFrom(response, path), response.status);
+  }
+  return response.json() as Promise<T>;
+}

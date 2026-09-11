@@ -1,7 +1,9 @@
-import type { Game, GamePrediction, Team } from "@prisma/client";
+import type { Game, GamePrediction, Player, Team } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamsService } from "./teams.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
+import type { PlayersService } from "../players/players.service.js";
+import type { StatsService } from "../players/stats.service.js";
 
 const LAKERS: Team = { id: "team-lal" } as Team;
 const CELTICS: Team = { id: "team-bos" } as Team;
@@ -43,7 +45,11 @@ describe("TeamsService.getEloRatings", () => {
 
   beforeEach(() => {
     prisma = { game: { findMany: vi.fn() } };
-    teamsService = new TeamsService(prisma as unknown as PrismaService);
+    teamsService = new TeamsService(
+      prisma as unknown as PrismaService,
+      {} as unknown as PlayersService,
+      {} as unknown as StatsService
+    );
   });
 
   it("reads a team's rating from its most recent game, whichever side (home/away) that was", async () => {
@@ -96,5 +102,102 @@ describe("TeamsService.getEloRatings", () => {
 
     expect(ratings.map((rating) => rating.team.id)).toEqual([LAKERS.id, CELTICS.id]);
     expect(ratings[0].elo).toBeGreaterThan(ratings[1].elo);
+  });
+});
+
+function makePlayer(overrides: Partial<Player> = {}): Player & { team: Team | null } {
+  return {
+    id: "player-1",
+    nbaPlayerId: 1,
+    firstName: "First",
+    lastName: "Last",
+    position: "G",
+    heightInches: null,
+    weightLbs: null,
+    jerseyNumber: null,
+    headshotUrl: null,
+    teamId: LAKERS.id,
+    birthDate: null,
+    school: null,
+    country: null,
+    lastAffiliation: null,
+    seasonExp: null,
+    rosterStatus: null,
+    draftYear: null,
+    draftRound: null,
+    draftNumber: null,
+    team: LAKERS,
+    ...overrides,
+  };
+}
+
+describe("TeamsService.getSuggestedPlayers", () => {
+  let playersService: { getTeamRoster: ReturnType<typeof vi.fn> };
+  let statsService: { getPlayerStatsBatch: ReturnType<typeof vi.fn> };
+  let teamsService: TeamsService;
+
+  beforeEach(() => {
+    playersService = { getTeamRoster: vi.fn() };
+    statsService = { getPlayerStatsBatch: vi.fn() };
+    teamsService = new TeamsService(
+      {} as unknown as PrismaService,
+      playersService as unknown as PlayersService,
+      statsService as unknown as StatsService
+    );
+  });
+
+  it("ranks roster players by usage percentage, highest first", async () => {
+    const highUsage = makePlayer({ id: "high", firstName: "High" });
+    const lowUsage = makePlayer({ id: "low", firstName: "Low" });
+    playersService.getTeamRoster.mockResolvedValue([lowUsage, highUsage]);
+    statsService.getPlayerStatsBatch.mockResolvedValue([
+      { playerId: "low", seasonAverages: { usagePercentage: 12.5 }, gameLog: [] },
+      { playerId: "high", seasonAverages: { usagePercentage: 31.2 }, gameLog: [] },
+    ]);
+
+    const result = await teamsService.getSuggestedPlayers(LAKERS.id);
+
+    expect(result.map((entry) => entry.player.id)).toEqual(["high", "low"]);
+    expect(result[0].usagePercentage).toBe(31.2);
+  });
+
+  it("sorts players with no usage data after every player with a real rate, rather than dropping them", async () => {
+    const noStats = makePlayer({ id: "no-stats", firstName: "Rookie" });
+    const hasStats = makePlayer({ id: "has-stats", firstName: "Veteran" });
+    playersService.getTeamRoster.mockResolvedValue([noStats, hasStats]);
+    statsService.getPlayerStatsBatch.mockResolvedValue([
+      { playerId: "no-stats", seasonAverages: { usagePercentage: null }, gameLog: [] },
+      { playerId: "has-stats", seasonAverages: { usagePercentage: 22.0 }, gameLog: [] },
+    ]);
+
+    const result = await teamsService.getSuggestedPlayers(LAKERS.id);
+
+    expect(result.map((entry) => entry.player.id)).toEqual(["has-stats", "no-stats"]);
+    expect(result).toHaveLength(2);
+  });
+
+  it("caps the result at the requested count", async () => {
+    const roster = Array.from({ length: 12 }, (_, index) => makePlayer({ id: `p${index}`, firstName: `P${index}` }));
+    playersService.getTeamRoster.mockResolvedValue(roster);
+    statsService.getPlayerStatsBatch.mockResolvedValue(
+      roster.map((player, index) => ({
+        playerId: player.id,
+        seasonAverages: { usagePercentage: index },
+        gameLog: [],
+      }))
+    );
+
+    const result = await teamsService.getSuggestedPlayers(LAKERS.id, 5);
+
+    expect(result).toHaveLength(5);
+  });
+
+  it("returns an empty list without querying stats for a team with no roster", async () => {
+    playersService.getTeamRoster.mockResolvedValue([]);
+
+    const result = await teamsService.getSuggestedPlayers(LAKERS.id);
+
+    expect(result).toEqual([]);
+    expect(statsService.getPlayerStatsBatch).not.toHaveBeenCalled();
   });
 });

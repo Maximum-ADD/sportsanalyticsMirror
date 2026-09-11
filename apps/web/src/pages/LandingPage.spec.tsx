@@ -108,10 +108,10 @@ describe("LandingPage", () => {
     expect(screen.getAllByTestId("screenshot-placeholder")).toHaveLength(5);
   });
 
-  it("keeps feature-only destinations in the app header", () => {
+  it("shares the full app header navigation on the landing page", () => {
     renderLanding();
 
-    expect(screen.queryByRole("link", { name: "Optimizer" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Predictions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Optimizer" })).toHaveAttribute("href", "/optimizer");
+    expect(screen.getByRole("link", { name: "Predictions" })).toHaveAttribute("href", "/predictions");
   });
 });

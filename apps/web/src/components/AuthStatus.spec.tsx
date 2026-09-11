@@ -1,17 +1,42 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStatus } from "./AuthStatus";
-import { authClient, signInWithGoogle, useSession } from "@/lib/authClient";
+import { signInWithGoogle, useSession } from "@/lib/authClient";
+import { fetchMe } from "@/lib/meApi";
+import type { MeProfile } from "@/types/nba";
 
 vi.mock("@/lib/authClient", () => ({
-  authClient: {
-    signOut: vi.fn(),
-    deleteUser: vi.fn(),
-  },
   signInWithGoogle: vi.fn(),
   useSession: vi.fn(),
 }));
+
+vi.mock("@/lib/meApi", () => ({
+  fetchMe: vi.fn(),
+}));
+
+function renderWithProviders(signInCallbackURL?: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <AuthStatus signInCallbackURL={signInCallbackURL} />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+const ME: MeProfile = {
+  id: "user-1",
+  email: "player@example.com",
+  name: "Player One",
+  username: "playerone",
+  avatarUrl: null,
+  favoriteTeam: null,
+  followedPlayers: [],
+};
 
 describe("AuthStatus", () => {
   afterEach(() => {
@@ -21,7 +46,7 @@ describe("AuthStatus", () => {
   it("renders a skeleton while the session is pending", () => {
     vi.mocked(useSession).mockReturnValue({ data: null, isPending: true } as never);
 
-    const { container } = render(<AuthStatus />);
+    const { container } = renderWithProviders();
 
     expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument();
   });
@@ -29,7 +54,7 @@ describe("AuthStatus", () => {
   it("renders a Google sign-in button when there is no session", () => {
     vi.mocked(useSession).mockReturnValue({ data: null, isPending: false } as never);
 
-    render(<AuthStatus />);
+    renderWithProviders();
 
     expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
   });
@@ -38,7 +63,7 @@ describe("AuthStatus", () => {
     vi.mocked(useSession).mockReturnValue({ data: null, isPending: false } as never);
     const user = userEvent.setup();
 
-    render(<AuthStatus />);
+    renderWithProviders();
     await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
 
     expect(signInWithGoogle).toHaveBeenCalledTimes(1);
@@ -49,95 +74,61 @@ describe("AuthStatus", () => {
     const user = userEvent.setup();
     const signInCallbackURL = "http://localhost:3000/home";
 
-    render(<AuthStatus signInCallbackURL={signInCallbackURL} />);
+    renderWithProviders(signInCallbackURL);
     await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
 
     expect(signInWithGoogle).toHaveBeenCalledWith(signInCallbackURL);
   });
 
-  it("shows the signed-in user's email and a sign-out button when a session exists", () => {
+  it("links to /profile with the username and avatar once signed in", async () => {
     vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com" } },
+      data: { user: { email: "player@example.com", name: "Player One" } },
       isPending: false,
     } as never);
+    vi.mocked(fetchMe).mockResolvedValue(ME);
 
-    render(<AuthStatus />);
+    renderWithProviders();
 
-    expect(screen.getByText("player@example.com")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: "playerone" });
+    expect(link).toHaveAttribute("href", "/profile");
   });
 
-  it("signs out when the sign-out button is clicked", async () => {
+  it("falls back to the session's name before GET /v1/me has resolved", () => {
     vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com" } },
+      data: { user: { email: "player@example.com", name: "Player One" } },
       isPending: false,
     } as never);
-    const user = userEvent.setup();
+    vi.mocked(fetchMe).mockReturnValue(new Promise(() => {})); // never resolves in this test
 
-    render(<AuthStatus />);
-    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    renderWithProviders();
 
-    expect(authClient.signOut).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "Player One" })).toBeInTheDocument();
   });
 
-  it("arms a confirmation before deleting the account", async () => {
+  it("shows an avatar image when the profile has one", async () => {
     vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com" } },
+      data: { user: { email: "player@example.com", name: "Player One" } },
       isPending: false,
     } as never);
-    const user = userEvent.setup();
+    vi.mocked(fetchMe).mockResolvedValue({ ...ME, avatarUrl: "https://signed.example.com/avatar.png" });
 
-    render(<AuthStatus />);
-    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    renderWithProviders();
+    const link = await screen.findByRole("link", { name: "playerone" });
 
-    expect(screen.getByText("Delete your account? This can't be undone.")).toBeInTheDocument();
-    expect(authClient.deleteUser).not.toHaveBeenCalled();
+    const image = link.querySelector("img");
+    expect(image).toHaveAttribute("src", "https://signed.example.com/avatar.png");
   });
 
-  it("cancels the delete confirmation without deleting", async () => {
+  it("falls back to an initial when there is no avatar", async () => {
     vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com" } },
+      data: { user: { email: "player@example.com", name: "Player One" } },
       isPending: false,
     } as never);
-    const user = userEvent.setup();
+    vi.mocked(fetchMe).mockResolvedValue(ME);
 
-    render(<AuthStatus />);
-    await user.click(screen.getByRole("button", { name: "Delete account" }));
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    renderWithProviders();
+    const link = await screen.findByRole("link", { name: "playerone" });
 
-    expect(screen.getByRole("button", { name: "Delete account" })).toBeInTheDocument();
-    expect(authClient.deleteUser).not.toHaveBeenCalled();
-  });
-
-  it("deletes the account after confirmation", async () => {
-    vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com" } },
-      isPending: false,
-    } as never);
-    vi.mocked(authClient.deleteUser).mockResolvedValue({ error: null } as never);
-    const user = userEvent.setup();
-
-    render(<AuthStatus />);
-    await user.click(screen.getByRole("button", { name: "Delete account" }));
-    await user.click(screen.getByRole("button", { name: "Yes, delete" }));
-
-    expect(authClient.deleteUser).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the server's message when the session isn't fresh enough to delete", async () => {
-    vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com" } },
-      isPending: false,
-    } as never);
-    vi.mocked(authClient.deleteUser).mockResolvedValue({
-      error: { message: "Session expired. Re-authenticate to perform this action." },
-    } as never);
-    const user = userEvent.setup();
-
-    render(<AuthStatus />);
-    await user.click(screen.getByRole("button", { name: "Delete account" }));
-    await user.click(screen.getByRole("button", { name: "Yes, delete" }));
-
-    expect(await screen.findByText("Session expired. Re-authenticate to perform this action.")).toBeInTheDocument();
+    expect(link.textContent).toContain("P");
   });
 });

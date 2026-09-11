@@ -63,6 +63,14 @@ export class PlayersService {
     return this.prisma.player.findUnique({ where: { id: playerId }, include: { team: true } });
   }
 
+  // Every player currently on a team's roster — no pagination, since a
+  // roster tops out around 15-20 players and every caller so far
+  // (suggested-players ranking) wants the whole thing at once rather than a
+  // page of it.
+  getTeamRoster(teamId: string): Promise<PlayerWithTeam[]> {
+    return this.prisma.player.findMany({ where: { teamId }, include: { team: true } });
+  }
+
   // One player's per-game boxscore rows for a single season segment,
   // newest game first. The `game.seasonType` filter is the whole isolation
   // guarantee for the postseason views: a playoffs request cannot return a
