@@ -18,7 +18,10 @@ function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route element={<AppLayout />}>
-          <Route path="/home" element={<HomePage />} />
+          <Route
+            path="/home"
+            element={<ProtectedRoute><HomePage /></ProtectedRoute>}
+          />
           <Route path="/players" element={<PlayersListPage />} />
           <Route path="/players/:playerId" element={<PlayerProfilePage />} />
           <Route path="/compare" element={<ComparePage />} />

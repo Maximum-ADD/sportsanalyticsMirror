@@ -23,6 +23,15 @@ export interface GameDetail extends GameWithTeamsAndPrediction {
 // Postgres, not something that needs to write/persist a model output the
 // way Elo ratings or Four Factors weights do.
 const RECENCY_DECAY = 0.8;
+
+// Only regular-season games feed the recency weighting below, matching the
+// same exclusion apps/predictor/elo.py and apps/optimizer/predict.py apply
+// to their own model inputs: postseason scoring comes from a different
+// distribution (shortened rotations, matchup-specific game plans), and
+// since these are the *most recent* games a player has, they would carry
+// the heaviest recency weight of all and dominate the projection.
+// Postseason games are ingested and viewable, just never modelled from.
+const MODELLED_SEASON_TYPE = "REGULAR" as const;
 const MOST_RECENT_GAMES_CONSIDERED = 10;
 const TOP_SCORERS_PER_TEAM_COUNT = 5;
 const PREDICTED_POINTS_DECIMAL_PLACES = 1;
@@ -89,7 +98,7 @@ export class GameDetailService {
     const allPriorGameStats = await this.prisma.playerGameStat.findMany({
       where: {
         playerId: { in: rosterPlayers.map((player) => player.id) },
-        game: { gameDate: { lt: game.gameDate } },
+        game: { gameDate: { lt: game.gameDate }, seasonType: MODELLED_SEASON_TYPE },
       },
       orderBy: { game: { gameDate: "desc" } },
     });

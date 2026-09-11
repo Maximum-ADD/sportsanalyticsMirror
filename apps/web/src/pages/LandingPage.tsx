@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { Marquee } from "@/components/landing/Marquee";
 import { ScreenshotPlaceholder } from "@/components/landing/ScreenshotPlaceholder";
@@ -24,18 +25,63 @@ const TECH_STACK = [
   "Gitea Actions",
 ];
 
-const HERO_CASCADE = [
-  { label: "Players list", left: "29%", top: "0%" },
+interface HeroPanel {
+  // Doubles as the alt text once `src` is set, so it reads as a description
+  // rather than a nav label. Without a src the panel is aria-hidden and this
+  // is only a React key.
+  label: string;
+  left: string;
+  top: string;
+  // When set, the panel renders this screenshot instead of a grey block.
+  // Ship these at exactly 16/9 to match the panel's ratio, so object-cover
+  // has nothing to crop.
+  src?: string;
+}
+
+const HERO_CASCADE: HeroPanel[] = [
+  {
+    label:
+      "The signed-in home page: a model challenge with the score withheld, above a watchlist of followed players, with saved comparisons and lineups in the right rail",
+    src: "/screenshots/home-locker.webp",
+    left: "29%",
+    top: "0%",
+  },
   { label: "Player profile", left: "0%", top: "26%" },
   { label: "Optimizer", left: "29%", top: "57%" },
 ];
 
 const PANEL_WIDTH = "71%";
 
+interface GetStartedProps {
+  signInCallbackURL: string;
+}
+
+function GetStarted({ signInCallbackURL }: GetStartedProps) {
+  const { data: session, isPending } = useSession();
+  const className = "leather-texture mt-10 inline-flex h-14 min-w-[15rem] items-center justify-center px-10 text-xl font-bold tracking-[0.06em] text-white shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-black disabled:cursor-wait disabled:opacity-70";
+
+  if (session) {
+    return <Link to={APP_HOME} className={className}>Get Started</Link>;
+  }
+
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={isPending}
+      onClick={() => signInWithGoogle(signInCallbackURL)}
+    >
+      Get Started
+    </button>
+  );
+}
+
 export function LandingPage() {
+  const appHomeURL = new URL(APP_HOME, window.location.origin).href;
+
   return (
     <div className="flex min-h-screen flex-col bg-landing-hero">
-      <LandingHeader overlaysContent />
+      <LandingHeader overlaysContent signInCallbackURL={appHomeURL} />
       <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         <section className="relative overflow-hidden bg-landing-hero">
           <SectionPhoto name="court-player" narrowName="court-player-narrow" priority />
@@ -46,12 +92,7 @@ export function LandingPage() {
                 <span className="hero-outline-text block">Fantasy League</span>
                 <span className="block text-black">Optimizer</span>
               </h1>
-              <Link
-                to={APP_HOME}
-                className="leather-texture mt-10 inline-flex h-14 min-w-[15rem] items-center justify-center px-10 text-xl font-bold tracking-[0.06em] text-white shadow-[0_8px_20px_rgba(0,0,0,0.3)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-black"
-              >
-                Get Started
-              </Link>
+              <GetStarted signInCallbackURL={appHomeURL} />
             </div>
             <div className="relative mx-auto aspect-[403/370] w-full max-w-[36rem] lg:mx-0 lg:ml-auto">
               {HERO_CASCADE.map((panel) => (
@@ -59,6 +100,7 @@ export function LandingPage() {
                   key={panel.label}
                   ratio={16 / 9}
                   label={panel.label}
+                  src={panel.src}
                   className="absolute"
                   style={{ left: panel.left, top: panel.top, width: PANEL_WIDTH }}
                 />

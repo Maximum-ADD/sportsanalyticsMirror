@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayersListPage } from "./PlayersListPage";
 import { fetchPlayers, fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { PagedResult, Player, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -56,6 +57,21 @@ function pagedPlayers(data: Player[], total = data.length): PagedResult<Player> 
 describe("PlayersListPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("has no automated accessibility violations", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+    const user = userEvent.setup();
+
+    const { container } = renderWithProviders(<main><PlayersListPage /></main>);
+    await screen.findByText("LeBron James");
+    await user.type(screen.getByRole("searchbox", { name: "Search players" }), "L");
+    await waitFor(() => {
+      expect(fetchPlayers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "L" }));
+    });
+
+    await expectNoAccessibilityViolations(container);
   });
 
   it("renders players once the query resolves", async () => {
@@ -137,6 +153,9 @@ describe("PlayersListPage", () => {
         teamId: LAKERS.id,
         position: "F",
         search: "LeBron James",
+        // The list now always states which segment it wants; the regular
+        // season is the default and carries no `participated` filter.
+        seasonType: "REGULAR",
       });
     });
   });
@@ -148,5 +167,97 @@ describe("PlayersListPage", () => {
     renderWithProviders(<PlayersListPage />);
 
     expect(await screen.findByText("No players found.")).toBeInTheDocument();
+  });
+
+  describe("season segments", () => {
+    it("asks only for players who appeared in the segment when a postseason view is selected", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />, ["/players?segment=playoffs"]);
+
+      await waitFor(() =>
+        expect(fetchPlayers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ seasonType: "PLAYOFFS", participated: true })
+        )
+      );
+    });
+
+    it("does not narrow the regular season by participation, where it would remove nobody", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      await waitFor(() => expect(fetchPlayers).toHaveBeenCalled());
+      expect(fetchPlayers).toHaveBeenLastCalledWith(expect.not.objectContaining({ participated: true }));
+    });
+
+    it("refetches for the newly selected segment", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByRole("radio", { name: "Finals" });
+
+      await user.click(screen.getByRole("radio", { name: "Finals" }));
+
+      await waitFor(() =>
+        expect(fetchPlayers).toHaveBeenLastCalledWith(
+          expect.objectContaining({ seasonType: "FINALS", participated: true })
+        )
+      );
+    });
+
+    it("explains an empty postseason list in terms of the segment", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [], page: 1, pageSize: 100, total: 0 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([]));
+
+      renderWithProviders(<PlayersListPage />, ["/players?segment=finals"]);
+
+      expect(await screen.findByText("No players matched in the Finals.")).toBeInTheDocument();
+    });
+
+    it("carries the selected segment into the player profile link", async () => {
+      // Reported in review: clicking a player from a Playoffs list landed on
+      // their regular-season profile, so the navigation silently answered a
+      // different question than the list was asking.
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />, ["/players?segment=playoffs"]);
+
+      const playerLink = await screen.findByRole("link", { name: /LeBron James/ });
+      expect(playerLink).toHaveAttribute("href", expect.stringContaining("segment=playoffs"));
+    });
+
+    it("carries the regular season into the link too, so the URL always states its segment", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      const playerLink = await screen.findByRole("link", { name: /LeBron James/ });
+      expect(playerLink).toHaveAttribute("href", expect.stringContaining("segment=regular"));
+    });
+
+    it("updates the player link when the segment changes", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByRole("radio", { name: "Finals" });
+
+      await user.click(screen.getByRole("radio", { name: "Finals" }));
+
+      await waitFor(() =>
+        expect(screen.getByRole("link", { name: /LeBron James/ })).toHaveAttribute(
+          "href",
+          expect.stringContaining("segment=finals")
+        )
+      );
+    });
   });
 });

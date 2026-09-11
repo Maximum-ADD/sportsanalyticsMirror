@@ -47,6 +47,8 @@ const GAME: Game = {
   awayTeam: CELTICS,
   homeScore: 110,
   awayScore: 102,
+  seasonType: "REGULAR",
+  playoffRound: null,
 };
 
 describe("RecentResultWidget", () => {

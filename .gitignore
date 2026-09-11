@@ -11,6 +11,16 @@ build/
 apps/api/prisma/dev.db
 apps/api/generated/
 
+# Database dumps taken before hand-run production writes (see
+# apps/ingestion/README.md). These contain the real User/Session/Account
+# tables — email addresses and live Google OAuth access/refresh tokens — so
+# committing one means rotating every credential in it.
+# Deliberately not a blanket *.sql: that would silently swallow new Prisma
+# migrations under apps/api/prisma/migrations/.
+*.dump
+*-backup-*.sql
+*-backup-*.sql.gz
+
 .vite/
 coverage/
 coverage-report/

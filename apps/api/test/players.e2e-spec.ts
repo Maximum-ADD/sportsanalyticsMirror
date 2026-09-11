@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import type { SeasonType } from "@prisma/client";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "./create-test-app.js";
@@ -40,12 +41,20 @@ async function createPlayer(overrides: {
   });
 }
 
-async function createGame(homeTeamId: string, awayTeamId: string, gameDate: Date) {
+async function createGame(
+  homeTeamId: string,
+  awayTeamId: string,
+  gameDate: Date,
+  seasonType: SeasonType = "REGULAR",
+  playoffRound: number | null = null
+) {
   return testPrisma.game.create({
     data: {
       nbaGameId: `MOCK-${uniqueId()}`,
       gameDate,
       season: "2025-26",
+      seasonType,
+      playoffRound,
       homeTeamId,
       awayTeamId,
     },
@@ -182,6 +191,52 @@ describe("Players API", () => {
 
       expect(response.body.data[0].team).toBeNull();
     });
+
+    // Requirement 3 of the postseason plan: a playoffs view shouldn't list
+    // an eliminated team's bench alongside players who actually have
+    // playoff numbers to show.
+    describe("?participated=true", () => {
+      async function seedOnePlayoffPlayerAndOneRegularOnlyPlayer() {
+        const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+        const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+        const playoffPlayer = await createPlayer({ teamId: home.id, lastName: "James" });
+        const regularOnlyPlayer = await createPlayer({ teamId: away.id, lastName: "Zeller" });
+
+        const regularGame = await createGame(home.id, away.id, new Date("2025-10-15"));
+        const playoffGame = await createGame(home.id, away.id, new Date("2026-04-20"), "PLAYOFFS", 1);
+        await createGameStat(playoffPlayer.id, regularGame.id);
+        await createGameStat(regularOnlyPlayer.id, regularGame.id);
+        await createGameStat(playoffPlayer.id, playoffGame.id);
+      }
+
+      it("narrows the list to players who appeared in that segment", async () => {
+        await seedOnePlayoffPlayerAndOneRegularOnlyPlayer();
+
+        const response = await request(app.getHttpServer()).get("/v1/players?seasonType=PLAYOFFS&participated=true");
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(1);
+        expect(response.body.data.map((p: { lastName: string }) => p.lastName)).toEqual(["James"]);
+      });
+
+      it("lists every player when participated isn't asked for", async () => {
+        await seedOnePlayoffPlayerAndOneRegularOnlyPlayer();
+
+        const response = await request(app.getHttpServer()).get("/v1/players?seasonType=PLAYOFFS");
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(2);
+      });
+
+      it("excludes a player whose only games are in another segment", async () => {
+        await seedOnePlayoffPlayerAndOneRegularOnlyPlayer();
+
+        const response = await request(app.getHttpServer()).get("/v1/players?seasonType=FINALS&participated=true");
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(0);
+      });
+    });
   });
 
   describe("GET /v1/players/:id", () => {
@@ -237,6 +292,115 @@ describe("Players API", () => {
       expect(response.status).toBe(200);
       expect(response.body.seasonAverages.gamesPlayed).toBe(0);
       expect(response.body.gameLog).toEqual([]);
+    });
+  });
+
+  // The isolation guarantee the postseason views rest on, tested rather
+  // than asserted: a request for one segment must never see another
+  // segment's boxscore rows, in either direction. Each segment below is
+  // given a distinct points-per-game so any bleed changes the number
+  // instead of hiding behind an equal average.
+  describe("GET /v1/players/:id/stats?seasonType=", () => {
+    async function seedPlayerWithEverySegment() {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const player = await createPlayer({ teamId: home.id, lastName: "James" });
+
+      const regularGame = await createGame(home.id, away.id, new Date("2025-10-15"));
+      const playInGame = await createGame(home.id, away.id, new Date("2026-04-14"), "PLAY_IN");
+      const playoffGame = await createGame(home.id, away.id, new Date("2026-04-20"), "PLAYOFFS", 1);
+      const finalsGame = await createGame(home.id, away.id, new Date("2026-06-03"), "FINALS", 4);
+
+      await createGameStat(player.id, regularGame.id, { points: 20 });
+      await createGameStat(player.id, playInGame.id, { points: 12 });
+      await createGameStat(player.id, playoffGame.id, { points: 26 });
+      await createGameStat(player.id, finalsGame.id, { points: 31 });
+
+      return player;
+    }
+
+    it.each([
+      ["REGULAR", 20],
+      ["PLAY_IN", 12],
+      ["PLAYOFFS", 26],
+      ["FINALS", 31],
+    ])("returns only %s games and echoes the segment back", async (seasonType, expectedPointsPerGame) => {
+      const player = await seedPlayerWithEverySegment();
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/${player.id}/stats?seasonType=${seasonType}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.seasonType).toBe(seasonType);
+      expect(response.body.seasonAverages.gamesPlayed).toBe(1);
+      expect(response.body.seasonAverages.pointsPerGame).toBe(expectedPointsPerGame);
+      expect(response.body.gameLog).toHaveLength(1);
+    });
+
+    it("defaults to the regular season, so existing callers are unaffected by postseason data", async () => {
+      const player = await seedPlayerWithEverySegment();
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.seasonType).toBe("REGULAR");
+      expect(response.body.seasonAverages.gamesPlayed).toBe(1);
+      expect(response.body.seasonAverages.pointsPerGame).toBe(20);
+    });
+
+    it("returns an empty segment rather than falling back to another one", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const player = await createPlayer({ teamId: home.id, lastName: "James" });
+      const regularGame = await createGame(home.id, away.id, new Date("2025-10-15"));
+      await createGameStat(player.id, regularGame.id, { points: 20 });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats?seasonType=FINALS`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.seasonAverages.gamesPlayed).toBe(0);
+      expect(response.body.gameLog).toEqual([]);
+    });
+
+    it("rejects an unrecognised segment instead of silently serving the default", async () => {
+      const player = await createPlayer({ lastName: "James" });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats?seasonType=playoffs`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+    });
+  });
+
+  describe("GET /v1/players/:id/stats/splits", () => {
+    it("returns every segment's season line in one response", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const player = await createPlayer({ teamId: home.id, lastName: "James" });
+
+      const regularGame = await createGame(home.id, away.id, new Date("2025-10-15"));
+      const playoffGame = await createGame(home.id, away.id, new Date("2026-04-20"), "PLAYOFFS", 1);
+      await createGameStat(player.id, regularGame.id, { points: 20 });
+      await createGameStat(player.id, playoffGame.id, { points: 26 });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats/splits`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.playerId).toBe(player.id);
+      expect(response.body.splits.REGULAR.pointsPerGame).toBe(20);
+      expect(response.body.splits.PLAYOFFS.pointsPerGame).toBe(26);
+      // Segments the player didn't appear in are present and zeroed, not
+      // omitted — the comparison view renders a fixed set of columns.
+      expect(response.body.splits.PLAY_IN.gamesPlayed).toBe(0);
+      expect(response.body.splits.FINALS.gamesPlayed).toBe(0);
+    });
+
+    it("returns a 404 when the player doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/players/does-not-exist/stats/splits");
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: { code: "NOT_FOUND", message: "Player not found" } });
     });
   });
 

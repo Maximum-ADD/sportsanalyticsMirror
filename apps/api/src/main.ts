@@ -7,6 +7,7 @@ import cors from "cors";
 import expressFactory from "express";
 import helmet from "helmet";
 import { auth, allowedOrigins } from "./auth/auth.config.js";
+import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter.js";
 import { AppModule } from "./app.module.js";
 
@@ -44,6 +45,34 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { bodyParser: false });
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle("NBA Analytics API")
+    .setDescription(
+      "REST API for the NBA Analytics & Optimisation Engine. " +
+      "Provides player/team/game data ingested from nba_api, " +
+      "Elo-based game predictions, Four Factors analysis, and " +
+      "MILP fantasy lineup optimisation."
+    )
+    .setVersion("1.0")
+    .addCookieAuth("better-auth.session_token", {
+      type: "apiKey",
+      in: "cookie",
+      name: "better-auth.session_token",
+      description: "BetterAuth session cookie. Required for auth-gated endpoints.",
+    })
+    .addTag("health", "Service health check")
+    .addTag("players", "Player data and statistics (public)")
+    .addTag("teams", "Team data (public)")
+    .addTag("games", "Game data and predictions (auth required)")
+    .addTag("optimizer", "Fantasy lineup optimiser (auth required)")
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup("api/docs", app, document, {
+    jsonDocumentUrl: "/api-json",
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   await app.listen(port);

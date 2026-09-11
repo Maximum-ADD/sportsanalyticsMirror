@@ -42,6 +42,8 @@ const GAME: Game = {
   awayTeam: KNICKS,
   homeScore: 38,
   awayScore: 24,
+  seasonType: "REGULAR",
+  playoffRound: null,
 };
 
 const mockFetchGames = vi.mocked(fetchGames);
