@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayersListPage } from "./PlayersListPage";
 import { fetchPlayers, fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { PagedResult, Player, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -36,6 +37,15 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
     headshotUrl: null,
     teamId: LAKERS.id,
     team: LAKERS,
+    birthDate: null,
+    school: null,
+    country: null,
+    lastAffiliation: null,
+    seasonExp: null,
+    rosterStatus: null,
+    draftYear: null,
+    draftRound: null,
+    draftNumber: null,
     ...overrides,
   };
 }
@@ -47,6 +57,21 @@ function pagedPlayers(data: Player[], total = data.length): PagedResult<Player> 
 describe("PlayersListPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("has no automated accessibility violations", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+    const user = userEvent.setup();
+
+    const { container } = renderWithProviders(<main><PlayersListPage /></main>);
+    await screen.findByText("LeBron James");
+    await user.type(screen.getByRole("searchbox", { name: "Search players" }), "L");
+    await waitFor(() => {
+      expect(fetchPlayers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "L" }));
+    });
+
+    await expectNoAccessibilityViolations(container);
   });
 
   it("renders players once the query resolves", async () => {

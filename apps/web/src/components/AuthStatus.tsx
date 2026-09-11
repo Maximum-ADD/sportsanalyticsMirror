@@ -38,7 +38,11 @@ function useAuthErrorFromUrl(): string | null {
   return message;
 }
 
-export function AuthStatus() {
+interface AuthStatusProps {
+  signInCallbackURL?: string;
+}
+
+export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
   const { data: session, isPending } = useSession();
   const authError = useAuthErrorFromUrl();
 
@@ -56,7 +60,7 @@ export function AuthStatus() {
         )}
         <Button
           type="button"
-          onClick={() => signInWithGoogle()}
+          onClick={() => signInWithGoogle(signInCallbackURL)}
         >
           Sign in with Google
         </Button>

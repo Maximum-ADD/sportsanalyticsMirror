@@ -1,5 +1,5 @@
-import { Controller, Get, HttpStatus, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
+import { Controller, Get, HttpStatus, Param, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { OptimizerService } from "./optimizer.service.js";
@@ -24,5 +24,14 @@ export class OptimizerController {
       );
     }
     return lineup;
+  }
+
+  @Get("predictions/:playerId")
+  @ApiOperation({ summary: "Get player prediction by ID" })
+  @ApiParam({ name: "playerId", description: "NBA player ID" })
+  @ApiResponse({ status: 200, description: "Player prediction data" })
+  @ApiResponse({ status: 404, description: "Prediction not found" })
+  async getPlayerPrediction(@Param("playerId") playerId: string) {
+    return this.optimizerService.getPlayerPrediction(playerId);
   }
 }

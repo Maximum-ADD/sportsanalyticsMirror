@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { fetchTeam, fetchPlayers } from "@/lib/nbaApi";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,9 +31,8 @@ export function TeamProfilePage() {
 
   if (teamQuery.isPending) {
     return (
-      <div className="space-y-4 p-6">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-64" />
+      <div className="flex min-h-[28rem] items-center justify-center p-6">
+        <BasketballSpinner size="lg" label="Loading team" />
       </div>
     );
   }
@@ -68,13 +67,13 @@ export function TeamProfilePage() {
           </TableHeader>
           <TableBody className="bg-surface-card">
             {rosterQuery.isPending
-              ? Array.from({ length: 3 }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell colSpan={3}>
-                      <Skeleton className="h-5 w-full" />
+              ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="py-10">
+                      <BasketballSpinner label="Loading roster" />
                     </TableCell>
                   </TableRow>
-                ))
+                )
               : rosterQuery.data?.data.map((player) => (
                   <TableRow key={player.id}>
                     <TableCell>

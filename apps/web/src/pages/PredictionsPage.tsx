@@ -4,7 +4,7 @@ import { fetchGames } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge } from "@/components/TeamBadge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import type { Game, GamePrediction } from "@/types/nba";
 
 // How many recent games to show predictions for.
@@ -78,10 +78,8 @@ export function PredictionsPage() {
         <p className="mb-6 max-w-2xl text-sm text-text-secondary">
           Elo-based win probability and Four Factors-based predicted margin for each game.
         </p>
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
+        <div className="flex min-h-[16rem] items-center justify-center">
+          <BasketballSpinner size="lg" label="Loading predictions" />
         </div>
       </div>
     );

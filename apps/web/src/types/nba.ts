@@ -21,6 +21,20 @@ export interface Player {
   headshotUrl: string | null;
   teamId: string | null;
   team: Team | null;
+
+  // Bio fields from CommonPlayerInfo (see player_bios.py) — null for any
+  // player not yet enriched by that ingestion phase, not just genuinely
+  // missing data, so callers should render a "—" fallback, not assume null
+  // means "this player has no draft history".
+  birthDate: string | null;
+  school: string | null;
+  country: string | null;
+  lastAffiliation: string | null;
+  seasonExp: number | null;
+  rosterStatus: string | null;
+  draftYear: number | null;
+  draftRound: number | null;
+  draftNumber: number | null;
 }
 
 export interface SeasonAverages {
@@ -100,6 +114,14 @@ export interface Lineup {
   budget: number;
   createdAt: string;
   slots: LineupSlot[];
+}
+
+// A player's latest prediction looked up on its own, outside an existing
+// lineup — used to price up a hypothetical swap into a locally-edited
+// lineup. Null fields mean no prediction has been generated for this player.
+export interface PlayerPredictionSummary {
+  predictedFantasyPoints: number | null;
+  salary: number | null;
 }
 
 export interface PagedResult<T> {

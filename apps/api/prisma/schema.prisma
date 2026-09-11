@@ -107,6 +107,22 @@ model Player {
   teamId       String?
   team         Team?    @relation(fields: [teamId], references: [id])
 
+  // Bio fields from CommonPlayerInfo, layered onto the roster-sourced
+  // fields above. Deliberately excludes that endpoint's TEAM_ID/TEAM_NAME/
+  // etc — those only ever reflect the player's *current* team at request
+  // time (e.g. post-trade), which would silently overwrite the correct,
+  // season-scoped team CommonTeamRoster already gave us in rosters.py.
+  // Team assignment stays sourced from the roster ingestion only.
+  birthDate       DateTime?
+  school          String?
+  country         String?
+  lastAffiliation String?
+  seasonExp       Int?
+  rosterStatus    String?
+  draftYear       Int?
+  draftRound      Int?
+  draftNumber     Int?
+
   gameStats   PlayerGameStat[]
   predictions PlayerPrediction[]
   lineupSlots LineupSlot[]
