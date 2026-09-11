@@ -1,14 +1,16 @@
-import { Controller, Get, HttpStatus, Param, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
-import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { PredictionsService } from "../predictions/predictions.service.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
+// Public, like TeamsController/PlayersController — games/schedules/scores
+// are the same kind of read-only, non-personal data those already expose
+// with no guard. Also lets the landing page's live-match widget (rendered
+// for signed-out visitors) call this endpoint at all.
 @ApiTags("games")
 @Controller("v1/games")
-@UseGuards(SessionAuthGuard)
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
@@ -19,7 +21,6 @@ export class GamesController {
   @Get()
   @ApiOperation({ summary: "List games (paginated, most recent first)" })
   @ApiResponse({ status: 200, description: "Paginated game list with predictions" })
-  @ApiResponse({ status: 401, description: "Unauthenticated" })
   listGames(@Query() query: Record<string, unknown>) {
     return this.gamesService.getGames(query);
   }

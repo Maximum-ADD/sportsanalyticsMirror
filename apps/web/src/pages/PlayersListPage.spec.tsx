@@ -1,16 +1,28 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayersListPage } from "./PlayersListPage";
 import { fetchPlayers, fetchTeams } from "@/lib/nbaApi";
+import { useSession } from "@/lib/authClient";
+import { fetchMe, followPlayer, unfollowPlayer } from "@/lib/meApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import { expectNoAccessibilityViolations } from "@/test/accessibility";
-import type { PagedResult, Player, Team } from "@/types/nba";
+import type { MeProfile, PagedResult, Player, Team } from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchPlayers: vi.fn(),
   fetchPlayerStats: vi.fn(),
   fetchTeams: vi.fn(),
+}));
+
+vi.mock("@/lib/authClient", () => ({
+  useSession: vi.fn(),
+}));
+
+vi.mock("@/lib/meApi", () => ({
+  fetchMe: vi.fn(),
+  followPlayer: vi.fn(),
+  unfollowPlayer: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -55,9 +67,21 @@ function pagedPlayers(data: Player[], total = data.length): PagedResult<Player> 
 }
 
 describe("PlayersListPage", () => {
+  beforeEach(() => {
+    vi.mocked(useSession).mockReturnValue({ data: null, isPending: false } as never);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
+
+  function mockSignedIn(me: MeProfile) {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { email: me.email, name: me.name } },
+      isPending: false,
+    } as never);
+    vi.mocked(fetchMe).mockResolvedValue(me);
+  }
 
   it("has no automated accessibility violations", async () => {
     vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
@@ -258,6 +282,58 @@ describe("PlayersListPage", () => {
           expect.stringContaining("segment=finals")
         )
       );
+    });
+  });
+
+  describe("following a player", () => {
+    const ME_BASE: MeProfile = {
+      id: "user-1",
+      email: "player@example.com",
+      name: "Player One",
+      username: "playerone",
+      avatarUrl: null,
+      favoriteTeam: null,
+      followedPlayers: [],
+    };
+
+    it("hides the Follow column for a signed-out visitor", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      await screen.findByRole("link", { name: /LeBron James/ });
+      expect(screen.queryByRole("button", { name: /follow lebron james/i })).not.toBeInTheDocument();
+    });
+
+    it("follows a player not yet followed", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+      mockSignedIn(ME_BASE);
+      vi.mocked(followPlayer).mockResolvedValue({ following: true });
+
+      renderWithProviders(<PlayersListPage />);
+
+      const followButton = await screen.findByRole("button", { name: /follow lebron james/i });
+      await user.click(followButton);
+
+      expect(followPlayer).toHaveBeenCalledWith("player-1");
+    });
+
+    it("unfollows an already-followed player", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+      mockSignedIn({ ...ME_BASE, followedPlayers: [makePlayer()] });
+      vi.mocked(unfollowPlayer).mockResolvedValue({ following: false });
+
+      renderWithProviders(<PlayersListPage />);
+
+      const unfollowButton = await screen.findByRole("button", { name: /unfollow lebron james/i });
+      await user.click(unfollowButton);
+
+      expect(unfollowPlayer).toHaveBeenCalledWith("player-1");
     });
   });
 });

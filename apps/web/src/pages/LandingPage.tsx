@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { LandingHeader } from "@/components/landing/LandingHeader";
+import { LandingMatchWidget } from "@/components/landing/LandingMatchWidget";
 import { Marquee } from "@/components/landing/Marquee";
 import { ScreenshotPlaceholder } from "@/components/landing/ScreenshotPlaceholder";
 import { SectionPhoto } from "@/components/landing/SectionPhoto";
@@ -81,7 +82,7 @@ export function LandingPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-landing-hero">
-      <LandingHeader overlaysContent signInCallbackURL={appHomeURL} />
+      <LandingHeader signInCallbackURL={appHomeURL} beforeAuthStatus={<LandingMatchWidget />} />
       <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         <section className="relative overflow-hidden bg-landing-hero">
           <SectionPhoto name="court-player" narrowName="court-player-narrow" priority />

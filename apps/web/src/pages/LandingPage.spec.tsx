@@ -68,7 +68,9 @@ describe("LandingPage", () => {
   it("offers all app destinations and the existing Google sign-in flow", () => {
     renderLanding();
 
-    for (const label of ["Home", "Players", "Teams"]) {
+    // The landing page shares the exact same header as every signed-in
+    // page (see AppLayout/LandingHeader) — no reduced link set here.
+    for (const label of ["Home", "Players", "Teams", "Optimizer", "Predictions"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: "Get Started" })).toBeInTheDocument();
@@ -106,13 +108,6 @@ describe("LandingPage", () => {
     renderLanding();
 
     expect(screen.getAllByTestId("screenshot-placeholder")).toHaveLength(5);
-  });
-
-  it("keeps feature-only destinations in the app header", () => {
-    renderLanding();
-
-    expect(screen.queryByRole("link", { name: "Optimizer" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Predictions" })).not.toBeInTheDocument();
   });
 
   it("shows the real home-page screenshot in the hero cascade", () => {

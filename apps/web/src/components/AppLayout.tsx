@@ -3,9 +3,9 @@ import { LandingHeader } from "./landing/LandingHeader";
 
 export function AppLayout() {
   return (
-    <div className="flex min-h-screen flex-col bg-surface-base">
+    <div className="flex h-screen flex-col bg-surface-base">
       <LandingHeader />
-      <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto focus:outline-none">
         <Outlet />
       </main>
     </div>

@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { signInWithGoogle, useSession } from "@/lib/authClient";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useMe } from "@/lib/useMe";
 import { pingHealth } from "@/lib/apiClient";
 
@@ -71,23 +69,24 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
   }, []);
 
   if (isPending) {
-    return <Skeleton className="h-9 w-28" />;
+    return <div data-slot="skeleton" className="h-9 w-32 animate-pulse border border-white/20" />;
   }
 
   if (!session) {
     return (
       <div className="flex items-center gap-3">
         {authError && (
-          <span role="alert" className="text-sm text-red-400">
+          <span role="alert" className="text-[11px] text-locker-bad">
             {authError}
           </span>
         )}
-        <Button
+        <button
           type="button"
           onClick={() => signInWithGoogle(signInCallbackURL)}
+          className="border border-white/20 px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors hover:border-brand-accent hover:text-brand-accent"
         >
           Sign in with Google
-        </Button>
+        </button>
       </div>
     );
   }
