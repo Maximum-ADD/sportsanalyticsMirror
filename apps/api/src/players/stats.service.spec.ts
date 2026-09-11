@@ -44,7 +44,10 @@ describe("StatsService", () => {
   let playersService: PlayersService;
 
   beforeEach(() => {
-    playersService = { getPlayerSeasonStats: vi.fn() } as unknown as PlayersService;
+    playersService = {
+      getPlayerSeasonStats: vi.fn(),
+      getPlayerSeasonStatsBatch: vi.fn(),
+    } as unknown as PlayersService;
     statsService = new StatsService(playersService);
   });
 
@@ -160,6 +163,55 @@ describe("StatsService", () => {
       const log = await statsService.getPlayerGameLog("player-1");
 
       expect(log).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 15 }]);
+    });
+  });
+
+  describe("getPlayerStatsBatch", () => {
+    it("fetches once for every requested player id and groups the result per player", async () => {
+      const statA = {
+        ...makeStat({ playerId: "player-a", gameId: "g1", points: 20 }),
+        game: makeGame({ id: "g1", gameDate: new Date("2025-10-15") }),
+      };
+      const statB = {
+        ...makeStat({ playerId: "player-b", gameId: "g2", points: 30 }),
+        game: makeGame({ id: "g2", gameDate: new Date("2025-10-16") }),
+      };
+      vi.mocked(playersService.getPlayerSeasonStatsBatch).mockResolvedValue([statA, statB] as never);
+
+      const results = await statsService.getPlayerStatsBatch(["player-a", "player-b"]);
+
+      expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledTimes(1);
+      expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledWith(["player-a", "player-b"]);
+      expect(results).toHaveLength(2);
+      expect(results[0]).toMatchObject({ playerId: "player-a", seasonAverages: { pointsPerGame: 20 } });
+      expect(results[1]).toMatchObject({ playerId: "player-b", seasonAverages: { pointsPerGame: 30 } });
+    });
+
+    it("returns a zeroed/empty entry, not an omission, for a requested id with no stat rows", async () => {
+      vi.mocked(playersService.getPlayerSeasonStatsBatch).mockResolvedValue([] as never);
+
+      const results = await statsService.getPlayerStatsBatch(["player-with-no-games"]);
+
+      expect(results).toEqual([
+        { playerId: "player-with-no-games", seasonAverages: expect.objectContaining({ gamesPlayed: 0 }), gameLog: [] },
+      ]);
+    });
+
+    it("preserves the order of the requested playerIds regardless of the query result's order", async () => {
+      const statB = {
+        ...makeStat({ playerId: "player-b", gameId: "g2" }),
+        game: makeGame({ id: "g2", gameDate: new Date("2025-10-16") }),
+      };
+      const statA = {
+        ...makeStat({ playerId: "player-a", gameId: "g1" }),
+        game: makeGame({ id: "g1", gameDate: new Date("2025-10-15") }),
+      };
+      // Deliberately returned in the "wrong" order relative to the request.
+      vi.mocked(playersService.getPlayerSeasonStatsBatch).mockResolvedValue([statB, statA] as never);
+
+      const results = await statsService.getPlayerStatsBatch(["player-a", "player-b"]);
+
+      expect(results.map((entry) => entry.playerId)).toEqual(["player-a", "player-b"]);
     });
   });
 });

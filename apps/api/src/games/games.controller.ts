@@ -19,6 +19,15 @@ export class GamesController {
     return this.gamesService.getGames(query);
   }
 
+  // GET /v1/games/seasons — every season with at least one ingested game,
+  // most recent first. Declared before the :id route below so "seasons"
+  // isn't swallowed as a game id — Nest matches routes in declaration
+  // order. Backs the Predictions page's season filter with real options.
+  @Get("seasons")
+  listSeasons() {
+    return this.gamesService.getSeasons();
+  }
+
   // GET /v1/games/:id — a single game with its win probability/predicted
   // margin (if generated) and predicted top scorers from both rosters —
   // everything the game detail page needs in one request.

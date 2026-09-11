@@ -58,4 +58,19 @@ export class PlayersService {
       orderBy: { game: { gameDate: "desc" } },
     });
   }
+
+  // One query for every requested player's game stats, not one query per
+  // player — added once a caller (the Predictions page's model highlights,
+  // via PlayerCards.tsx's useUpcomingPlayerReliability) needed reliability
+  // data for ~15-30 players at once and was firing that many sequential
+  // GET /v1/players/:id/stats round trips, each competing for the same
+  // pooled Supabase connection. Same "one query, group in application code"
+  // shape as GamesService's own upcoming/completed split.
+  getPlayerSeasonStatsBatch(playerIds: string[]) {
+    return this.prisma.playerGameStat.findMany({
+      where: { playerId: { in: playerIds } },
+      include: { game: true },
+      orderBy: { game: { gameDate: "desc" } },
+    });
+  }
 }

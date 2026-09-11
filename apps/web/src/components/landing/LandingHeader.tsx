@@ -34,24 +34,21 @@ export function LandingHeader({ overlaysContent = false }: LandingHeaderProps) {
       >
         Skip to content
       </a>
-      <div className="flex h-9 items-center bg-[#1e1e1e] px-6 lg:px-14">
-        <span className="text-[11px] font-medium tracking-[0.2em] text-white uppercase">
-          Sport Analytics/Project Name
-        </span>
-      </div>
-      <div className="relative bg-gradient-to-b from-black/85 via-black/45 to-transparent pt-3 pb-10">
-        <nav
-          aria-label="Primary"
-          className="flex flex-wrap items-center gap-x-6 gap-y-3 px-6 lg:gap-x-10 lg:px-14"
+      <div
+        className={`relative flex items-center gap-x-6 gap-y-2 bg-landing-ink px-6 lg:px-14 ${
+          overlaysContent ? "flex-wrap pt-3 pb-10" : "h-14"
+        }`}
+      >
+        <Link
+          to="/"
+          aria-label="Court Vision, home"
+          className="flex shrink-0 items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
         >
-          <Link
-            to="/"
-            aria-label="NBA Fantasy League Optimizer, home"
-            className="shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
-          >
-            <FlameBallLogo className="h-11 lg:h-12" />
-          </Link>
-          <ul className="flex items-center gap-x-6 lg:gap-x-14 lg:pl-14">
+          <FlameBallLogo className={overlaysContent ? "h-11 lg:h-12" : "h-7"} />
+          <span className="text-[10.5px] font-medium tracking-[0.2em] text-white uppercase">Court Vision</span>
+        </Link>
+        <nav aria-label="Primary" className="flex flex-1 items-center gap-x-6 lg:gap-x-10">
+          <ul className="flex items-center gap-x-6 lg:gap-x-10">
             {navigationLinks.map((link) => (
               <li key={link.label}>
                 <Link to={link.to} className={LINK_CLASS}>

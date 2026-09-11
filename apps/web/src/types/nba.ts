@@ -151,3 +151,14 @@ export interface GamePrediction {
   marginMethod: "regression" | "heuristic" | null;
   createdAt: string;
 }
+
+// A team's current Elo rating, read from its own most recent predicted
+// game (upcoming if it has one — the real, live rating — otherwise its
+// last completed game's pre-kickoff snapshot). See TeamsService.getEloRatings
+// for why there's no dedicated "current rating" column to read instead.
+export interface TeamEloRating {
+  team: Team;
+  elo: number;
+  asOfGameId: string;
+  asOfGameDate: string;
+}
