@@ -202,5 +202,46 @@ describe("PlayersListPage", () => {
 
       expect(await screen.findByText("No players matched in the Finals.")).toBeInTheDocument();
     });
+
+    it("carries the selected segment into the player profile link", async () => {
+      // Reported in review: clicking a player from a Playoffs list landed on
+      // their regular-season profile, so the navigation silently answered a
+      // different question than the list was asking.
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />, ["/players?segment=playoffs"]);
+
+      const playerLink = await screen.findByRole("link", { name: /LeBron James/ });
+      expect(playerLink).toHaveAttribute("href", expect.stringContaining("segment=playoffs"));
+    });
+
+    it("carries the regular season into the link too, so the URL always states its segment", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      const playerLink = await screen.findByRole("link", { name: /LeBron James/ });
+      expect(playerLink).toHaveAttribute("href", expect.stringContaining("segment=regular"));
+    });
+
+    it("updates the player link when the segment changes", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByRole("radio", { name: "Finals" });
+
+      await user.click(screen.getByRole("radio", { name: "Finals" }));
+
+      await waitFor(() =>
+        expect(screen.getByRole("link", { name: /LeBron James/ })).toHaveAttribute(
+          "href",
+          expect.stringContaining("segment=finals")
+        )
+      );
+    });
   });
 });

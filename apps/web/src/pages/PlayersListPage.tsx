@@ -153,7 +153,15 @@ export function PlayersListPage() {
                 ) : rows.map((player) => (
                   <TableRow key={player.id}>
                     <TableCell>
-                      <Link to={`/players/${player.id}`} className="text-text-primary hover:text-brand-accent">
+                      {/* Carries the selected segment through to the profile.
+                          Without it, clicking a player from a Playoffs list
+                          lands on their regular-season page — the navigation
+                          silently answers a different question than the one
+                          the list was asking. */}
+                      <Link
+                        to={`/players/${player.id}?segment=${toUrlSegment(seasonType)}`}
+                        className="text-text-primary hover:text-brand-accent"
+                      >
                         {player.firstName} {player.lastName}
                       </Link>
                     </TableCell>

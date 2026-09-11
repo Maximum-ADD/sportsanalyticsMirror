@@ -202,8 +202,11 @@ export function PlayerProfilePage() {
               >
                 {isEditingStats ? "Done editing" : "Edit stats"}
               </Button>
+              {/* Carries the selected segment, so comparing from a Finals
+                  view opens a Finals comparison rather than silently
+                  dropping back to the regular season. */}
               <Link
-                to={`/compare?ids=${player.id}`}
+                to={`/compare?ids=${player.id}&segment=${toUrlSegment(seasonType)}`}
                 className="rounded-md border border-border-subtle px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-card hover:text-text-primary"
               >
                 Compare
