@@ -25,7 +25,17 @@ services:
         value: production
       # Set the secret values in the Render Dashboard (sync: false keeps the
       # YAML from overwriting them). Never commit real values here.
+      # Supavisor pooler in transaction mode (port 6543, pgbouncer=true) — the
+      # app holds many short-lived logical connections multiplexed over a
+      # handful of real ones, unlike session mode (port 5432 on the pooler
+      # host) which pins one real connection per client for its whole
+      # lifetime and hits the project's pool_size cap almost immediately.
       - key: DATABASE_URL
+        sync: false
+      # Direct connection (port 5432 on the db.<ref>.supabase.co host, not
+      # the pooler host) — `prisma migrate deploy` needs the session-level
+      # advisory locks that transaction-mode pooling doesn't support.
+      - key: DIRECT_URL
         sync: false
       - key: BETTER_AUTH_SECRET
         sync: false
