@@ -257,4 +257,40 @@ describe("PlayerProfilePage season segments", () => {
 
     expect(screen.queryByText("99")).not.toBeInTheDocument();
   });
+
+  it("carries the selected segment into the Compare link", async () => {
+    // Reported in review: comparing from a Finals view opened a
+    // regular-season comparison. The compare page reads ?segment, so the
+    // link that navigates to it has to set one.
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue({ ...STATS, seasonType: "FINALS" });
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=finals"]);
+
+    const compareLink = await screen.findByRole("link", { name: "Compare" });
+    expect(compareLink).toHaveAttribute("href", expect.stringContaining("segment=finals"));
+    expect(compareLink).toHaveAttribute("href", expect.stringContaining("ids=player-1"));
+  });
+
+  it("updates the Compare link when the segment changes", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+
+    renderWithProviders(<PlayerProfilePage />);
+    await screen.findByRole("radio", { name: "Playoffs" });
+    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("segment=regular")
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Playoffs" }));
+
+    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("segment=playoffs")
+    );
+  });
 });
