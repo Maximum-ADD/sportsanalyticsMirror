@@ -20,6 +20,12 @@ export default defineConfig({
     // under a test mid-run). Unit specs don't touch the database and pay
     // almost nothing for running serially too.
     fileParallelism: false,
+      // The course runner exposes limited process memory. A single worker is
+      // also the only useful setting for this suite because all e2e specs share
+      // one disposable Postgres database.
+      pool: "threads",
+      maxWorkers: 1,
+      minWorkers: 1,
     testTimeout: 20_000,
     hookTimeout: 20_000,
     reporters: ["default", "json"],

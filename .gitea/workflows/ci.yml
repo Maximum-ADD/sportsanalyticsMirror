@@ -130,6 +130,12 @@ jobs:
       BETTER_AUTH_SECRET: ci-secret-not-for-production-use
       BETTER_AUTH_URL: http://localhost:4000
       WEB_ORIGIN: http://localhost:5173
+      # The API constructs AvatarStorageService during Nest bootstrap. These
+      # disposable values make that constructor valid; the coverage suite
+      # never performs a real Supabase Storage operation.
+      SUPABASE_URL: https://test-project.supabase.co
+      SUPABASE_SECRET_KEY: ci-secret-not-for-production-use
+      SUPABASE_AVATARS_BUCKET: profile pictures
 
     steps:
       - name: Checkout
