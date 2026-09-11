@@ -304,6 +304,7 @@ jobs:
           echo "DATABASE_URL=postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public" >> "$GITHUB_ENV"
           cat > apps/api/.env.test <<EOF
           DATABASE_URL="postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public"
+          DIRECT_URL="postgresql://postgres:postgres@${TARGET}/nba_analytics_test?schema=public"
           BETTER_AUTH_SECRET="ci-secret-not-for-production-use"
           BETTER_AUTH_URL="http://localhost:4000"
           WEB_ORIGIN="http://localhost:5173"
