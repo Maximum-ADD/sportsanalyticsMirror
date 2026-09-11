@@ -40,6 +40,15 @@ function renderFilterBar(overrides: Partial<ComponentProps<typeof PlayersFilterB
 }
 
 describe("PlayersFilterBar", () => {
+  it("gives every filter an accessible name", () => {
+    renderFilterBar();
+
+    expect(screen.getByRole("searchbox", { name: "Search players" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter players by team" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter players by position" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Sort players" })).toBeInTheDocument();
+  });
+
   it("reports player search input changes", async () => {
     const user = userEvent.setup();
     const onSearchChange = vi.fn();
