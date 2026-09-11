@@ -9,17 +9,6 @@ export const testPrisma = new PrismaClient();
 // schema/migrations. Call from afterEach so specs never depend on leftover
 // state from a previous test.
 export async function resetDatabase() {
-  // Personalization rows first — they reference Player/Team/Game/User, and
-  // their own join rows (SavedComparisonPlayer, SavedLineupSlot) reference
-  // their parents, so both layers have to go before anything below.
-  await testPrisma.savedComparisonPlayer.deleteMany();
-  await testPrisma.savedLineupSlot.deleteMany();
-  await testPrisma.savedComparison.deleteMany();
-  await testPrisma.savedLineup.deleteMany();
-  await testPrisma.gamePick.deleteMany();
-  await testPrisma.followedPlayer.deleteMany();
-  await testPrisma.followedTeam.deleteMany();
-
   await testPrisma.lineupSlot.deleteMany();
   await testPrisma.lineup.deleteMany();
   await testPrisma.playerPrediction.deleteMany();
