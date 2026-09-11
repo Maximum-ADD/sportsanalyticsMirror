@@ -60,6 +60,23 @@ export interface SeasonAverages {
   freeThrowsMadePerGame: number;
   freeThrowsAttemptedPerGame: number;
   freeThrowPercentage: number;
+
+  // Derived from the boxscore by the API, like the percentages above.
+  trueShootingPercentage: number;
+  effectiveFieldGoalPercentage: number;
+
+  // Null when undefined rather than zero — a player with no turnovers has
+  // an undefined ratio, not the worst possible one. Render as "—".
+  assistToTurnoverRatio: number | null;
+
+  // Null when no game in this segment carries the figure: either the rows
+  // predate the columns or the advanced boxscore was unavailable. A zero
+  // would be a real measurement (an even plus/minus, 0% usage), so these
+  // must render as "—" rather than 0.
+  plusMinusPerGame: number | null;
+  usagePercentage: number | null;
+  offensiveRating: number | null;
+  defensiveRating: number | null;
 }
 
 // One player's identity plus their season line — the unit GET

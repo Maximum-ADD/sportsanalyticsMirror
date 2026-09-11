@@ -159,7 +159,9 @@ Closing that gap (real event → boxscore derivation) is still open; see
   see above
 - **PlayerGameStat** — one row per player per game (points, rebounds,
   assists, shooting splits, etc.) — what `statsService.ts` actually
-  aggregates into season averages today
+  aggregates into season averages today. Also carries the offensive/
+  defensive rebound split, plus/minus, and NBA's own usage rate and
+  offensive/defensive ratings, all nullable — see "Advanced stats" below
 - **User / Session / Account / Verification** — BetterAuth's required core
   schema (see [better-auth.com/docs/concepts/database](https://better-auth.com/docs/concepts/database)).
   `User.role` is the one project-specific addition (see RBAC above).
@@ -201,6 +203,60 @@ represents postseason context.
 Which segment a game belongs to is derived from its NBA game id at
 ingestion time (`classify_game` in `apps/ingestion/games.py`), never from
 whichever endpoint it arrived on, so re-runs always classify the same way.
+
+## Advanced stats
+
+Seven figures beyond the counting stats, split by where they come from.
+
+**Derived at request time** in `StatsService`, from the boxscore columns
+already stored — no schema involvement, and they work on every row ever
+ingested:
+
+| Stat | Formula |
+|---|---|
+| True shooting % | `PTS / (2 · (FGA + 0.44 · FTA))` |
+| Effective FG% | `(FGM + 0.5 · 3PM) / FGA` |
+| Assist:turnover | `AST / TOV` |
+
+All three were checked against `BoxScoreAdvancedV3`'s own figures during
+development and matched to three decimal places, which is why they are
+computed rather than stored — storing them would create a second source of
+truth for a number the boxscore already determines. `stats.service.spec.ts`
+pins them to a real Finals boxscore so the arithmetic can't drift from the
+official definitions.
+
+**Stored on `PlayerGameStat`**, because they can't be derived:
+
+| Stat | Source | Why not derived |
+|---|---|---|
+| Plus/minus | `PlayerGameLogs` (Base) | An observation, not a calculation |
+| Usage % | `PlayerGameLogs` (Advanced) | Needs team possessions while on court |
+| Offensive/defensive rating | `PlayerGameLogs` (Advanced) | Need possession estimates and opponent context this schema doesn't hold |
+
+`PlayerGameLogs` is leaguewide and season-scoped: one call returns every
+player-game row for a whole segment (26,651 for the 2025-26 regular
+season). Two measure types per segment covers the lot, so the whole season
+including postseason costs 6 calls rather than the ~900 a per-game
+boxscore endpoint would need. `apps/ingestion/backfill_advanced_stats.py`
+uses the same feed to fill these columns on a database populated before
+they existed.
+
+Computing individual ratings from the columns here would be inventing a
+statistic rather than deriving one — the same call `four_factors.py` makes
+when it leaves Oliver's offensive-rebound factor out.
+
+**Nulls are meaningful.** Every stored figure is nullable and every
+aggregate returns `null` rather than `0` when no game carries it. A zero
+plus/minus is an even game and a 0% usage rate is a player who never
+touched the ball; both are real measurements, so "not recorded" has to stay
+distinguishable. The UI renders null as "—" throughout. Rows ingested
+before these columns existed keep those nulls until a re-ingestion.
+
+**Aggregation.** Usage and the two ratings are minutes-weighted, not simple
+means — they're rates over playing time, so a four-minute garbage-time
+cameo shouldn't count as much as a 38-minute start. Plus/minus is a plain
+per-game average, and the derived percentages come from season totals, the
+same way `fieldGoalPercentage` already does.
 
 ## API reference
 
@@ -376,6 +432,10 @@ checks and review required before merging.
 - **Postseason predictions** — the Elo/Four Factors/optimizer models are
   regular-season only by deliberate choice (see "Season segments"), so
   postseason games carry no prediction.
+- **Offensive rebound rate in Four Factors** — `four_factors.py` still
+  omits Oliver's fourth factor, but the blocker is now gone:
+  `PlayerGameStat` carries the offensive/defensive rebound split. Wiring it
+  in is a follow-up, not a data problem.
 - **Postseason-only players** — a player appearing in a postseason boxscore
   but not on an ingested roster is skipped, matching existing regular-season
   behaviour. Acceptable for now; revisit if it drops notable players.

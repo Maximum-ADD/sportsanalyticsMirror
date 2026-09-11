@@ -1,6 +1,7 @@
 """Ingests games (regular season and postseason) and their real per-player boxscores.
 
 Three endpoints, verified live against stats.nba.com during development
+(plus PlayerGameLogs, which lives in player_game_logs.py)
 (see module docstrings below for why the versions used here differ from
 what nba_api's own docs suggest):
 
@@ -21,7 +22,9 @@ what nba_api's own docs suggest):
   every player's individual stat line — so home/away scores never need to
   be inferred from LeagueGameFinder's per-team MATCHUP/PTS fields at all.
   It takes only a game id and knows nothing about season types, so the
-  postseason phase reuses it unchanged.
+  postseason phase reuses it unchanged. It does NOT carry usage rate or
+  offensive/defensive ratings — those come from the leaguewide feed in
+  player_game_logs.py, one call per season segment rather than per game.
 
 Which segment a game belongs to is derived from its game id by
 classify_game(), never from whichever endpoint it arrived on — see that
@@ -204,6 +207,12 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
                     "threes_attempted": stats["threePointersAttempted"],
                     "free_throws_made": stats["freeThrowsMade"],
                     "free_throws_attempted": stats["freeThrowsAttempted"],
+                    "offensive_rebounds": stats["reboundsOffensive"],
+                    "defensive_rebounds": stats["reboundsDefensive"],
+                    # Always a whole number in reality, but the API types it
+                    # as a float (-13.0). Converted explicitly rather than
+                    # left to Postgres's implicit cast into an INTEGER column.
+                    "plus_minus": _to_int_or_none(stats["plusMinusPoints"]),
                 }
             )
 
@@ -214,6 +223,17 @@ def fetch_game_boxscore(nba_game_id: str) -> dict:
         "away_score": box["awayTeam"]["statistics"]["points"],
         "players": players,
     }
+
+
+def _to_int_or_none(value) -> int | None:
+    """Converts an API number to an int, passing None through untouched.
+
+    None means "not recorded", which is not the same as zero — a 0 plus/minus
+    is an even game, a null is a game we have no figure for.
+    """
+    if value is None:
+        return None
+    return int(value)
 
 
 def _parse_minutes_to_int(minutes: str) -> int:
@@ -289,18 +309,43 @@ def upsert_period_bookend_events(cursor, game_internal_id: str) -> None:
     )
 
 
+# Columns that may be absent from a caller's `stats` dict — either because
+# the advanced endpoint wasn't fetched for this game, or because the row is
+# being written by an older code path. Defaulted to None rather than 0 so a
+# missing figure stays distinguishable from a measured zero.
+OPTIONAL_STAT_KEYS = (
+    "offensive_rebounds",
+    "defensive_rebounds",
+    "plus_minus",
+    "usage_percentage",
+    "offensive_rating",
+    "defensive_rating",
+)
+
+
 def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: str, stats: dict) -> None:
-    """Upserts one PlayerGameStat row for (player, game)."""
+    """Upserts one PlayerGameStat row for (player, game).
+
+    `stats` carries the traditional boxscore figures plus, when an advanced
+    boxscore was fetched for this game, the advanced ones. Anything in
+    OPTIONAL_STAT_KEYS defaults to None when absent, so this stays callable
+    without them — a caller that skips the advanced endpoint writes real
+    counting stats and honest nulls rather than zeros.
+    """
+    stats = {**{key: None for key in OPTIONAL_STAT_KEYS}, **stats}
     cursor.execute(
         """
         INSERT INTO "PlayerGameStat"
             ("id", "playerId", "gameId", "minutes", "points", "rebounds", "assists", "steals", "blocks",
              "turnovers", "fieldGoalsMade", "fieldGoalsAttempted", "threesMade", "threesAttempted",
-             "freeThrowsMade", "freeThrowsAttempted")
+             "freeThrowsMade", "freeThrowsAttempted", "offensiveRebounds", "defensiveRebounds", "plusMinus",
+             "usagePercentage", "offensiveRating", "defensiveRating")
         VALUES
             (gen_random_uuid(), %(player_id)s, %(game_id)s, %(minutes)s, %(points)s, %(rebounds)s, %(assists)s,
              %(steals)s, %(blocks)s, %(turnovers)s, %(field_goals_made)s, %(field_goals_attempted)s,
-             %(threes_made)s, %(threes_attempted)s, %(free_throws_made)s, %(free_throws_attempted)s)
+             %(threes_made)s, %(threes_attempted)s, %(free_throws_made)s, %(free_throws_attempted)s,
+             %(offensive_rebounds)s, %(defensive_rebounds)s, %(plus_minus)s,
+             %(usage_percentage)s, %(offensive_rating)s, %(defensive_rating)s)
         ON CONFLICT ("playerId", "gameId") DO UPDATE SET
             "minutes" = EXCLUDED."minutes",
             "points" = EXCLUDED."points",
@@ -314,7 +359,15 @@ def upsert_player_game_stat(cursor, player_internal_id: str, game_internal_id: s
             "threesMade" = EXCLUDED."threesMade",
             "threesAttempted" = EXCLUDED."threesAttempted",
             "freeThrowsMade" = EXCLUDED."freeThrowsMade",
-            "freeThrowsAttempted" = EXCLUDED."freeThrowsAttempted"
+            "freeThrowsAttempted" = EXCLUDED."freeThrowsAttempted",
+            "offensiveRebounds" = EXCLUDED."offensiveRebounds",
+            "defensiveRebounds" = EXCLUDED."defensiveRebounds",
+            "plusMinus" = EXCLUDED."plusMinus",
+            -- COALESCE so a re-run that skips the advanced endpoint keeps
+            -- previously-ingested advanced figures instead of nulling them.
+            "usagePercentage" = COALESCE(EXCLUDED."usagePercentage", "PlayerGameStat"."usagePercentage"),
+            "offensiveRating" = COALESCE(EXCLUDED."offensiveRating", "PlayerGameStat"."offensiveRating"),
+            "defensiveRating" = COALESCE(EXCLUDED."defensiveRating", "PlayerGameStat"."defensiveRating")
         """,
         {"player_id": player_internal_id, "game_id": game_internal_id, **stats},
     )

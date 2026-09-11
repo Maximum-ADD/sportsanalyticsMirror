@@ -67,6 +67,16 @@ function makeAverages(overrides: Partial<SeasonAverages> = {}): SeasonAverages {
     freeThrowsMadePerGame: 5,
     freeThrowsAttemptedPerGame: 6,
     freeThrowPercentage: 83,
+    // A fully-ingested player: every advanced figure present, so a "—" in
+    // these tests always means genuinely missing data rather than a fixture
+    // that just didn't bother to set a field.
+    trueShootingPercentage: 60,
+    effectiveFieldGoalPercentage: 55,
+    assistToTurnoverRatio: 2.5,
+    plusMinusPerGame: 4.2,
+    usagePercentage: 29.4,
+    offensiveRating: 118,
+    defensiveRating: 110,
     ...overrides,
   };
 }

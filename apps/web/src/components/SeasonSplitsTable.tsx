@@ -1,3 +1,4 @@
+import { NO_VALUE } from "@/lib/playerBio";
 import { SEASON_TYPES_IN_ORDER, formatSeasonTypeShort, isSmallSample } from "@/lib/seasonType";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PlayerSeasonSplits, SeasonAverages, SeasonType } from "@/types/nba";
@@ -14,8 +15,22 @@ interface StatRow {
   // small-sample de-emphasis while counting stats don't.
   isRate?: boolean;
   suffix?: string;
+  // Decimal places for the value itself. Defaults to 1; assist-to-turnover
+  // uses 2 because it lives in a narrow range where one decimal hides real
+  // differences.
+  decimals?: number;
+  // Renders a leading "+" on positive values. Only plus/minus needs it —
+  // a bare "3.2" there could be read as a count rather than a margin.
+  showSign?: boolean;
+  // Defensive rating is the one row where a fall is an improvement, so the
+  // delta colouring has to invert. Without this a defence getting better in
+  // the playoffs would be coloured as a regression.
+  lowerIsBetter?: boolean;
 }
 
+// Ordered production first, then shooting, then efficiency and impact —
+// the same progression the profile page reads top to bottom, so someone
+// moving between the two isn't hunting for a row in a different place.
 const STAT_ROWS: StatRow[] = [
   { label: "PPG", field: "pointsPerGame" },
   { label: "RPG", field: "reboundsPerGame" },
@@ -24,6 +39,18 @@ const STAT_ROWS: StatRow[] = [
   { label: "FG%", field: "fieldGoalPercentage", isRate: true, suffix: "%" },
   { label: "3P%", field: "threePointPercentage", isRate: true, suffix: "%" },
   { label: "FT%", field: "freeThrowPercentage", isRate: true, suffix: "%" },
+  // Efficiency measures sit directly under the raw percentages they
+  // summarise: a Finals 3P% collapse is best read next to what it did to
+  // true shooting overall.
+  { label: "TS%", field: "trueShootingPercentage", isRate: true, suffix: "%" },
+  { label: "eFG%", field: "effectiveFieldGoalPercentage", isRate: true, suffix: "%" },
+  // Then role and impact, which is where the postseason shift usually
+  // shows up most: usage climbs for stars as rotations shorten.
+  { label: "USG%", field: "usagePercentage", isRate: true, suffix: "%" },
+  { label: "AST:TO", field: "assistToTurnoverRatio", isRate: true, decimals: 2 },
+  { label: "+/-", field: "plusMinusPerGame", showSign: true },
+  { label: "ORTG", field: "offensiveRating", isRate: true },
+  { label: "DRTG", field: "defensiveRating", isRate: true, lowerIsBetter: true },
 ];
 
 // A delta smaller than this rounds to "no real change" and is shown as a
@@ -31,18 +58,32 @@ const STAT_ROWS: StatRow[] = [
 // finding when it's really just rounding noise.
 const NEGLIGIBLE_DELTA = 0.05;
 
-function formatDelta(delta: number, suffix: string): string {
+function formatDelta(delta: number, row: StatRow): string {
   if (Math.abs(delta) < NEGLIGIBLE_DELTA) return "—";
   const sign = delta > 0 ? "+" : "−";
-  return `${sign}${Math.abs(delta).toFixed(1)}${suffix}`;
+  return `${sign}${Math.abs(delta).toFixed(row.decimals ?? 1)}${row.suffix ?? ""}`;
 }
 
 // Colour reinforces the direction but never carries it alone — the +/−
 // sign in formatDelta is what actually communicates it, so the table still
 // reads correctly without colour vision.
-function deltaClassName(delta: number): string {
+//
+// `lowerIsBetter` inverts the palette without touching the sign: a
+// defensive rating that drops still reads "−4.0", but green, because
+// conceding fewer points per 100 possessions is an improvement.
+function deltaClassName(delta: number, row: StatRow): string {
   if (Math.abs(delta) < NEGLIGIBLE_DELTA) return "text-text-muted";
-  return delta > 0 ? "text-emerald-400" : "text-red-400";
+  const isImprovement = row.lowerIsBetter ? delta < 0 : delta > 0;
+  return isImprovement ? "text-emerald-400" : "text-red-400";
+}
+
+// A figure the API had no basis to report — rendered as "—" with no delta,
+// never as a zero. See SeasonAverages in types/nba.ts.
+function formatValue(value: number | null, row: StatRow): string {
+  if (value === null) return NO_VALUE;
+  const formatted = value.toFixed(row.decimals ?? 1);
+  const signed = row.showSign && value > 0 ? `+${formatted}` : formatted;
+  return `${signed}${row.suffix ?? ""}`;
 }
 
 interface SeasonSplitsTableProps {
@@ -100,9 +141,14 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
               <TableCell className="font-medium text-text-secondary">{row.label}</TableCell>
               {playedSegments.map((seasonType) => {
                 const value = splits[seasonType][row.field];
-                const delta = value - baseline[row.field];
+                const baselineValue = baseline[row.field];
                 const isBaselineColumn = seasonType === BASELINE_SEASON_TYPE;
                 const dimForSmallSample = row.isRate && isSmallSample(splits[seasonType].gamesPlayed);
+                // A delta needs both ends to exist. Comparing against a
+                // missing baseline would silently treat "not recorded" as
+                // zero and invent a change that never happened.
+                const canShowDelta =
+                  !isBaselineColumn && hasBaseline && value !== null && baselineValue !== null;
 
                 return (
                   <TableCell key={seasonType}>
@@ -114,12 +160,11 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
                           : undefined
                       }
                     >
-                      {value.toFixed(1)}
-                      {row.suffix ?? ""}
+                      {formatValue(value, row)}
                     </span>
-                    {!isBaselineColumn && hasBaseline && (
-                      <span className={`ml-2 text-xs ${deltaClassName(delta)}`}>
-                        {formatDelta(delta, row.suffix ?? "")}
+                    {canShowDelta && (
+                      <span className={`ml-2 text-xs ${deltaClassName(value - baselineValue, row)}`}>
+                        {formatDelta(value - baselineValue, row)}
                       </span>
                     )}
                   </TableCell>

@@ -47,10 +47,16 @@ function generateBoxScore() {
   const twoPointersMade = fieldGoalsMade - threesMade;
   const points = twoPointersMade * 2 + threesMade * 3 + freeThrowsMade;
 
+  // Split so offensive + defensive always equals the total — a seeded row
+  // that contradicted itself would make any rebound-rate work built on this
+  // data quietly wrong.
+  const rebounds = 3 + Math.floor(Math.random() * 9);
+  const offensiveRebounds = Math.floor(rebounds * (0.15 + Math.random() * 0.25));
+
   return {
     minutes: 30 + Math.floor(Math.random() * 10),
     points,
-    rebounds: 3 + Math.floor(Math.random() * 9),
+    rebounds,
     assists: 2 + Math.floor(Math.random() * 8),
     steals: Math.floor(Math.random() * 3),
     blocks: Math.floor(Math.random() * 3),
@@ -61,6 +67,19 @@ function generateBoxScore() {
     threesAttempted,
     freeThrowsMade,
     freeThrowsAttempted,
+    offensiveRebounds,
+    defensiveRebounds: rebounds - offensiveRebounds,
+
+    // Generated rather than left null so local dev and the e2e suite
+    // actually exercise the advanced tiles and the compare page's "Other"
+    // section. Ranges are plausible NBA values (usage 10-35%, ratings
+    // 95-125, plus/minus roughly -15 to +15), not derived from the
+    // boxscore above — this is demo data, and the real figures come from
+    // BoxScoreAdvancedV3 during ingestion.
+    plusMinus: Math.floor(Math.random() * 31) - 15,
+    usagePercentage: Math.round((10 + Math.random() * 25) * 10) / 10,
+    offensiveRating: Math.round((95 + Math.random() * 30) * 10) / 10,
+    defensiveRating: Math.round((95 + Math.random() * 30) * 10) / 10,
   };
 }
 

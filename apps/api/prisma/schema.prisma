@@ -214,6 +214,40 @@ model PlayerGameStat {
   freeThrowsMade Int
   freeThrowsAttempted Int
 
+  // Everything below is nullable because it only arrives from an ingestion
+  // run new enough to fetch it — rows written before these columns existed
+  // keep a genuine "we never recorded this", which the API and UI render as
+  // "—" rather than as a zero. A zero here would be a real, and wrong,
+  // measurement: 0.0 plus/minus means an even game, not a missing one.
+  //
+  // Offensive/defensive rebounds come from the same BoxScoreTraditionalV3
+  // response the counting stats above already come from — the split was
+  // simply discarded before. apps/predictor/four_factors.py documents
+  // leaving Oliver's offensive-rebound factor out for want of exactly this,
+  // so storing it unblocks that too.
+  offensiveRebounds Int?
+  defensiveRebounds Int?
+
+  // Plus/minus is an observation, not a calculation — it cannot be derived
+  // from any combination of the columns above. Also from
+  // BoxScoreTraditionalV3, so it costs no extra API call.
+  plusMinus Int?
+
+  // From BoxScoreAdvancedV3, one extra call per game. These are NBA's own
+  // official figures rather than approximations: individual offensive and
+  // defensive ratings need possession estimates and opponent context this
+  // schema doesn't hold, so computing them here would be inventing a
+  // statistic rather than deriving one. Stored as given.
+  //
+  // Deliberately NOT stored: true shooting %, effective FG% and
+  // assist-to-turnover ratio, which this project derives at request time
+  // instead (see StatsService). Those three were verified to match this
+  // endpoint's values exactly, so storing them would add a second source of
+  // truth for a number already computable from the boxscore.
+  usagePercentage  Float?
+  offensiveRating  Float?
+  defensiveRating  Float?
+
   @@unique([playerId, gameId])
 }
 

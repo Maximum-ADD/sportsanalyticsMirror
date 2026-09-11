@@ -14,6 +14,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
 import { SeasonSplitsTable } from "@/components/SeasonSplitsTable";
 import { formatAge, formatHeight } from "@/lib/playerBio";
+import { formatNumber, formatPercentage, formatPlusMinus } from "@/lib/advancedStats";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import type { Player, PlayerStatsResponse, SeasonAverages, SeasonType } from "@/types/nba";
 
@@ -234,7 +235,11 @@ export function PlayerProfilePage() {
             </p>
           )}
 
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {/* Six columns rather than five: the four advanced tiles below
+              (usage, +/-, and the two ratings) bring the count to twelve,
+              which fills two clean rows at six across instead of leaving a
+              ragged trailing row. */}
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile
               label="PPG"
               value={effectiveAverages.pointsPerGame}
@@ -291,6 +296,16 @@ export function PlayerProfilePage() {
               editValue={effectiveAverages.turnoversPerGame}
               onEditValueChange={(value) => setStatOverride("turnoversPerGame", value)}
             />
+            {/* Not editable, unlike the counting stats above. The local
+                "what if" overlay exists to explore how a player's own
+                production would change; usage rate and the ratings are
+                measured against the rest of the team and the opponent, so a
+                hand-typed value wouldn't mean anything. They also render
+                "—" when absent, which an editable number input can't. */}
+            <StatTile label="USG%" value={formatPercentage(effectiveAverages.usagePercentage)} />
+            <StatTile label="+/-" value={formatPlusMinus(effectiveAverages.plusMinusPerGame)} />
+            <StatTile label="ORTG" value={formatNumber(effectiveAverages.offensiveRating)} />
+            <StatTile label="DRTG" value={formatNumber(effectiveAverages.defensiveRating)} />
           </div>
 
           <div className="mt-6">
@@ -312,7 +327,10 @@ export function PlayerProfilePage() {
       <Card className="xl:col-span-3">
         <CardContent className="p-6">
           <h2 className="mb-4 text-sm font-medium text-text-secondary">Shooting splits</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Six across so the two efficiency measures sit on the same line
+              as the raw percentages they contextualise — TS% and eFG% are
+              only meaningful next to FG% and 3P%. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile
               label="FG%"
               value={`${effectiveAverages.fieldGoalPercentage}%`}
@@ -341,6 +359,11 @@ export function PlayerProfilePage() {
               editValue={effectiveAverages.freeThrowsAttemptedPerGame}
               onEditValueChange={(value) => setStatOverride("freeThrowsAttemptedPerGame", value)}
             />
+            {/* Derived from the same makes/attempts the tiles above show,
+                so editing them directly would let the overlay contradict
+                itself — a hand-set TS% next to an unchanged FG%. */}
+            <StatTile label="TS%" value={`${effectiveAverages.trueShootingPercentage}%`} />
+            <StatTile label="eFG%" value={`${effectiveAverages.effectiveFieldGoalPercentage}%`} />
           </div>
         </CardContent>
       </Card>
