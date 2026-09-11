@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import type { Game, PlayerGameStat } from "@prisma/client";
+import { SeasonType, type Game, type PlayerGameStat } from "@prisma/client";
+import { DEFAULT_SEASON_TYPE } from "../common/season-type.js";
 import { PlayersService, type PlayerWithTeam } from "./players.service.js";
 
 export interface GameLogEntry {
@@ -27,6 +28,11 @@ export interface DerivedSeasonAverages {
   freeThrowsAttemptedPerGame: number;
   freeThrowPercentage: number;
 }
+
+// One derived season line per season segment, keyed by SeasonType. Keyed
+// off the Prisma enum rather than spelled out as four named fields so a new
+// segment in schema.prisma flows through without touching this type.
+export type PlayerSeasonSplits = Record<SeasonType, DerivedSeasonAverages>;
 
 // One player's identity plus their derived season line — the unit the
 // comparison endpoint returns, one per requested player.
@@ -92,13 +98,38 @@ export class StatsService {
       .map((stat) => ({ gameId: stat.gameId, gameDate: stat.game.gameDate, points: stat.points }));
   }
 
-  async getPlayerSeasonAverages(playerId: string): Promise<DerivedSeasonAverages> {
-    const gameStats = await this.playersService.getPlayerSeasonStats(playerId);
+  async getPlayerSeasonAverages(
+    playerId: string,
+    seasonType: SeasonType = DEFAULT_SEASON_TYPE
+  ): Promise<DerivedSeasonAverages> {
+    const gameStats = await this.playersService.getPlayerSeasonStats(playerId, seasonType);
     return this.deriveSeasonAverages(gameStats);
   }
 
-  async getPlayerGameLog(playerId: string): Promise<GameLogEntry[]> {
-    const gameStats = await this.playersService.getPlayerSeasonStats(playerId);
+  async getPlayerGameLog(playerId: string, seasonType: SeasonType = DEFAULT_SEASON_TYPE): Promise<GameLogEntry[]> {
+    const gameStats = await this.playersService.getPlayerSeasonStats(playerId, seasonType);
     return this.deriveGameLog(gameStats);
+  }
+
+  // Every segment's season line in one response, for the "how did this
+  // player's performance change between the regular season and the
+  // postseason" view — the question the postseason feature exists to
+  // answer, and the one case where showing segments side by side is the
+  // point rather than a bleed.
+  //
+  // A segment the player didn't appear in comes back as a zeroed line with
+  // gamesPlayed: 0 rather than being omitted, so the caller renders a
+  // consistent set of columns and decides for itself how to present "didn't
+  // play" — see deriveSeasonAverages, which returns zeros for an empty
+  // input rather than throwing.
+  async getPlayerSeasonSplits(playerId: string): Promise<PlayerSeasonSplits> {
+    const segments = Object.values(SeasonType);
+    const averagesPerSegment = await Promise.all(
+      segments.map((seasonType) => this.getPlayerSeasonAverages(playerId, seasonType))
+    );
+
+    return Object.fromEntries(
+      segments.map((seasonType, index) => [seasonType, averagesPerSegment[index]])
+    ) as PlayerSeasonSplits;
   }
 }

@@ -56,6 +56,8 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     awayTeam: CELTICS,
     homeScore: 119,
     awayScore: 100,
+    seasonType: "REGULAR",
+    playoffRound: null,
     ...overrides,
   };
 }

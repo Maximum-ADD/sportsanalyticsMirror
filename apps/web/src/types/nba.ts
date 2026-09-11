@@ -1,3 +1,8 @@
+// Which segment of a season a figure or game belongs to. Mirrors the
+// SeasonType enum in the API's Prisma schema — the discriminator that keeps
+// regular-season and postseason numbers out of each other's views.
+export type SeasonType = "REGULAR" | "PLAY_IN" | "PLAYOFFS" | "FINALS";
+
 export interface Team {
   id: string;
   nbaTeamId: number;
@@ -65,6 +70,7 @@ export interface PlayerComparisonEntry {
 }
 
 export interface PlayerComparisonResponse {
+  seasonType: SeasonType;
   players: PlayerComparisonEntry[];
 }
 
@@ -76,8 +82,22 @@ export interface GameLogEntry {
 
 export interface PlayerStatsResponse {
   playerId: string;
+  // The segment these figures were derived from, echoed back by the API so
+  // a caller can't label an already-rendered chart with the wrong segment.
+  seasonType: SeasonType;
   seasonAverages: SeasonAverages;
   gameLog: GameLogEntry[];
+}
+
+// Every segment's season line at once, from GET /v1/players/:id/stats/splits.
+// A segment the player didn't appear in is present with gamesPlayed: 0
+// rather than missing, so the comparison table renders a stable set of
+// columns.
+export type PlayerSeasonSplits = Record<SeasonType, SeasonAverages>;
+
+export interface PlayerStatsSplitsResponse {
+  playerId: string;
+  splits: PlayerSeasonSplits;
 }
 
 export interface Game {
@@ -91,6 +111,9 @@ export interface Game {
   awayTeam: Team;
   homeScore: number | null;
   awayScore: number | null;
+  seasonType: SeasonType;
+  // 1-4 for PLAYOFFS/FINALS games, null for REGULAR and PLAY_IN.
+  playoffRound: number | null;
   // Present on list/detail endpoints that join it in (GET /v1/games,
   // GET /v1/games/:id) — undefined, not just null, on any endpoint that
   // doesn't include the relation, so callers can tell "not fetched" apart

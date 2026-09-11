@@ -18,6 +18,24 @@ enum Role {
   ADMIN
 }
 
+// Which segment of a season a Game belongs to. Every derived statistic in
+// this project is computed at request time from PlayerGameStat rows joined
+// to Game, so this single discriminator is what keeps a postseason view
+// from ever showing regular-season figures (and vice versa) — the
+// isolation is enforced by the query, not by careful UI code.
+//
+// FINALS is its own value rather than PLAYOFFS + playoffRound = 4 because
+// "this player's Finals games" is the common query and deserves a plain
+// equality filter, the same way GamePrediction.marginMethod models a small
+// closed set of variants. playoffRound is kept alongside for round-by-round
+// drill-down later.
+enum SeasonType {
+  REGULAR
+  PLAY_IN
+  PLAYOFFS
+  FINALS
+}
+
 // User/Session/Account/Verification below follow BetterAuth's required core
 // schema (https://better-auth.com/docs/concepts/database) — field names and
 // types must match what its Prisma adapter expects. `role` is a
@@ -140,9 +158,22 @@ model Game {
   homeScore    Int?
   awayScore    Int?
 
+  // Defaulting to REGULAR is exactly right for backfill, not just a
+  // convenient fallback: every Game row that existed before this column
+  // came through LeagueGameFinder with season_type_nullable="Regular
+  // Season" (see apps/ingestion/games.py), so the migration needs no data
+  // cleanup pass.
+  seasonType   SeasonType @default(REGULAR)
+
+  // 1-4 for PLAYOFFS/FINALS games, null for REGULAR and PLAY_IN. Derived
+  // from the NBA game id at ingestion time — see classify_game().
+  playoffRound Int?
+
   playerStats  PlayerGameStat[]
   events       GameEvent[]
   prediction   GamePrediction?
+
+  @@index([seasonType])
 }
 
 // Raw play-by-play events — the source of truth every derived stat traces back to.
