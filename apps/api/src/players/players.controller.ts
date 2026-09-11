@@ -1,4 +1,5 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService } from "./players.service.js";
@@ -27,6 +28,7 @@ function parseComparisonIds(ids: unknown): string[] {
   return uniqueIds;
 }
 
+@ApiTags("players")
 @Controller("v1/players")
 export class PlayersController {
   constructor(
@@ -36,6 +38,13 @@ export class PlayersController {
 
   // GET /v1/players?teamId=&position=&search=&page=&pageSize= — paginated player list.
   @Get()
+  @ApiOperation({ summary: "List players (paginated)" })
+  @ApiQuery({ name: "teamId", required: false, description: "Filter by team ID" })
+  @ApiQuery({ name: "position", required: false, description: "Filter by position (PG, SG, SF, PF, C)" })
+  @ApiQuery({ name: "search", required: false, description: "Search by player name" })
+  @ApiQuery({ name: "page", required: false, type: Number, description: "Page number (default: 1)" })
+  @ApiQuery({ name: "pageSize", required: false, type: Number, description: "Items per page (default: 25, max: 100)" })
+  @ApiResponse({ status: 200, description: "Paginated player list" })
   listPlayers(@Query() query: Record<string, unknown>) {
     return this.playersService.getPlayers(query);
   }
@@ -50,6 +59,12 @@ export class PlayersController {
   // their postseason lines, or the comparison silently answers a different
   // question than the one on screen.
   @Get("compare")
+  @ApiOperation({ summary: "Compare 2-4 players side by side" })
+  @ApiQuery({ name: "ids", required: true, description: "Comma-separated list of 2-4 player UUIDs" })
+  @ApiQuery({ name: "seasonType", required: false, description: "Season segment to compare (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
+  @ApiResponse({ status: 200, description: "Player comparison data" })
+  @ApiResponse({ status: 400, description: "Invalid player IDs" })
+  @ApiResponse({ status: 404, description: "One or more players not found" })
   async comparePlayers(
     @Query("ids") ids: unknown,
     @Query("seasonType") rawSeasonType: unknown
@@ -71,6 +86,10 @@ export class PlayersController {
   }
 
   @Get(":id")
+  @ApiOperation({ summary: "Get player by ID" })
+  @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiResponse({ status: 200, description: "Player details with team" })
+  @ApiResponse({ status: 404, description: "Player not found" })
   async getPlayer(@Param("id") id: string) {
     const player = await this.playersService.getPlayerById(id);
     if (!player) {
@@ -101,6 +120,11 @@ export class PlayersController {
   // as they did. The response echoes the segment back so a caller can't
   // mislabel a chart it already rendered.
   @Get(":id/stats")
+  @ApiOperation({ summary: "Get player season averages and game log" })
+  @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
+  @ApiResponse({ status: 200, description: "Season averages and game log" })
+  @ApiResponse({ status: 404, description: "Player not found" })
   async getPlayerStats(@Param("id") id: string, @Query("seasonType") rawSeasonType: unknown) {
     const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
 
