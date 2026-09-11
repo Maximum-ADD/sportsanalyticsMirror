@@ -26,9 +26,6 @@ const MIL: TeamRef = { abbreviation: "MIL", nbaTeamId: 1610612749 };
 const LAL: TeamRef = { abbreviation: "LAL", nbaTeamId: 1610612747 };
 const SAS: TeamRef = { abbreviation: "SAS", nbaTeamId: 1610612759 };
 const MIN: TeamRef = { abbreviation: "MIN", nbaTeamId: 1610612750 };
-const NYK: TeamRef = { abbreviation: "NYK", nbaTeamId: 1610612752 };
-const DET: TeamRef = { abbreviation: "DET", nbaTeamId: 1610612765 };
-const HOU: TeamRef = { abbreviation: "HOU", nbaTeamId: 1610612745 };
 
 // ── Beat the Model ────────────────────────────────────────────────────────
 // Will come from GET /v1/me/challenge/next, which returns a completed game
@@ -82,96 +79,25 @@ export const CHALLENGE: ModelChallenge = {
 export const PICK_RECORD = { wins: 12, losses: 7, modelWins: 11, modelLosses: 8 };
 
 // ── Watchlist board ───────────────────────────────────────────────────────
-// Will come from GET /v1/me/dashboard, joining FollowedPlayer against ONE
-// groupBy over PlayerGameStat — never a per-player loop through StatsService.
-export interface WatchlistEntry {
-  player: PlayerRef;
-  team: TeamRef;
-  pointsPerGame: number;
-  reboundsPerGame: number;
-  assistsPerGame: number;
-  /** Points scored in the last eight games, oldest first. */
-  recentPoints: number[];
-  /** The user's own scouting note, stored on the FollowedPlayer row. */
-  note?: string;
-}
+// WIRED. The board now reads GET /v1/me/watchlist and its own write routes;
+// its placeholder rows and WatchlistEntry type were deleted with it rather
+// than left here to rot into a second, wrong definition of the same shape.
+// The live one lives in types/nba.ts.
+//
+// The few players below are what the still-unwired modules borrowed from that
+// list, kept as their own small const so removing the board did not quietly
+// change what those modules render.
+const SGA: PlayerRef = { nbaPlayerId: 1628983, firstName: "Shai", lastName: "Gilgeous-Alexander" };
+const JOKIC: PlayerRef = { nbaPlayerId: 203999, firstName: "Nikola", lastName: "Jokić" };
+const GIANNIS: PlayerRef = { nbaPlayerId: 203507, firstName: "Giannis", lastName: "Antetokounmpo" };
+const WEMBANYAMA: PlayerRef = { nbaPlayerId: 1641705, firstName: "Victor", lastName: "Wembanyama" };
+const CUNNINGHAM: PlayerRef = { nbaPlayerId: 1630595, firstName: "Cade", lastName: "Cunningham" };
+const SENGUN: PlayerRef = { nbaPlayerId: 1630578, firstName: "Alperen", lastName: "Şengün" };
 
-export const WATCHLIST: WatchlistEntry[] = [
-  {
-    player: { nbaPlayerId: 1628983, firstName: "Shai", lastName: "Gilgeous-Alexander" },
-    team: OKC,
-    pointsPerGame: 32.7,
-    reboundsPerGame: 5.1,
-    assistsPerGame: 6.4,
-    recentPoints: [34, 28, 41, 30, 37, 25, 33, 39],
-    note: "MVP pace — watch the FT rate",
-  },
-  {
-    player: { nbaPlayerId: 203999, firstName: "Nikola", lastName: "Jokić" },
-    team: DEN,
-    pointsPerGame: 29.6,
-    reboundsPerGame: 12.8,
-    assistsPerGame: 10.2,
-    recentPoints: [26, 31, 24, 38, 29, 33, 27, 35],
-  },
-  {
-    player: { nbaPlayerId: 203507, firstName: "Giannis", lastName: "Antetokounmpo" },
-    team: MIL,
-    pointsPerGame: 30.4,
-    reboundsPerGame: 11.9,
-    assistsPerGame: 6.1,
-    recentPoints: [35, 28, 32, 26, 41, 30, 24, 33],
-  },
-  {
-    player: { nbaPlayerId: 1629029, firstName: "Luka", lastName: "Dončić" },
-    team: LAL,
-    pointsPerGame: 28.2,
-    reboundsPerGame: 8.3,
-    assistsPerGame: 7.7,
-    recentPoints: [24, 31, 27, 35, 22, 29, 33, 26],
-  },
-  {
-    player: { nbaPlayerId: 1641705, firstName: "Victor", lastName: "Wembanyama" },
-    team: SAS,
-    pointsPerGame: 25.1,
-    reboundsPerGame: 11.0,
-    assistsPerGame: 3.8,
-    recentPoints: [22, 29, 18, 31, 26, 24, 33, 20],
-    note: "blocks are the tell",
-  },
-  {
-    player: { nbaPlayerId: 1630162, firstName: "Anthony", lastName: "Edwards" },
-    team: MIN,
-    pointsPerGame: 27.3,
-    reboundsPerGame: 5.6,
-    assistsPerGame: 4.5,
-    recentPoints: [31, 24, 29, 22, 35, 27, 30, 25],
-  },
-  {
-    player: { nbaPlayerId: 1628973, firstName: "Jalen", lastName: "Brunson" },
-    team: NYK,
-    pointsPerGame: 26.4,
-    reboundsPerGame: 3.0,
-    assistsPerGame: 7.2,
-    recentPoints: [28, 22, 31, 25, 34, 23, 29, 27],
-  },
-  {
-    player: { nbaPlayerId: 1630595, firstName: "Cade", lastName: "Cunningham" },
-    team: DET,
-    pointsPerGame: 25.9,
-    reboundsPerGame: 6.3,
-    assistsPerGame: 9.4,
-    recentPoints: [21, 30, 26, 33, 24, 28, 22, 31],
-  },
-  {
-    player: { nbaPlayerId: 1630578, firstName: "Alperen", lastName: "Şengün" },
-    team: HOU,
-    pointsPerGame: 21.5,
-    reboundsPerGame: 10.4,
-    assistsPerGame: 5.6,
-    recentPoints: [19, 26, 22, 18, 28, 24, 20, 27],
-  },
-];
+// How many players the placeholder modules assume are followed. Only Add To
+// Locker reads it, and that module is off the page until it has a real
+// endpoint behind it.
+const PLACEHOLDER_FOLLOWED_PLAYER_COUNT = 9;
 
 // ── Your teams ────────────────────────────────────────────────────────────
 // Will come from FollowedTeam joined against games. Note that GET /v1/games
@@ -187,6 +113,8 @@ export interface FollowedTeamResult {
   /** How the model called it, phrased from the followed team's side. */
   modelCall: string;
   won: boolean;
+  /** Route to this game's detail page. Undefined until real ids are wired in. */
+  href?: string;
 }
 
 export const FOLLOWED_TEAMS = ["Thunder", "Nuggets"];
@@ -200,7 +128,11 @@ export const TEAM_RESULTS: FollowedTeamResult[] = [
 ];
 
 // ── Add to locker ─────────────────────────────────────────────────────────
-export const LOCKER_SUMMARY = { players: WATCHLIST.length, teams: FOLLOWED_TEAMS.length, primaryTeam: "Oklahoma City Thunder" };
+export const LOCKER_SUMMARY = {
+  players: PLACEHOLDER_FOLLOWED_PLAYER_COUNT,
+  teams: FOLLOWED_TEAMS.length,
+  primaryTeam: "Oklahoma City Thunder",
+};
 
 // ── Jump back in ──────────────────────────────────────────────────────────
 // Will come from ViewEvent. The only module that personalizes with zero
@@ -210,18 +142,24 @@ export interface RecentView {
   id: string;
   label: string;
   kind: "player" | "team" | "game";
-  href: string;
+  href?: string;
   viewCount: number;
   player?: PlayerRef;
   team?: TeamRef;
 }
 
+// Every card on /home links to a route that resolves an INTERNAL uuid
+// (/players/:id, /teams/:id, /games/:id, /compare?ids=). Placeholder rows have
+// no such id — they are not database rows — so `href` is deliberately left
+// undefined here and the cards render as non-navigating via MaybeLink. An
+// earlier version linked with `nbaPlayerId` and with literal "placeholder-*"
+// strings, which made every card fire a request that could only 404.
 export const RECENT_VIEWS: RecentView[] = [
-  { id: "v1", label: "Jokić", kind: "player", href: "/players/placeholder-jokic", viewCount: 4, player: WATCHLIST[1].player },
-  { id: "v2", label: "Thunder", kind: "team", href: "/teams/placeholder-okc", viewCount: 1, team: OKC },
-  { id: "v3", label: "OKC @ DEN", kind: "game", href: "/games/placeholder-okc-den", viewCount: 1 },
-  { id: "v4", label: "Wembanyama", kind: "player", href: "/players/placeholder-wemby", viewCount: 1, player: WATCHLIST[4].player },
-  { id: "v5", label: "Şengün", kind: "player", href: "/players/placeholder-sengun", viewCount: 2, player: WATCHLIST[8].player },
+  { id: "v1", label: "Jokić", kind: "player", viewCount: 4, player: JOKIC },
+  { id: "v2", label: "Thunder", kind: "team", viewCount: 1, team: OKC },
+  { id: "v3", label: "OKC @ DEN", kind: "game", viewCount: 1 },
+  { id: "v4", label: "Wembanyama", kind: "player", viewCount: 1, player: WEMBANYAMA },
+  { id: "v5", label: "Şengün", kind: "player", viewCount: 2, player: SENGUN },
 ];
 
 // ── Saved shelf ───────────────────────────────────────────────────────────
@@ -233,6 +171,8 @@ export interface SavedComparison {
   id: string;
   name: string;
   players: PlayerRef[];
+  /** Route to /compare for these players. Undefined until real ids are wired in. */
+  href?: string;
 }
 
 export interface SavedLineup {
@@ -245,8 +185,8 @@ export interface SavedLineup {
 }
 
 export const SAVED_COMPARISONS: SavedComparison[] = [
-  { id: "c1", name: "MVP ladder", players: [WATCHLIST[0].player, WATCHLIST[1].player, WATCHLIST[2].player] },
-  { id: "c2", name: "Sophomore wings", players: [WATCHLIST[4].player, WATCHLIST[7].player] },
+  { id: "c1", name: "MVP ladder", players: [SGA, JOKIC, GIANNIS] },
+  { id: "c2", name: "Sophomore wings", players: [WEMBANYAMA, CUNNINGHAM] },
 ];
 
 export const SAVED_LINEUPS: SavedLineup[] = [

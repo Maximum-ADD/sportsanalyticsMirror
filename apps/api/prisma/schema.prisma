@@ -54,6 +54,15 @@ model User {
 
   sessions Session[]
   accounts Account[]
+
+  // Personalization — the user's own rows (see the models at the foot of
+  // this file). Cascade on delete: deleting an account takes its choices
+  // with it, leaving no orphaned personalization behind.
+  followedPlayers  FollowedPlayer[]
+  followedTeams    FollowedTeam[]
+  gamePicks        GamePick[]
+  savedComparisons SavedComparison[]
+  savedLineups     SavedLineup[]
 }
 
 model Session {
@@ -98,8 +107,8 @@ model Verification {
 }
 
 model Team {
-  id           String   @id @default(uuid())
-  nbaTeamId    Int      @unique
+  id           String  @id @default(uuid())
+  nbaTeamId    Int     @unique
   name         String
   abbreviation String
   city         String
@@ -107,15 +116,17 @@ model Team {
   division     String
   logoUrl      String?
 
-  players Player[]
-  homeGames Game[] @relation("HomeTeam")
-  awayGames Game[] @relation("AwayTeam")
+  players         Player[]
+  homeGames       Game[]           @relation("HomeTeam")
+  awayGames       Game[]           @relation("AwayTeam")
   playerGameStats PlayerGameStat[]
+
+  followedBy FollowedTeam[]
 }
 
 model Player {
-  id           String   @id @default(uuid())
-  nbaPlayerId  Int      @unique
+  id           String  @id @default(uuid())
+  nbaPlayerId  Int     @unique
   firstName    String
   lastName     String
   position     String
@@ -124,7 +135,7 @@ model Player {
   jerseyNumber String?
   headshotUrl  String?
   teamId       String?
-  team         Team?    @relation(fields: [teamId], references: [id])
+  team         Team?   @relation(fields: [teamId], references: [id])
 
   // Bio fields from CommonPlayerInfo, layered onto the roster-sourced
   // fields above. Deliberately excludes that endpoint's TEAM_ID/TEAM_NAME/
@@ -145,6 +156,10 @@ model Player {
   gameStats   PlayerGameStat[]
   predictions PlayerPrediction[]
   lineupSlots LineupSlot[]
+
+  followedBy           FollowedPlayer[]
+  savedComparisonSlots SavedComparisonPlayer[]
+  savedLineupSlots     SavedLineupSlot[]
 }
 
 model Game {
@@ -174,6 +189,8 @@ model Game {
   events       GameEvent[]
   prediction   GamePrediction?
 
+  picks        GamePick[]
+
   @@index([seasonType])
 }
 
@@ -195,11 +212,11 @@ model GameEvent {
 
 // Per-game boxscore figures — derived from GameEvent rows, never entered by hand.
 model PlayerGameStat {
-  id        String  @id @default(uuid())
-  playerId  String
-  player    Player  @relation(fields: [playerId], references: [id])
-  gameId    String
-  game      Game    @relation(fields: [gameId], references: [id])
+  id       String @id @default(uuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id])
+  gameId   String
+  game     Game   @relation(fields: [gameId], references: [id])
 
   // The team this player suited up for IN THIS GAME — not necessarily
   // Player.teamId (a player's current team), which drifts out of sync the
@@ -214,18 +231,18 @@ model PlayerGameStat {
   teamId String?
   team   Team?   @relation(fields: [teamId], references: [id])
 
-  minutes      Int
-  points       Int
-  rebounds     Int
-  assists      Int
-  steals       Int
-  blocks       Int
-  turnovers    Int
-  fieldGoalsMade Int
+  minutes             Int
+  points              Int
+  rebounds            Int
+  assists             Int
+  steals              Int
+  blocks              Int
+  turnovers           Int
+  fieldGoalsMade      Int
   fieldGoalsAttempted Int
-  threesMade   Int
-  threesAttempted Int
-  freeThrowsMade Int
+  threesMade          Int
+  threesAttempted     Int
+  freeThrowsMade      Int
   freeThrowsAttempted Int
 
   // Everything below is nullable because it only arrives from an ingestion
@@ -348,4 +365,178 @@ model GamePrediction {
   createdAt DateTime @default(now())
 
   @@index([gameId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Personalization models. Everything below records a CHOICE THE USER MADE —
+// which players they follow, which games they called, which comparisons and
+// lineups they saved. No NBA data is ingested, derived or duplicated here
+// beyond the deliberate at-the-time snapshots documented on GamePick and
+// SavedLineup; the pipeline's own tables (Team/Player/Game/PlayerGameStat/
+// GamePrediction/PlayerPrediction/Lineup) stay read-only exactly as before.
+//
+// Every relation uses onDelete: Cascade, toward Player/Team/Game as well as
+// User. Prisma's default (Restrict) would mean a single followed player is
+// enough to make a re-ingestion that deletes and rewrites roster rows fail
+// outright — a user's bookmark must never be able to block the data pipeline.
+// ─────────────────────────────────────────────────────────────────────────
+
+// A player the user has chosen to keep an eye on, with an optional personal
+// note ("watch his 3PT% after the trade").
+model FollowedPlayer {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, playerId])
+  @@index([userId, createdAt])
+}
+
+// A team the user follows. `isPrimary` marks the one team the home page
+// leads with; enforcing "at most one primary" is the service layer's job,
+// not the schema's (Postgres partial unique indexes aren't expressible in
+// Prisma schema, and the invariant is cheap to keep in a transaction).
+model FollowedTeam {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, teamId])
+  @@index([userId, createdAt])
+}
+
+// Whether the user's call turned out right, once the game has a final score.
+enum PickOutcome {
+  CORRECT
+  MISSED
+}
+
+// The user calling a COMPLETED game whose score they have not been shown:
+// "I think this team won". Only a game that already has a final score and a
+// stored prediction can be called, and it is graded immediately — see
+// PicksService.createPick and ChallengeService.findNextUncalledGame.
+//
+// This scores recall and judgement against past games, not forecasts of
+// future ones. The same table becomes forward picks unchanged the day
+// ingestion starts writing unplayed Game rows.
+model GamePick {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  // Which side the user took. A plain String rather than a relation to Team:
+  // it is always one of the game's own homeTeamId/awayTeamId, validated at
+  // write time, and a second Team relation here would add a foreign key that
+  // buys nothing the game's own two team relations don't already give.
+  pickedTeamId String
+
+  // Right or wrong, filled in from the game's final score.
+  outcome PickOutcome
+
+  // ── Model snapshot, taken at the moment the pick was made ──
+  // These duplicate GamePrediction's columns on purpose. GamePrediction is
+  // `gameId @unique` and is UPSERTED by apps/predictor/predict_games.py, so
+  // the row is overwritten in place on every run: the numbers the model was
+  // showing when the user made this call are destroyed the next time the
+  // predictor runs. Copying them here is the only way the question "what did
+  // the model say when I called it, and did I disagree?" stays answerable —
+  // reading GamePrediction later answers a different question (what the model
+  // says NOW), silently and with no way to tell the difference.
+  modelHomeWinProbabilityAtPick Float
+  modelPredictedMarginAtPick    Float?
+  homeTeamEloAtPick             Float
+  awayTeamEloAtPick             Float
+
+  createdAt DateTime @default(now())
+
+  // One call per game per person — a pick is a commitment, not a running
+  // opinion, so a second call on the same game is REJECTED with a 409 rather
+  // than replacing the first. There is no update path; see
+  // translatePickWriteError in picks.service.ts, which turns the P2002 this
+  // constraint raises into that 409.
+  @@unique([userId, gameId])
+  @@index([userId, createdAt])
+}
+
+// A named set of players the user lined up side by side, so the same
+// comparison can be reopened later without rebuilding it.
+model SavedComparison {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  players SavedComparisonPlayer[]
+
+  @@index([userId, createdAt])
+}
+
+// One player within a saved comparison. `position` is the left-to-right
+// ordering the user arranged them in, not a basketball position — the
+// player's basketball position lives on Player.position.
+model SavedComparisonPlayer {
+  id                String          @id @default(uuid())
+  savedComparisonId String
+  savedComparison   SavedComparison @relation(fields: [savedComparisonId], references: [id], onDelete: Cascade)
+  playerId          String
+  player            Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  position          Int
+
+  @@unique([savedComparisonId, playerId])
+}
+
+// A lineup the user chose to keep. `sourceLineupId` records which optimizer
+// run it came from (a plain String, not a relation: Lineup rows are the
+// optimizer's own churn and may be pruned, and the saved copy must outlive
+// them).
+model SavedLineup {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+
+  sourceLineupId String?
+
+  // ── Totals snapshot, taken at the moment the lineup was saved ──
+  // PlayerPrediction is append-and-take-latest-by-asOf: the optimizer writes
+  // a fresh row per player per run and readers take the newest. Re-deriving
+  // these totals on read would therefore quietly return different numbers
+  // than the ones the user was looking at when they hit save — the lineup
+  // would appear to change on its own. Storing them makes the saved lineup a
+  // record of a decision rather than a live recomputation.
+  totalPredictedPointsAtSave Float
+  totalSalaryAtSave          Int
+  budgetAtSave               Int
+
+  createdAt DateTime @default(now())
+
+  slots SavedLineupSlot[]
+
+  @@index([userId, createdAt])
+}
+
+// One player within a saved lineup, with that player's predicted points and
+// salary as they stood at save time — same reason as SavedLineup's totals.
+model SavedLineupSlot {
+  id            String      @id @default(uuid())
+  savedLineupId String
+  savedLineup   SavedLineup @relation(fields: [savedLineupId], references: [id], onDelete: Cascade)
+  playerId      String
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  predictedPointsAtSave Float
+  salaryAtSave          Int
+
+  @@unique([savedLineupId, playerId])
 }

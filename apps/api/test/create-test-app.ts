@@ -18,7 +18,18 @@ export async function createTestApp(): Promise<INestApplication> {
   const server = expressFactory();
   server.use(expressFactory.json());
 
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { logger: false });
+  // { bodyParser: false } mirrors main.ts, and is load-bearing rather than
+  // cosmetic. express.json() above comes from body-parser 2.x (Express 5),
+  // which no longer sets the legacy `req._body` flag; Nest's own bundled
+  // body-parser is 1.x and uses exactly that flag to decide whether the body
+  // has already been read. Left on, it re-reads a stream express.json() has
+  // already consumed and every request carrying a JSON body dies with
+  // "stream is not readable" (500). Harmless while the API was read-only —
+  // fatal the moment a POST/PATCH/PUT route exists.
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    logger: false,
+    bodyParser: false,
+  });
   app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();
   return app;
