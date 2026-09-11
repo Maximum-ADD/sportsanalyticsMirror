@@ -25,8 +25,27 @@ const TECH_STACK = [
   "Gitea Actions",
 ];
 
-const HERO_CASCADE = [
-  { label: "Players list", left: "29%", top: "0%" },
+interface HeroPanel {
+  // Doubles as the alt text once `src` is set, so it reads as a description
+  // rather than a nav label. Without a src the panel is aria-hidden and this
+  // is only a React key.
+  label: string;
+  left: string;
+  top: string;
+  // When set, the panel renders this screenshot instead of a grey block.
+  // Ship these at exactly 16/9 to match the panel's ratio, so object-cover
+  // has nothing to crop.
+  src?: string;
+}
+
+const HERO_CASCADE: HeroPanel[] = [
+  {
+    label:
+      "The signed-in home page: a model challenge with the score withheld, above a watchlist of followed players, with saved comparisons and lineups in the right rail",
+    src: "/screenshots/home-locker.webp",
+    left: "29%",
+    top: "0%",
+  },
   { label: "Player profile", left: "0%", top: "26%" },
   { label: "Optimizer", left: "29%", top: "57%" },
 ];
@@ -81,6 +100,7 @@ export function LandingPage() {
                   key={panel.label}
                   ratio={16 / 9}
                   label={panel.label}
+                  src={panel.src}
                   className="absolute"
                   style={{ left: panel.left, top: panel.top, width: PANEL_WIDTH }}
                 />
