@@ -64,6 +64,15 @@ describe("LandingMatchWidget", () => {
     expect(card).toHaveTextContent(/LAL 38, NYK 24/);
   });
 
+  it("only ever asks for a completed game, never an upcoming one with no score yet", async () => {
+    mockFetchGames.mockResolvedValue({ data: [GAME], page: 1, pageSize: 1, total: 1 });
+
+    renderWithProviders(<LandingMatchWidget />);
+
+    await screen.findByRole("group", { name: /match updates/i });
+    expect(mockFetchGames).toHaveBeenCalledWith(expect.objectContaining({ status: "completed" }));
+  });
+
   it("does not claim the result is live", async () => {
     mockFetchGames.mockResolvedValue({ data: [GAME], page: 1, pageSize: 1, total: 1 });
 

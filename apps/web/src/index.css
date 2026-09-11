@@ -160,6 +160,22 @@
     }
   }
 
+  /* A soft light band sweeping across a blurred loading section — the
+     blur alone reads as "loading" but is indistinguishable from a frozen
+     page at a glance, so this sweep is the difference between "waiting"
+     and "stuck". Deliberately not tied to the basketball's 0.7s cycle:
+     this can sit on screen far longer (a slow fetch), so a slower, calmer
+     loop reads as patient rather than anxious. */
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
   /* Condensed display face for hero-scale headlines — regular system fonts
      read as generic at this size; a real display face is what makes a hero
      look designed rather than just "big text". Falls through to a
