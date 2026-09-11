@@ -37,3 +37,12 @@ services:
         sync: false
       - key: WEB_ORIGIN
         sync: false
+      # Supabase Storage — server-side only, used for avatar uploads
+      # (see apps/api/src/me/avatar-storage.service.ts). SUPABASE_SECRET_KEY
+      # bypasses Row Level Security; never expose it to the frontend.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_AVATARS_BUCKET
+        sync: false
