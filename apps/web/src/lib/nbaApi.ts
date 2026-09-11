@@ -1,16 +1,9 @@
-import { deleteJson, fetchJson, patchJson, postJson } from "./apiClient";
+import { fetchJson } from "./apiClient";
 import type {
   Game,
   GameDetail,
   GamePrediction,
   Lineup,
-  ChallengeGame,
-  GradedPick,
-  Leaderboard,
-  ModelAccuracyReport,
-  PickRecord,
-  PlayerFollow,
-  WatchlistEntry,
   Player,
   PlayerComparisonResponse,
   PlayerPredictionSummary,
@@ -145,65 +138,4 @@ export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {
 
 export function fetchGameDetail(gameId: string): Promise<GameDetail> {
   return fetchJson<GameDetail>(`/v1/games/${gameId}`);
-}
-
-// Public — no session required, so the home page's published-figures section
-// renders the same for a signed-out visitor as for anyone else.
-export function fetchModelAccuracy(): Promise<ModelAccuracyReport> {
-  return fetchJson<ModelAccuracyReport>("/v1/analytics/model-accuracy");
-}
-
-// ── Beat the Model ────────────────────────────────────────────────────────
-// All three need a session; a signed-out caller gets a 401 that the UI turns
-// into a sign-in prompt rather than an error.
-
-// Throws ApiError 404 once the user has called every game we hold.
-export function fetchNextChallenge(): Promise<ChallengeGame> {
-  return fetchJson<ChallengeGame>("/v1/me/challenge/next");
-}
-
-export function submitPick(gameId: string, pickedTeamId: string): Promise<GradedPick> {
-  return postJson<GradedPick>("/v1/me/picks", { gameId, pickedTeamId });
-}
-
-export function fetchPickRecord(): Promise<PickRecord> {
-  return fetchJson<PickRecord>("/v1/me/picks/record");
-}
-
-// Public, like the accuracy ledger — no session required.
-export function fetchLeaderboard(): Promise<Leaderboard> {
-  return fetchJson<Leaderboard>("/v1/analytics/leaderboard");
-}
-
-// ── Watchlist ─────────────────────────────────────────────────────────────
-// Session required; a signed-out caller gets a 401 the board turns into a
-// sign-in prompt rather than an error.
-
-export function fetchWatchlist(
-  params: { page?: number; pageSize?: number } = {}
-): Promise<PagedResult<WatchlistEntry>> {
-  return fetchJson<PagedResult<WatchlistEntry>>(`/v1/me/watchlist${toQueryString(params)}`);
-}
-
-// Idempotent — the home page's follow control must be safe to double-tap.
-export function followPlayer(playerId: string): Promise<PlayerFollow> {
-  return postJson<PlayerFollow>(`/v1/me/follows/players/${playerId}`, {});
-}
-
-// Just the ids, so a follow button can render its own state without paging
-// the whole board.
-export function fetchWatchedPlayerIds(): Promise<{ playerIds: string[] }> {
-  return fetchJson<{ playerIds: string[] }>("/v1/me/watchlist/ids");
-}
-
-// Replaces the scouting note on a player already followed. 404s rather than
-// creating the follow, so the caller cannot accidentally follow by annotating.
-export function updateWatchlistNote(playerId: string, note: string | null): Promise<PlayerFollow> {
-  return patchJson<PlayerFollow>(`/v1/me/follows/players/${playerId}`, { note });
-}
-
-// Unfollowing someone you never followed is not an error — the route reports
-// { playerId, removed } so the caller can tell the difference.
-export function unfollowPlayer(playerId: string): Promise<{ playerId: string; removed: boolean }> {
-  return deleteJson<{ playerId: string; removed: boolean }>(`/v1/me/follows/players/${playerId}`);
 }

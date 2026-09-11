@@ -1,14 +1,18 @@
+import { AddToLockerCard } from "@/components/home/AddToLockerCard";
 import { BeatTheModelCard } from "@/components/home/BeatTheModelCard";
-import { LeaderboardCard } from "@/components/home/LeaderboardCard";
+import { JumpBackInRail } from "@/components/home/JumpBackInRail";
 import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
 import { WatchlistBoard } from "@/components/home/WatchlistBoard";
 import { YourTeamsList } from "@/components/home/YourTeamsList";
 import {
+  CHALLENGE,
   FOLLOWED_TEAMS,
+  RECENT_VIEWS,
   SAVED_COMPARISONS,
   SAVED_LINEUPS,
   TEAM_RESULTS,
+  WATCHLIST,
 } from "@/components/home/placeholderData";
 
 // "The Locker" — the signed-in home page.
@@ -27,17 +31,10 @@ import {
 // app shell labelled "Get Started". The old hero here was a near
 // point-for-point rebuild of LandingPage's, which is the whole bug.
 //
-// PARTIALLY WIRED. Beat the Model, the watchlist board, the accuracy
-// leaderboard and the model accuracy ledger all read the live API. Your teams
-// and the saved shelf still render from components/home/placeholderData.ts,
-// which stays the single seam to replace as each of those is wired up.
-//
-// AddToLockerCard and JumpBackInRail are deliberately NOT rendered here. Both
-// were pure layout with nothing behind them — Add To Locker searched nothing
-// and Jump Back In listed views no one had recorded — so they are off the page
-// until there is something real for them to do. The components are kept rather
-// than deleted: Add To Locker returns when there is a search endpoint behind
-// it, and Jump Back In when view history is actually stored.
+// NOT WIRED TO THE API YET. Every figure comes from
+// components/home/placeholderData.ts, which is the single seam to replace
+// with a GET /v1/me/dashboard query. Nothing here reads useSession either,
+// so the greeting and the record deliberately do not appear.
 export function HomePage() {
   return (
     <div className="min-h-full bg-landing-hero">
@@ -50,13 +47,14 @@ export function HomePage() {
 
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
           <div className="flex flex-col gap-5 lg:col-span-8">
-            <BeatTheModelCard />
-            <WatchlistBoard />
+            <BeatTheModelCard challenge={CHALLENGE} />
+            <WatchlistBoard entries={WATCHLIST} />
             <YourTeamsList followedTeams={FOLLOWED_TEAMS} results={TEAM_RESULTS} />
           </div>
 
           <div className="flex flex-col gap-4 lg:col-span-4">
-            <LeaderboardCard />
+            <AddToLockerCard />
+            <JumpBackInRail views={RECENT_VIEWS} />
             <SavedShelfCard comparisons={SAVED_COMPARISONS} lineups={SAVED_LINEUPS} />
           </div>
         </div>

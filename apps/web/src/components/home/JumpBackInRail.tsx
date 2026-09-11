@@ -1,4 +1,4 @@
-import { MaybeLink } from "./MaybeLink";
+import { Link } from "react-router-dom";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
 import { LockerSection } from "./LockerSection";
@@ -19,7 +19,7 @@ export function JumpBackInRail({ views }: JumpBackInRailProps) {
       <ul className="flex flex-wrap gap-1.5">
         {views.map((view) => (
           <li key={view.id}>
-            <MaybeLink
+            <Link
               to={view.href}
               className="inline-flex items-center gap-2 border border-landing-light bg-landing-hero py-0.5 pr-2.5 pl-0.5 text-[11.5px] text-landing-ink transition-colors hover:border-locker-leather focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
             >
@@ -36,7 +36,7 @@ export function JumpBackInRail({ views }: JumpBackInRailProps) {
                 {view.kind}
                 {view.viewCount > 1 && ` ×${view.viewCount}`}
               </span>
-            </MaybeLink>
+            </Link>
           </li>
         ))}
       </ul>
