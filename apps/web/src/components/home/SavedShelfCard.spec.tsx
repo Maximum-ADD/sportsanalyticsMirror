@@ -2,15 +2,17 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/apiClient";
-import { fetchSavedComparisons, fetchSavedLineups } from "@/lib/nbaApi";
+import { fetchSavedComparisons } from "@/lib/nbaApi";
+import { fetchSavedLineups } from "@/lib/meApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
-import type { LineupDrift, Player, SavedComparison, SavedLineup } from "@/types/nba";
+import type { Player, SavedComparison, SavedLineup, SavedLineupDrift } from "@/types/nba";
 import { SavedShelfCard } from "./SavedShelfCard";
 
-vi.mock("@/lib/nbaApi", () => ({
-  fetchSavedComparisons: vi.fn(),
-  fetchSavedLineups: vi.fn(),
-}));
+vi.mock("@/lib/nbaApi", () => ({ fetchSavedComparisons: vi.fn() }));
+
+// Saved lineups come from GET /v1/me/lineups, which lives in meApi — not the
+// /v1/me/saved/lineups route this card originally called.
+vi.mock("@/lib/meApi", () => ({ fetchSavedLineups: vi.fn() }));
 
 function createPlayer(id: string, nbaPlayerId: number, lastName: string): Player {
   return {
@@ -46,14 +48,14 @@ const COMPARISON: SavedComparison = {
   ],
 };
 
-function createLineup(drift: LineupDrift): SavedLineup {
+function createLineup(drift: SavedLineupDrift | null): SavedLineup {
   return {
     id: "lineup-1",
     name: "Value Core",
     createdAt: "2026-02-01T00:00:00.000Z",
-    sourceLineupId: "src-1",
+    budget: 50_000,
     totalPredictedPointsAtSave: 214.8,
-    budgetAtSave: 50_000,
+    totalSalaryAtSave: 48_200,
     slots: [],
     drift,
   };
@@ -63,13 +65,13 @@ function page<T>(rows: T[]) {
   return { data: rows, page: 1, pageSize: 5, total: rows.length };
 }
 
-const NO_DRIFT: LineupDrift = { pointsDelta: 0, salaryDelta: 0, isOverBudget: false };
+const NO_DRIFT: SavedLineupDrift = { pointsDelta: 0, salaryDelta: 0, isOverBudget: false };
 
 describe("SavedShelfCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchSavedComparisons).mockResolvedValue(page([COMPARISON]));
-    vi.mocked(fetchSavedLineups).mockResolvedValue(page([createLineup(NO_DRIFT)]));
+    vi.mocked(fetchSavedLineups).mockResolvedValue([createLineup(NO_DRIFT)]);
   });
 
   it("lists a saved comparison and links it to the real player ids", async () => {
@@ -85,7 +87,7 @@ describe("SavedShelfCard", () => {
 
     expect(await screen.findByRole("link", { name: "Value Core" })).toBeInTheDocument();
     expect(screen.getByText(/214\.8 pts/)).toBeInTheDocument();
-    expect(screen.getByText(/\$50,000/)).toBeInTheDocument();
+    expect(screen.getByText(/\$48,200 of \$50,000/)).toBeInTheDocument();
   });
 
   it("says a lineup is unchanged when nothing has moved", async () => {
@@ -98,9 +100,9 @@ describe("SavedShelfCard", () => {
   // replaced said "up X pts" unconditionally, which would report a fall as a
   // rise the moment real data arrived.
   it("reads a rise as up", async () => {
-    vi.mocked(fetchSavedLineups).mockResolvedValue(
-      page([createLineup({ pointsDelta: 7.5, salaryDelta: 800, isOverBudget: false })])
-    );
+    vi.mocked(fetchSavedLineups).mockResolvedValue([
+      createLineup({ pointsDelta: 7.5, salaryDelta: 800, isOverBudget: false }),
+    ]);
 
     renderWithProviders(<SavedShelfCard />);
 
@@ -109,9 +111,9 @@ describe("SavedShelfCard", () => {
   });
 
   it("reads a fall as down rather than as a rise", async () => {
-    vi.mocked(fetchSavedLineups).mockResolvedValue(
-      page([createLineup({ pointsDelta: -4.2, salaryDelta: -500, isOverBudget: false })])
-    );
+    vi.mocked(fetchSavedLineups).mockResolvedValue([
+      createLineup({ pointsDelta: -4.2, salaryDelta: -500, isOverBudget: false }),
+    ]);
 
     renderWithProviders(<SavedShelfCard />);
 
@@ -120,18 +122,27 @@ describe("SavedShelfCard", () => {
   });
 
   it("calls out a lineup that has drifted over the cap", async () => {
-    vi.mocked(fetchSavedLineups).mockResolvedValue(
-      page([createLineup({ pointsDelta: 1, salaryDelta: 2000, isOverBudget: true })])
-    );
+    vi.mocked(fetchSavedLineups).mockResolvedValue([
+      createLineup({ pointsDelta: 1, salaryDelta: 2000, isOverBudget: true }),
+    ]);
 
     renderWithProviders(<SavedShelfCard />);
 
     expect(await screen.findByText(/now over cap/i)).toBeInTheDocument();
   });
 
+  it("says there is nothing to compare against rather than reporting zero drift", async () => {
+    vi.mocked(fetchSavedLineups).mockResolvedValue([createLineup(null)]);
+
+    renderWithProviders(<SavedShelfCard />);
+
+    expect(await screen.findByText(/no current prediction to compare against/i)).toBeInTheDocument();
+    expect(screen.queryByText(/unchanged since/i)).not.toBeInTheDocument();
+  });
+
   it("points an empty shelf at the pages that fill it", async () => {
     vi.mocked(fetchSavedComparisons).mockResolvedValue(page([]));
-    vi.mocked(fetchSavedLineups).mockResolvedValue(page([]));
+    vi.mocked(fetchSavedLineups).mockResolvedValue([]);
 
     renderWithProviders(<SavedShelfCard />);
 
