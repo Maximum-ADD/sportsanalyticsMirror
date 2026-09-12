@@ -1,9 +1,15 @@
-import { fetchJson } from "./apiClient";
+import { fetchJson, sendJson } from "./apiClient";
 import type {
   Game,
   GameDetail,
   GamePrediction,
   Lineup,
+  ChallengeGame,
+  GradedPick,
+  Leaderboard,
+  ModelAccuracyReport,
+  PickRecord,
+  WatchlistEntry,
   Player,
   PlayerComparisonResponse,
   PlayerLeadersResponse,
@@ -202,4 +208,45 @@ export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {
 
 export function fetchGameDetail(gameId: string): Promise<GameDetail> {
   return fetchJson<GameDetail>(`/v1/games/${gameId}`);
+}
+
+// Public — no session required, so the home page's published-figures section
+// renders the same for a signed-out visitor as for anyone else.
+export function fetchModelAccuracy(): Promise<ModelAccuracyReport> {
+  return fetchJson<ModelAccuracyReport>("/v1/analytics/model-accuracy");
+}
+
+// ── Beat the Model ────────────────────────────────────────────────────────
+// All three need a session; a signed-out caller gets a 401 that the UI turns
+// into a sign-in prompt rather than an error.
+
+// Throws ApiError 404 once the user has called every game we hold.
+export function fetchNextChallenge(): Promise<ChallengeGame> {
+  return fetchJson<ChallengeGame>("/v1/me/challenge/next");
+}
+
+export function submitPick(gameId: string, pickedTeamId: string): Promise<GradedPick> {
+  return sendJson<GradedPick>("/v1/me/picks", "POST", { gameId, pickedTeamId });
+}
+
+export function fetchPickRecord(): Promise<PickRecord> {
+  return fetchJson<PickRecord>("/v1/me/picks/record");
+}
+
+// Public, like the accuracy ledger — no session required.
+export function fetchLeaderboard(): Promise<Leaderboard> {
+  return fetchJson<Leaderboard>("/v1/analytics/leaderboard");
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────
+// How the followed players are DOING. Who you follow, and following or
+// unfollowing anyone, lives in lib/meApi.ts against /v1/me — there is one
+// follow graph and one set of routes that write it.
+//
+// Session required; a signed-out caller gets a 401, which the board turns
+// into a sign-in prompt rather than an error.
+export function fetchWatchlist(
+  params: { page?: number; pageSize?: number } = {}
+): Promise<PagedResult<WatchlistEntry>> {
+  return fetchJson<PagedResult<WatchlistEntry>>(`/v1/me/watchlist${toQueryString(params)}`);
 }

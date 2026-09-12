@@ -246,6 +246,160 @@ export interface GamePrediction {
   createdAt: string;
 }
 
+// ── Model accuracy ────────────────────────────────────────────────────────
+// GET /v1/analytics/model-accuracy — public, and deliberately identical for
+// every account. Mirrors ModelAccuracyReport in
+// apps/api/src/analytics/model-accuracy.service.ts.
+//
+// Every figure is nullable because "no games to evaluate yet" is a real
+// state, not zero: reporting 0% accuracy on an empty database would be a
+// lie, so the API returns null and the UI renders a dash.
+export interface CalibrationBand {
+  /** e.g. "60-70" — the favourite's predicted probability band. */
+  band: string;
+  meanPredicted: number | null;
+  actualWinRate: number | null;
+  gamesInBand: number;
+}
+
+export interface ModelAccuracyReport {
+  accuracy: number | null;
+  brierScore: number | null;
+  /** What "always pick the home team" scores on the same games. */
+  homeBaselineAccuracy: number | null;
+  gamesEvaluated: number;
+  /** Predictions genuinely made before tip-off (createdAt < gameDate). */
+  forwardPredictionCount: number;
+  calibration: CalibrationBand[];
+}
+
+// ── Beat the Model ────────────────────────────────────────────────────────
+// GET /v1/me/challenge/next. Note what is NOT here: homeScore and awayScore.
+// The server withholds them until a call has been committed, which is the
+// whole mechanic — see apps/api/src/me/picks/pick-serializers.ts.
+export interface ChallengeTeam {
+  id: string;
+  name: string;
+  city: string;
+  abbreviation: string;
+  logoUrl: string | null;
+}
+
+export interface ChallengePrediction {
+  homeWinProbability: number;
+  homeTeamEloPre: number;
+  awayTeamEloPre: number;
+  predictedMarginHome: number | null;
+  marginMethod: string | null;
+}
+
+export interface ChallengeGame {
+  gameId: string;
+  nbaGameId: string;
+  gameDate: string;
+  season: string;
+  homeTeam: ChallengeTeam;
+  awayTeam: ChallengeTeam;
+  prediction: ChallengePrediction;
+}
+
+export type PickOutcome = "CORRECT" | "MISSED";
+
+// POST /v1/me/picks — the graded call, with the answer released only now that
+// the pick row exists.
+export interface GradedPick {
+  id: string;
+  gameId: string;
+  pickedTeamId: string;
+  outcome: PickOutcome;
+  createdAt: string;
+  finalScore: { homeScore: number; awayScore: number; winningTeamId: string };
+  model: {
+    homeWinProbability: number;
+    predictedMarginHome: number | null;
+    homeTeamElo: number;
+    awayTeamElo: number;
+    favoriteTeamId: string;
+    outcome: PickOutcome;
+  };
+}
+
+// GET /v1/me/picks/record — the user against the model on exactly the games
+// the user called. That same-subset restriction is what makes it a fair
+// head-to-head, unlike the leaderboard's whole-season model row.
+export interface PickRecord {
+  wins: number;
+  losses: number;
+  total: number;
+  hitRate: number;
+  modelWins: number;
+  modelLosses: number;
+  modelHitRate: number;
+}
+
+// ── Leaderboard ───────────────────────────────────────────────────────────
+// GET /v1/analytics/leaderboard — public, and the model is a row on it.
+export interface LeaderboardEntry {
+  rank: number;
+  kind: "user" | "model";
+  name: string;
+  calls: number;
+  correct: number;
+  hitRate: number;
+}
+
+export interface Leaderboard {
+  /** How many calls a user needs before they appear at all. */
+  minimumCallsRequired: number;
+  entries: LeaderboardEntry[];
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────
+// GET /v1/me/watchlist — the signed-in user's followed players with averages
+// derived from PlayerGameStat, plus their own scouting note.
+export interface WatchlistTeam {
+  id: string;
+  /** The nba.com id the crest URL is built from — see lib/nbaMedia.ts. */
+  nbaTeamId: number;
+  name: string;
+  city: string;
+  abbreviation: string;
+  logoUrl: string | null;
+}
+
+export interface WatchlistSeasonAverages {
+  gamesPlayed: number;
+  pointsPerGame: number;
+  reboundsPerGame: number;
+  assistsPerGame: number;
+}
+
+export interface RecentGamePoints {
+  gameId: string;
+  gameDate: string;
+  points: number;
+}
+
+export interface WatchlistEntry {
+  player: {
+    /** Our own uuid — this is what /players/:id resolves. */
+    id: string;
+    /** The nba.com id the headshot URL is built from. */
+    nbaPlayerId: number;
+    firstName: string;
+    lastName: string;
+    position: string;
+    jerseyNumber: string | null;
+    headshotUrl: string | null;
+    team: WatchlistTeam | null;
+  };
+  followedAt: string;
+  seasonAverages: WatchlistSeasonAverages;
+  /** Most recent game FIRST — reverse before plotting a left-to-right trend. */
+  recentPoints: RecentGamePoints[];
+}
+
+
 // A team's current Elo rating, read from its own most recent predicted
 // game (upcoming if it has one — the real, live rating — otherwise its
 // last completed game's pre-kickoff snapshot). See TeamsService.getEloRatings

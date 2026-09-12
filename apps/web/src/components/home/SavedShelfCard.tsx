@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { MaybeLink } from "./MaybeLink";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { Card } from "@/components/ui/card";
 import type { SavedComparison, SavedLineup } from "./placeholderData";
@@ -51,12 +52,12 @@ export function SavedShelfCard({ comparisons, lineups }: SavedShelfCardProps) {
                 />
               ))}
             </span>
-            <Link
-              to={`/compare?ids=${comparison.players.map((player) => player.nbaPlayerId).join(",")}`}
+            <MaybeLink
+              to={comparison.href}
               className="text-[12.5px] font-medium text-landing-ink hover:text-locker-leather"
             >
               {comparison.name}
-            </Link>
+            </MaybeLink>
             <span className="ml-auto text-[11px] text-locker-ink-muted tabular-nums">
               {comparison.players.length} players
             </span>

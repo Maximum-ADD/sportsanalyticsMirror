@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { MaybeLink } from "./MaybeLink";
 import { TeamBadge } from "@/components/TeamBadge";
 import { LockerSection } from "./LockerSection";
 import type { FollowedTeamResult } from "./placeholderData";
@@ -18,8 +18,8 @@ export function YourTeamsList({ followedTeams, results }: YourTeamsListProps) {
       <ul className="flex flex-col gap-2">
         {results.map((result) => (
           <li key={result.gameId}>
-            <Link
-              to={`/games/${result.gameId}`}
+            <MaybeLink
+              to={result.href}
               className="flex flex-wrap items-center gap-3 border border-landing-light bg-locker-surface px-3.5 py-2.5 transition-colors hover:border-locker-leather focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
             >
               <TeamBadge team={result.yourTeam} size="sm" />
@@ -48,7 +48,7 @@ export function YourTeamsList({ followedTeams, results }: YourTeamsListProps) {
               >
                 {result.won ? "W" : "L"}
               </span>
-            </Link>
+            </MaybeLink>
           </li>
         ))}
       </ul>
