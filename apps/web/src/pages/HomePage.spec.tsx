@@ -6,16 +6,19 @@ import {
   fetchModelAccuracy,
   fetchNextChallenge,
   fetchPickRecord,
+  fetchSavedComparisons,
+  fetchSavedLineups,
+  fetchTeamResults,
   fetchWatchlist,
 } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { HomePage } from "./HomePage";
 
-// Four home-page modules now read the live API; the rest still render from
-// placeholderData. This spec covers how the page is composed — the modules'
-// own behaviour is covered by BeatTheModelCard.spec, LeaderboardCard.spec,
-// WatchlistBoard.spec and ModelAccuracyLedger's coverage here.
+// EVERY module on this page reads the live API now — there is no placeholder
+// data left to render from, so every one of these has to be mocked for the
+// page to mount at all. This spec covers how the page is composed; each
+// module's own behaviour is covered by its own spec.
 vi.mock("@/lib/nbaApi", () => ({
   fetchModelAccuracy: vi.fn(),
   fetchNextChallenge: vi.fn(),
@@ -23,11 +26,20 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchPickRecord: vi.fn(),
   fetchLeaderboard: vi.fn(),
   fetchWatchlist: vi.fn(),
-  unfollowPlayer: vi.fn(),
-  updateWatchlistNote: vi.fn(),
+  fetchTeamResults: vi.fn(),
+  fetchSavedComparisons: vi.fn(),
+  fetchSavedLineups: vi.fn(),
 }));
 
-vi.mock("@/lib/authClient", () => ({ signInWithGoogle: vi.fn() }));
+vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn() }));
+
+// YourTeamsList reads the profile through useMe(), which gates its own query
+// on BetterAuth's useSession — so a signed-out session is what makes the
+// module render its prompt rather than hang on a query that never fires.
+vi.mock("@/lib/authClient", () => ({
+  signInWithGoogle: vi.fn(),
+  useSession: () => ({ data: null, isPending: false }),
+}));
 
 const MODEL_ACCURACY_REPORT = {
   accuracy: 0.613,
@@ -51,6 +63,9 @@ beforeEach(() => {
   vi.mocked(fetchNextChallenge).mockRejectedValue(new ApiError("Sign in required", 401));
   vi.mocked(fetchPickRecord).mockRejectedValue(new ApiError("Sign in required", 401));
   vi.mocked(fetchWatchlist).mockRejectedValue(new ApiError("Sign in required", 401));
+  vi.mocked(fetchTeamResults).mockRejectedValue(new ApiError("Sign in required", 401));
+  vi.mocked(fetchSavedComparisons).mockRejectedValue(new ApiError("Sign in required", 401));
+  vi.mocked(fetchSavedLineups).mockRejectedValue(new ApiError("Sign in required", 401));
 });
 
 describe("HomePage", () => {
@@ -75,7 +90,9 @@ describe("HomePage", () => {
     renderWithProviders(<HomePage />);
 
     expect(await screen.findByRole("heading", { name: /your watchlist/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /your teams · thunder, nuggets/i })).toBeInTheDocument();
+    // Singular, and no team named: the heading now comes from the user's own
+    // favoriteTeam, and this spec renders signed out.
+    expect(screen.getByRole("heading", { name: /^your team$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /saved shelf/i })).toBeInTheDocument();
   });
 

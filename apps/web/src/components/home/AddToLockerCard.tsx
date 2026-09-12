@@ -1,15 +1,28 @@
 import { ChevronDown, Search, Star } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { LOCKER_SUMMARY } from "./placeholderData";
 
 // The follow primitive kept permanently one click away.
 //
-// Rendered as inert controls for now: the real version swaps the search box
-// for PlayerSearchCombobox and the select for a real <select>, both hitting
-// POST /v1/me/follows/*. Worth rebuilding PlayerSearchCombobox to ARIA 1.2
-// while it is being touched — the app currently has no role="combobox",
+// NOT ON THE PAGE. Inert controls kept for a later rebuild: the real version
+// swaps the search box for PlayerSearchCombobox and the select for a real
+// <select>, writing through PUT/DELETE /v1/me/followed-players/:playerId —
+// the same routes FollowPlayerButton already uses on the player pages, which
+// is what currently serves this job. Worth rebuilding PlayerSearchCombobox to
+// ARIA 1.2 while it is being touched: the app has no role="combobox",
 // aria-expanded or aria-activedescendant anywhere.
-export function AddToLockerCard() {
+//
+// Takes its counts as props rather than reading them from a file of invented
+// figures, so that file could be deleted.
+interface AddToLockerCardProps {
+  /** How many players the user follows. */
+  players: number;
+  /** How many teams they follow. */
+  teams: number;
+  /** The team they support, e.g. "Oklahoma City Thunder". */
+  primaryTeam: string;
+}
+
+export function AddToLockerCard({ players, teams, primaryTeam }: AddToLockerCardProps) {
   return (
     <Card className="rounded-none border-landing-light bg-locker-surface p-4">
       <div className="mb-3 flex items-center gap-3.5">
@@ -26,7 +39,7 @@ export function AddToLockerCard() {
 
       <div className="mt-2 flex items-center gap-2.5">
         <p className="flex flex-1 items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-2 text-[12.5px] text-locker-ink-muted">
-          {LOCKER_SUMMARY.primaryTeam}
+          {primaryTeam}
           <ChevronDown aria-hidden className="ml-auto size-3.5" />
         </p>
         <Star aria-hidden className="size-3.5 text-locker-leather" />
@@ -34,7 +47,7 @@ export function AddToLockerCard() {
       </div>
 
       <p className="mt-3 text-[11.5px] text-locker-ink-muted">
-        Watching {LOCKER_SUMMARY.players} players · {LOCKER_SUMMARY.teams} teams
+        Watching {players} players · {teams} teams
       </p>
     </Card>
   );

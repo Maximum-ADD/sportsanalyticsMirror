@@ -4,12 +4,6 @@ import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
 import { WatchlistBoard } from "@/components/home/WatchlistBoard";
 import { YourTeamsList } from "@/components/home/YourTeamsList";
-import {
-  FOLLOWED_TEAMS,
-  SAVED_COMPARISONS,
-  SAVED_LINEUPS,
-  TEAM_RESULTS,
-} from "@/components/home/placeholderData";
 
 // "The Locker" — the signed-in home page.
 //
@@ -27,10 +21,12 @@ import {
 // app shell labelled "Get Started". The old hero here was a near
 // point-for-point rebuild of LandingPage's, which is the whole bug.
 //
-// PARTIALLY WIRED. Beat the Model, the watchlist board, the accuracy
-// leaderboard and the model accuracy ledger all read the live API. Your teams
-// and the saved shelf still render from components/home/placeholderData.ts,
-// which stays the single seam to replace as each of those is wired up.
+// FULLY WIRED. Every module on this page reads the live API — Beat the Model,
+// the watchlist board, your team's results, the saved shelf, the accuracy
+// leaderboard and the model accuracy ledger. components/home/placeholderData.ts
+// is gone: there is no invented figure anywhere behind this route, and each
+// module says so itself when it has nothing real to show rather than falling
+// back on a plausible-looking number.
 //
 // AddToLockerCard and JumpBackInRail are deliberately NOT rendered here. Both
 // were pure layout with nothing behind them — Add To Locker searched nothing
@@ -52,12 +48,12 @@ export function HomePage() {
           <div className="flex flex-col gap-5 lg:col-span-8">
             <BeatTheModelCard />
             <WatchlistBoard />
-            <YourTeamsList followedTeams={FOLLOWED_TEAMS} results={TEAM_RESULTS} />
+            <YourTeamsList />
           </div>
 
           <div className="flex flex-col gap-4 lg:col-span-4">
             <LeaderboardCard />
-            <SavedShelfCard comparisons={SAVED_COMPARISONS} lineups={SAVED_LINEUPS} />
+            <SavedShelfCard />
           </div>
         </div>
 

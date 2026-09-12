@@ -2,7 +2,19 @@ import { MaybeLink } from "./MaybeLink";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
 import { LockerSection } from "./LockerSection";
-import type { RecentView } from "./placeholderData";
+import type { Player, Team } from "@/types/nba";
+// Declared here rather than imported: this module is not on the page yet
+// (there is no view-history endpoint to feed it), and it should not be the
+// reason a file of invented data stays in the tree.
+export interface RecentView {
+  id: string;
+  label: string;
+  kind: "player" | "team" | "game";
+  href?: string;
+  viewCount: number;
+  player?: Pick<Player, "nbaPlayerId" | "firstName" | "lastName">;
+  team?: Pick<Team, "abbreviation" | "nbaTeamId">;
+}
 
 interface JumpBackInRailProps {
   views: RecentView[];

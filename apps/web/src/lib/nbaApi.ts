@@ -9,6 +9,9 @@ import type {
   Leaderboard,
   ModelAccuracyReport,
   PickRecord,
+  SavedComparison,
+  SavedLineup,
+  TeamResultsFeed,
   WatchlistEntry,
   Player,
   PlayerComparisonResponse,
@@ -249,4 +252,24 @@ export function fetchWatchlist(
   params: { page?: number; pageSize?: number } = {}
 ): Promise<PagedResult<WatchlistEntry>> {
   return fetchJson<PagedResult<WatchlistEntry>>(`/v1/me/watchlist${toQueryString(params)}`);
+}
+
+// ── Your team's results ───────────────────────────────────────────────────
+// Fixed-size recent-activity strip, so no page parameters: the route returns
+// a { data } envelope rather than a pagination one, deliberately.
+export function fetchTeamResults(): Promise<TeamResultsFeed> {
+  return fetchJson<TeamResultsFeed>("/v1/me/teams/results");
+}
+
+// ── Saved shelf ───────────────────────────────────────────────────────────
+export function fetchSavedComparisons(
+  params: { page?: number; pageSize?: number } = {}
+): Promise<PagedResult<SavedComparison>> {
+  return fetchJson<PagedResult<SavedComparison>>(`/v1/me/saved/comparisons${toQueryString(params)}`);
+}
+
+export function fetchSavedLineups(
+  params: { page?: number; pageSize?: number } = {}
+): Promise<PagedResult<SavedLineup>> {
+  return fetchJson<PagedResult<SavedLineup>>(`/v1/me/saved/lineups${toQueryString(params)}`);
 }

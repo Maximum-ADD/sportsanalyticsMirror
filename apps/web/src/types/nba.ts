@@ -475,3 +475,81 @@ export interface PlayerMatchupProjection {
   splits: OpponentSplitEntry[];
   upcomingGames: UpcomingGameProjection[];
 }
+
+// ── Your team's results ───────────────────────────────────────────────────
+// GET /v1/me/teams/results — recent completed games for the team the user
+// supports, retold from THEIR side rather than the home team's. That
+// reorientation is the whole point of the route: /v1/games can list the same
+// games, but only as home-vs-away.
+export type PredictedWinner = "YOUR_TEAM" | "OPPONENT";
+
+export interface OrientedModelCall {
+  /** Null only when the model split the game exactly evenly and picked nobody. */
+  predictedWinner: PredictedWinner | null;
+  yourTeamWinProbability: number;
+  /** Positive means the model expected your team to win by this much. Null when
+   *  the Four Factors margin could not be computed — not substituted with a guess. */
+  predictedMarginInPoints: number | null;
+  marginMethod: string | null;
+  /** Null when the model picked nobody, which cannot be scored either way. */
+  wasCorrect: boolean | null;
+}
+
+export interface TeamResult {
+  gameId: string;
+  nbaGameId: string;
+  gameDate: string;
+  season: string;
+  yourTeam: WatchlistTeam;
+  opponent: WatchlistTeam;
+  yourScore: number;
+  opponentScore: number;
+  won: boolean;
+  playedAtHome: boolean;
+  /** Null when predict_games.py never wrote a prediction for this game. */
+  modelCall: OrientedModelCall | null;
+}
+
+export interface TeamResultsFeed {
+  data: TeamResult[];
+}
+
+// ── Saved shelf ───────────────────────────────────────────────────────────
+// GET /v1/me/saved/comparisons and /v1/me/saved/lineups.
+export interface SavedComparisonPlayer {
+  playerId: string;
+  position: number;
+  player: Player;
+}
+
+export interface SavedComparison {
+  id: string;
+  name: string;
+  createdAt: string;
+  players: SavedComparisonPlayer[];
+}
+
+export interface SavedLineupSlot {
+  playerId: string;
+  predictedPointsAtSave: number;
+  salaryAtSave: number;
+  player: Player;
+}
+
+/** How far a saved lineup has moved since it was saved. Deltas are signed. */
+export interface LineupDrift {
+  pointsDelta: number;
+  salaryDelta: number;
+  isOverBudget: boolean;
+}
+
+export interface SavedLineup {
+  id: string;
+  name: string;
+  createdAt: string;
+  sourceLineupId: string;
+  totalPredictedPointsAtSave: number;
+  budgetAtSave: number;
+  slots: SavedLineupSlot[];
+  drift: LineupDrift;
+}
