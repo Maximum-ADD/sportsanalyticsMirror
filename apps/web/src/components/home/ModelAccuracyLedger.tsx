@@ -4,15 +4,12 @@ import { CALIBRATION, MODEL_ACCURACY, THIN_BUCKET_GAMES } from "./placeholderDat
 
 const PERCENT_1DP = (value: number) => `${(value * 100).toFixed(1)}%`;
 
-// A local tile rather than the shared StatTile: that component hard-codes
-// text-text-muted / text-text-primary with no className escape hatch, and
-// both are off-white values built for the dark app shell — unreadable on
-// this page's light ground. Worth giving StatTile a variant later; not
-// worth blocking /home on it.
-//
-// (Separately, StatTile's label style measures 4.02:1 on surface-card,
-// which fails WCAG AA in the ~38 places it is currently used. Moving it to
-// text-text-secondary is a one-line fix that lifts contrast app-wide.)
+// A local tile rather than the shared StatTile. StatTile was built for the
+// dark app shell when this component was written; it has since been
+// restyled to this page's locker language (same sharp border, landing-hero
+// ground and mono micro-label), so the two now agree visually. It stays
+// local to keep this change off the home page's path — folding it back
+// into StatTile is possible now, not required.
 function LedgerFigure({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-landing-light bg-landing-hero px-4 py-3">

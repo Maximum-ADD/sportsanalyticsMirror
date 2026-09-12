@@ -105,8 +105,8 @@ const PLAYER_STATS: PlayerStatsResponse = {
     defensiveRating: 108,
   },
   gameLog: [
-    { gameId: "g1", gameDate: "2026-01-10T00:00:00.000Z", points: 30 },
-    { gameId: "g2", gameDate: "2026-01-08T00:00:00.000Z", points: 24 },
+    { gameId: "g1", gameDate: "2026-01-10T00:00:00.000Z", points: 30, season: "2025-26" },
+    { gameId: "g2", gameDate: "2026-01-08T00:00:00.000Z", points: 24, season: "2025-26" },
   ],
 };
 

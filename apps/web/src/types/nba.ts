@@ -95,6 +95,9 @@ export interface GameLogEntry {
   gameId: string;
   gameDate: string;
   points: number;
+  // League year the game belongs to (e.g. "2025-26") — lets a caller chart
+  // one season at a time from a log that spans several.
+  season: string;
 }
 
 export interface PlayerStatsResponse {
@@ -136,6 +139,37 @@ export interface PlayerStatsSplitsResponse {
   playerId: string;
   splits: PlayerSeasonSplits;
 }
+
+// One category's season leader from GET /v1/players/leaders — the player
+// with the highest figure in a headline category after the participation
+// floor. `value` is the category figure itself: a TS% leader carries a
+// percentage (0-100), not a ratio.
+export interface PlayerSeasonLeader {
+  player: Player;
+  value: number;
+  gamesPlayed: number;
+}
+
+// GET /v1/players/leaders' response — the four figures behind the players
+// page's "League leaders" band. A category with no qualified player is null
+// rather than a zeroed entry: "nobody has played enough to lead" is true
+// absence, and rendering it as 0.0 would be a lie about the leader.
+export interface PlayerLeadersResponse {
+  seasonType: SeasonType;
+  minGames: number;
+  leaders: {
+    ppg: PlayerSeasonLeader | null;
+    rpg: PlayerSeasonLeader | null;
+    apg: PlayerSeasonLeader | null;
+    tsPct: PlayerSeasonLeader | null;
+  };
+}
+
+// The ranking keys GET /v1/players accepts for `sort` — which season stat
+// the leaderboard orders by. "name" is the client-side label for omitting
+// the param entirely (the API's alphabetical default), so it's not a value
+// the API ever receives.
+export type PlayerStatSort = "ppg" | "rpg" | "apg" | "ts";
 
 export interface Game {
   id: string;
@@ -246,4 +280,44 @@ export interface MeProfile {
 export interface SuggestedPlayer {
   player: Player;
   usagePercentage: number | null;
+}
+
+// The slim team identity matchup rows carry — the same three fields the
+// API's OpponentTeamSummary exposes, nothing more.
+export interface TeamSummary {
+  id: string;
+  name: string;
+  abbreviation: string;
+}
+
+// GET /v1/players/:id/matchup-projection's per-opponent row: how one player
+// has scored against one opponent over their full ingested history in the
+// segment.
+export interface OpponentSplitEntry {
+  opponent: TeamSummary;
+  gamesPlayed: number;
+  pointsPerGame: number;
+}
+
+// One still-unplayed game on the player's team schedule with the
+// opponent-adjusted scoring projection attached — one chart point per
+// upcoming game on the profile's projected trend view.
+export interface UpcomingGameProjection {
+  gameId: string;
+  gameDate: string;
+  opponent: TeamSummary;
+  isHome: boolean;
+  projectedPoints: number;
+}
+
+// GET /v1/players/:id/matchup-projection — the matchup-analysis payload.
+// Each upcoming projection blends the player's overall rate with their
+// opponent-specific one, trusting the split more as the sample grows (see
+// StatsService.projectPointsAgainstOpponent).
+export interface PlayerMatchupProjection {
+  playerId: string;
+  seasonType: SeasonType;
+  overallPointsPerGame: number;
+  splits: OpponentSplitEntry[];
+  upcomingGames: UpcomingGameProjection[];
 }

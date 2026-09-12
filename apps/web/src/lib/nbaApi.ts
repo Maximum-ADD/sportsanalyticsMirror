@@ -6,10 +6,13 @@ import type {
   Lineup,
   Player,
   PlayerComparisonResponse,
+  PlayerLeadersResponse,
+  PlayerMatchupProjection,
   PlayerPredictionSummary,
   PlayerStatsBatchEntry,
   PlayerStatsResponse,
   PlayerStatsSplitsResponse,
+  PlayerStatSort,
   PagedResult,
   SeasonType,
   Team,
@@ -35,10 +38,30 @@ export interface FetchPlayersParams {
   // actually appeared in that segment, so a playoffs view doesn't list an
   // eliminated team's bench.
   participated?: boolean;
+  // Ranking key — once present the API sorts the whole filtered roster by
+  // that season stat before slicing the page, so the first page holds the
+  // league's best rather than that page's best. Omitting it keeps the
+  // alphabetical default.
+  sort?: PlayerStatSort;
+  // Direction for `sort` (or the alphabetical default): "desc" puts the
+  // biggest figures first, "asc" the smallest. Omitted, the API defaults
+  // to desc for stat rankings and asc for alphabetical.
+  order?: "asc" | "desc";
+  // Participation floor paired with `sort`: only players with at least this
+  // many games in the segment make the ranking.
+  minGames?: number;
 }
 
 export function fetchPlayers(params: FetchPlayersParams = {}): Promise<PagedResult<Player>> {
   return fetchJson<PagedResult<Player>>(`/v1/players${toQueryString(params)}`);
+}
+
+// The leader in each headline category for one segment — the figures behind
+// the players page's "League leaders" band. The API applies a
+// segment-appropriate participation floor (15 games in the regular season, 4
+// in postseason segments) unless one is passed explicitly.
+export function fetchPlayerLeaders(seasonType?: SeasonType, minGames?: number): Promise<PlayerLeadersResponse> {
+  return fetchJson<PlayerLeadersResponse>(`/v1/players/leaders${toQueryString({ seasonType, minGames })}`);
 }
 
 export function fetchPlayer(playerId: string): Promise<Player> {
@@ -57,6 +80,16 @@ export function fetchPlayerStatsSplits(playerId: string): Promise<PlayerStatsSpl
   return fetchJson<PlayerStatsSplitsResponse>(`/v1/players/${playerId}/stats/splits`);
 }
 
+// Opponent splits plus an opponent-adjusted projected-points line for every
+// game still unplayed on the player's team's schedule — the matchup-
+// analysis panel and the projected trend chart. seasonType is deliberately
+// left for the API to default (REGULAR): matchups are a regular-season
+// concept, the same "don't assert the default client-side" idiom as
+// fetchPlayerStats.
+export function fetchPlayerMatchupProjection(playerId: string): Promise<PlayerMatchupProjection> {
+  return fetchJson<PlayerMatchupProjection>(`/v1/players/${playerId}/matchup-projection`);
+}
+
 // Season averages + game log for up to 50 players in one request — see
 // PlayersController's stats-batch route for why this exists (a highlight
 // pool built from ~15-30 predicted scorers was firing that many sequential
@@ -64,8 +97,39 @@ export function fetchPlayerStatsSplits(playerId: string): Promise<PlayerStatsSpl
 // still gets an entry (zeroed averages, empty log), same contract as the
 // single-player endpoint, so callers never need to special-case a missing
 // map entry.
-export function fetchPlayerStatsBatch(playerIds: string[]): Promise<{ players: PlayerStatsBatchEntry[] }> {
-  return fetchJson<{ players: PlayerStatsBatchEntry[] }>(`/v1/players/stats-batch?ids=${playerIds.join(",")}`);
+//
+// `seasonType` narrows every entry to one segment; omitted, the rows span
+// every segment — the historical behaviour the reliability callers rely on.
+// The leaderboard table passes its selected segment so a playoffs table
+// shows playoff sparks, not regular-season ones.
+export function fetchPlayerStatsBatch(
+  playerIds: string[],
+  seasonType?: SeasonType
+): Promise<{ players: PlayerStatsBatchEntry[] }> {
+  const segmentParam = seasonType ? `&seasonType=${seasonType}` : "";
+  return fetchJson<{ players: PlayerStatsBatchEntry[] }>(
+    `/v1/players/stats-batch?ids=${playerIds.join(",")}${segmentParam}`
+  );
+}
+
+// The batch endpoint caps a request at MAX_BATCH_STATS_PLAYERS ids and
+// rejects anything larger, so a caller holding more ids than that (the
+// players page's followed-only view) has to split the fetch. Chunks run
+// one after another: even an implausibly long followed list costs a
+// handful of round trips, and keeping them sequential avoids a burst of
+// simultaneous heavyweight queries against the API's connection pool.
+const BATCH_STATS_CHUNK_SIZE = 50;
+
+export async function fetchPlayerStatsBatchInChunks(
+  playerIds: string[],
+  seasonType?: SeasonType
+): Promise<{ players: PlayerStatsBatchEntry[] }> {
+  const players: PlayerStatsBatchEntry[] = [];
+  for (let offset = 0; offset < playerIds.length; offset += BATCH_STATS_CHUNK_SIZE) {
+    const chunk = playerIds.slice(offset, offset + BATCH_STATS_CHUNK_SIZE);
+    players.push(...(await fetchPlayerStatsBatch(chunk, seasonType)).players);
+  }
+  return { players };
 }
 
 // Season lines for 2-4 players in one request, for the compare page. Order

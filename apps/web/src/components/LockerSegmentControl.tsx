@@ -12,8 +12,9 @@ interface LockerSegmentControlProps<TSelection extends SeasonSegmentSelection> {
 // sharp-edged "locker" design language Predictions and Home already use
 // (font-mono uppercase labels, border-landing-light, no rounded corners,
 // locker-leather for the selected state) instead of SeasonSegmentControl's
-// rounded/border-border-subtle system — that system is shared with the
-// Players/Compare/Player-profile pages and stays as-is for them.
+// rounded/border-border-subtle system — that system survives only on the
+// dark Compare page now that the players list and player profile have
+// moved over.
 export function LockerSegmentControl<TSelection extends SeasonSegmentSelection>({
   value,
   onChange,
