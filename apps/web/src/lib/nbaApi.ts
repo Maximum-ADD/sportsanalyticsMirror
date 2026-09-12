@@ -17,6 +17,7 @@ import type {
   PlayerComparisonResponse,
   PlayerLeadersResponse,
   PlayerMatchupProjection,
+  PlayerPredictionListItem,
   PlayerPredictionSummary,
   PlayerStatsBatchEntry,
   PlayerStatsResponse,
@@ -203,6 +204,12 @@ export function fetchLatestLineup(): Promise<Lineup> {
 
 export function fetchPlayerPrediction(playerId: string): Promise<PlayerPredictionSummary> {
   return fetchJson<PlayerPredictionSummary>(`/v1/optimizer/predictions/${playerId}`);
+}
+
+// Every player's latest prediction in one round trip — backs the optimizer
+// page's edit-mode suggestions without one request per candidate.
+export function fetchPlayerPredictions(): Promise<PlayerPredictionListItem[]> {
+  return fetchJson<PlayerPredictionListItem[]>("/v1/optimizer/predictions");
 }
 
 export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {

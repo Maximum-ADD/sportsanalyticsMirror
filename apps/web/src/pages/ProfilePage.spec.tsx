@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProfilePage } from "./ProfilePage";
 import { authClient, useSession } from "@/lib/authClient";
-import { fetchMe, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
+import { deleteSavedLineup, fetchMe, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
-import type { MeProfile, Player, Team } from "@/types/nba";
+import type { MeProfile, Player, SavedLineup, Team } from "@/types/nba";
 
 vi.mock("@/lib/authClient", () => ({
   authClient: { signOut: vi.fn(), deleteUser: vi.fn() },
@@ -20,6 +20,8 @@ vi.mock("@/lib/meApi", () => ({
   uploadAvatar: vi.fn(),
   unfollowPlayer: vi.fn(),
   followPlayer: vi.fn(),
+  fetchSavedLineups: vi.fn(),
+  deleteSavedLineup: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -84,6 +86,39 @@ const ME: MeProfile = {
   followedPlayers: [makePlayer()],
 };
 
+function makeSavedLineup(overrides: Partial<SavedLineup> = {}): SavedLineup {
+  return {
+    id: "saved-1",
+    budget: 50_000,
+    name: "Week 3 flyers",
+    createdAt: "2026-09-12T08:00:00.000Z",
+    totalPredictedPointsAtSave: 81.8,
+    totalSalaryAtSave: 18_200,
+    drift: null,
+    slots: [
+      {
+        id: "saved-slot-1",
+        playerId: "player-1",
+        player: makePlayer(),
+        predictedPointsAtSave: 43.3,
+        salaryAtSave: 9_900,
+        currentPredictedFantasyPoints: 45.1,
+        currentSalary: 10_400,
+      },
+      {
+        id: "saved-slot-2",
+        playerId: "player-2",
+        player: makePlayer({ id: "player-2", nbaPlayerId: 2, firstName: "Anthony", lastName: "Davis", position: "F-C" }),
+        predictedPointsAtSave: 38.5,
+        salaryAtSave: 8_300,
+        currentPredictedFantasyPoints: 41.3,
+        currentSalary: 9_700,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe("ProfilePage", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -93,6 +128,7 @@ describe("ProfilePage", () => {
     vi.mocked(useSession).mockReturnValue({ data: { user: {} }, isPending: false } as never);
     vi.mocked(fetchMe).mockResolvedValue(me);
     vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS, CELTICS], page: 1, pageSize: 30, total: 2 });
+    vi.mocked(fetchSavedLineups).mockResolvedValue([]);
   }
 
   it("shows a loading state before the profile resolves", () => {
@@ -235,5 +271,95 @@ describe("ProfilePage", () => {
     await user.click(screen.getByRole("button", { name: "Yes, delete" }));
 
     expect(authClient.deleteUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders saved lineups with their frozen totals and slot list", async () => {
+    setUp();
+    vi.mocked(fetchSavedLineups).mockResolvedValue([makeSavedLineup()]);
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    expect(await screen.findByText("81.8 pts · $18,200 of $50,000")).toBeInTheDocument();
+    expect(screen.getByText("Anthony Davis")).toBeInTheDocument();
+    expect(screen.getByText("43.3 pts · $9,900")).toBeInTheDocument();
+    // No prediction drift was derivable for this lineup.
+    expect(screen.getByText(/drift can't be computed/)).toBeInTheDocument();
+  });
+
+  it("titles a named lineup by its name instead of the save date", async () => {
+    setUp();
+    vi.mocked(fetchSavedLineups).mockResolvedValue([makeSavedLineup({ name: "Week 3 flyers" })]);
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    expect(await screen.findByText("Week 3 flyers")).toBeInTheDocument();
+  });
+
+  it("describes prediction drift since the save in words", async () => {
+    setUp();
+    vi.mocked(fetchSavedLineups).mockResolvedValue([
+      makeSavedLineup({ drift: { pointsDelta: 4.6, salaryDelta: 1_200, isOverBudget: false } }),
+    ]);
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    expect(await screen.findByText("Since you saved it: 4.6 pts up, $1,200 up.")).toBeInTheDocument();
+  });
+
+  it("calls out a saved lineup whose latest salaries bust the cap", async () => {
+    setUp();
+    vi.mocked(fetchSavedLineups).mockResolvedValue([
+      makeSavedLineup({
+        totalSalaryAtSave: 47_400,
+        drift: { pointsDelta: -2.3, salaryDelta: 4_100, isOverBudget: true },
+      }),
+    ]);
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    expect(
+      await screen.findByText("Since you saved it: 2.3 pts down, $4,100 up, $1,500 over the $50,000 cap.")
+    ).toBeInTheDocument();
+  });
+
+  it("points to the optimizer when no lineups are saved yet", async () => {
+    setUp();
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    expect(await screen.findByText(/No lineups saved yet\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Build one on the optimizer" })).toHaveAttribute("href", "/optimizer");
+  });
+
+  it("offers a retry when saved lineups fail to load", async () => {
+    setUp();
+    vi.mocked(fetchSavedLineups).mockRejectedValueOnce(new ApiError("boom", 500));
+    const user = userEvent.setup();
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    expect(await screen.findByText(/Could not load your saved lineups\./)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText(/No lineups saved yet\./)).toBeInTheDocument();
+  });
+
+  it("deletes a saved lineup when its remove button is clicked", async () => {
+    setUp();
+    vi.mocked(fetchSavedLineups).mockResolvedValue([makeSavedLineup()]);
+    vi.mocked(deleteSavedLineup).mockResolvedValue({ deleted: true });
+    const user = userEvent.setup();
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+    await user.click(await screen.findByRole("button", { name: "Remove" }));
+
+    expect(deleteSavedLineup).toHaveBeenCalledWith("saved-1");
   });
 });

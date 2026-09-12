@@ -26,6 +26,13 @@ export class OptimizerController {
     return lineup;
   }
 
+  @Get("predictions")
+  @ApiOperation({ summary: "Get every player's latest prediction" })
+  @ApiResponse({ status: 200, description: "Latest prediction per player, player embedded" })
+  async getLatestPlayerPredictions() {
+    return this.optimizerService.getLatestPlayerPredictions();
+  }
+
   @Get("predictions/:playerId")
   @ApiOperation({ summary: "Get player prediction by ID" })
   @ApiParam({ name: "playerId", description: "NBA player ID" })
