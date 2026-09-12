@@ -4,7 +4,7 @@
 // https://api.example.com) at build time; the SPA then calls it directly,
 // cross-origin, with CORS + Secure/SameSite=None session cookies. An empty
 // string falls back too, so a copied .env doesn't break dev.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+import { API_BASE_URL } from "./apiBase";
 
 export class ApiError extends Error {
   readonly status: number;
