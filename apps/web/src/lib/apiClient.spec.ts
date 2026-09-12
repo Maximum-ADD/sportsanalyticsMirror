@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
-  deleteJson,
   fetchJson,
-  patchJson,
   pingHealth,
-  postJson,
+  postFormData,
+  sendJson,
 } from "./apiClient";
 
 describe("apiClient", () => {
@@ -37,8 +36,8 @@ describe("apiClient", () => {
       new Response(JSON.stringify({ saved: true }), { status: 200 }),
     );
 
-    await expect(postJson("/v1/items", { name: "one" })).resolves.toEqual({ saved: true });
-    await expect(patchJson("/v1/items/1", { name: "two" })).resolves.toEqual({ saved: true });
+    await expect(sendJson("/v1/items", "POST", { name: "one" })).resolves.toEqual({ saved: true });
+    await expect(sendJson("/v1/items/1", "PATCH", { name: "two" })).resolves.toEqual({ saved: true });
 
     expect(fetch_mock).toHaveBeenNthCalledWith(
       1,
@@ -66,10 +65,25 @@ describe("apiClient", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ deleted: true }), { status: 200 }));
 
-    await expect(deleteJson("/v1/items/1")).resolves.toEqual({ deleted: true });
+    await expect(sendJson("/v1/items/1", "DELETE")).resolves.toEqual({ deleted: true });
     expect(fetch_mock).toHaveBeenCalledWith("/api/v1/items/1", {
       method: "DELETE",
       credentials: "include",
+    });
+  });
+
+  it("sends multipart form data without overriding the boundary", async () => {
+    const fetch_mock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ uploaded: true }), { status: 200 }),
+    );
+    const form_data = new FormData();
+    form_data.append("avatar", new Blob(["image"]), "avatar.png");
+
+    await expect(postFormData("/v1/me/avatar", form_data)).resolves.toEqual({ uploaded: true });
+    expect(fetch_mock).toHaveBeenCalledWith("/api/v1/me/avatar", {
+      method: "POST",
+      credentials: "include",
+      body: form_data,
     });
   });
 
@@ -78,7 +92,7 @@ describe("apiClient", () => {
       new Response(JSON.stringify({ error: { message: "Already saved" } }), { status: 409 }),
     );
 
-    await expect(postJson("/v1/items", {})).rejects.toEqual(
+    await expect(sendJson("/v1/items", "POST", {})).rejects.toEqual(
       new ApiError("Already saved", 409),
     );
   });
@@ -88,10 +102,10 @@ describe("apiClient", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: {} }), { status: 400 }))
       .mockResolvedValueOnce(new Response("not json", { status: 502 }));
 
-    await expect(postJson("/v1/items", {})).rejects.toMatchObject({
+    await expect(sendJson("/v1/items", "POST", {})).rejects.toMatchObject({
       message: "Request to /v1/items failed with status 400",
     });
-    await expect(postJson("/v1/items", {})).rejects.toMatchObject({
+    await expect(sendJson("/v1/items", "POST", {})).rejects.toMatchObject({
       message: "Request to /v1/items failed with status 502",
     });
   });
