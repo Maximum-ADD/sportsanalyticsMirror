@@ -38,11 +38,82 @@ describe("LandingPage", () => {
     );
   });
 
+  it("fills the NBA line with the basketball-leather texture", () => {
+    const { container } = renderLanding();
+
+    // Line one swaps its solid landing-accent fill for the macro ball
+    // texture clipped into the glyphs (hero-leather-text); the outline
+    // treatment on line two is untouched.
+    const nbaLine = screen.getByRole("heading", { level: 1 }).querySelector("span.hero-leather-text");
+    expect(nbaLine).toHaveTextContent("NBA");
+    expect(container.querySelector("span.hero-outline-text")).not.toBeNull();
+  });
+
   it("renders both section headings", () => {
     renderLanding();
 
     expect(screen.getByRole("heading", { level: 2, name: "What We Do" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: /How We\s*Stand Out/ })).toBeInTheDocument();
+  });
+
+  it("explains the model in its own section", () => {
+    renderLanding();
+
+    expect(screen.getByRole("heading", { level: 2, name: "How We Predict" })).toBeInTheDocument();
+  });
+
+  it("separates What We Do from How We Predict with a thin rule", () => {
+    renderLanding();
+
+    const whatWeDo = screen.getByRole("heading", { name: "What We Do" }).closest("section");
+    const howWePredict = screen.getByRole("heading", { name: "How We Predict" }).closest("section");
+    const divider = whatWeDo?.nextElementSibling;
+
+    expect(divider).toBe(howWePredict?.previousElementSibling);
+    expect(divider).toHaveClass("border-t");
+    expect(divider).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("lists the four key account points in a What-We-Do-style grid", () => {
+    const { container } = renderLanding();
+
+    const section = screen.getByRole("heading", { name: /How We\s*Stand Out/ }).closest("section");
+    const items = Array.from(section?.querySelectorAll("li") ?? []);
+    expect(items).toHaveLength(4);
+
+    const pointNames = ["Personal dashboard", "Player watchlist", "Saved comparisons", "Lineup planning"];
+    pointNames.forEach((name, index) => {
+      expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
+      expect(items[index]).toHaveTextContent(`0${index + 1}`);
+      expect(items[index]).toHaveClass("border-t", "pt-5");
+    });
+
+    // Numbered text points only — no icon chips anywhere in the section.
+    expect(section?.querySelectorAll("svg")).toHaveLength(0);
+    expect(container.querySelectorAll("section.bg-landing-light")).toHaveLength(0);
+  });
+
+  it("returns the stand-out copy to a full-bleed photo with a protective scrim", () => {
+    const { container } = renderLanding();
+
+    const photo = container.querySelector<HTMLImageElement>('img[src*="clippers-arena"]');
+    expect(photo).not.toBeNull();
+    expect(photo).toHaveClass("object-cover");
+
+    // Full-bleed again: the photo sits directly inside the section rather
+    // than a framed panel, and a left-to-right scrim guards the copy zone.
+    const section = photo?.closest("section");
+    expect(photo?.parentElement?.parentElement).toBe(section);
+    const scrim = section?.querySelector('div[aria-hidden="true"]');
+    expect(scrim).toHaveClass("bg-linear-to-r");
+  });
+
+  it("outlines a faint, animated court over the hero photo", () => {
+    const { container } = renderLanding();
+
+    // The hero decoration: faint half-court lines with the brand-accent
+    // comet lapping the boundary (see HeroCourtLines).
+    expect(container.querySelectorAll(".hero-court-pulse")).toHaveLength(2);
   });
 
   it("renders both reels with their real content", () => {
@@ -104,19 +175,10 @@ describe("LandingPage", () => {
     expect(screen.getByRole("link", { name: "Get Started" })).toHaveAttribute("href", "/home");
   });
 
-  it("reserves a box for each app screenshot, filled or still to come", () => {
+  it("does not render screenshot blocks on the landing page", () => {
     renderLanding();
 
-    expect(screen.getAllByTestId("screenshot-placeholder")).toHaveLength(5);
-  });
-
-  it("shows the real home-page screenshot in the hero cascade", () => {
-    renderLanding();
-
-    // A filled panel stops being decorative, so it gets a described alt and
-    // drops the aria-hidden the empty grey blocks carry.
-    const shot = screen.getByRole("img", { name: /signed-in home page/i });
-    expect(shot).toHaveAttribute("src", "/screenshots/home-locker.webp");
+    expect(screen.queryAllByTestId("screenshot-placeholder")).toHaveLength(0);
   });
 
 });
