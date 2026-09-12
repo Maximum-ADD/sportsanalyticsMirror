@@ -83,7 +83,7 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
         <button
           type="button"
           onClick={() => signInWithGoogle(signInCallbackURL)}
-          className="border border-white/20 px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors hover:border-brand-accent hover:text-brand-accent"
+          className="border border-white/20 px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] whitespace-nowrap text-white uppercase transition-colors hover:border-brand-accent hover:text-brand-accent"
         >
           Sign in with Google
         </button>
@@ -101,7 +101,7 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
   return (
     <Link
       to="/profile"
-      className="flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
+      className="group flex items-center gap-2 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
     >
       {me?.avatarUrl ? (
         <img
@@ -115,7 +115,11 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
           {initial}
         </span>
       )}
-      <span className="max-w-32 truncate text-[11px] font-medium tracking-[0.1em] text-white uppercase">
+      {/* group-hover (not a plain hover on this span) so the name reacts
+          when anywhere on the row — avatar included — is hovered, and the
+          orange matches the nav tabs' hover so "this is a link" reads
+          identically across the whole bar. */}
+      <span className="max-w-32 truncate text-[11px] font-medium tracking-[0.1em] text-white uppercase transition-colors group-hover:text-brand-accent">
         {displayName}
       </span>
     </Link>
