@@ -1,17 +1,17 @@
 import { useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
 import { TeamBadge } from "@/components/TeamBadge";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { authClient } from "@/lib/authClient";
-import { updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
+import { deleteSavedLineup, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
 import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_SIZE_MB } from "@/lib/avatar";
-import type { Team } from "@/types/nba";
+import type { SavedLineupDrift, Team } from "@/types/nba";
 
 const USERNAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/;
 
@@ -273,6 +273,152 @@ function FollowedPlayersList({ players }: { players: { id: string; firstName: st
   );
 }
 
+// "$12,345" — salary figures on saved-lineup cards. Kept local to this
+// page; the optimizer has its own copy since the two pages don't share
+// formatting helpers.
+function formatSalary(valueInDollars: number): string {
+  return `$${valueInDollars.toLocaleString("en-US")}`;
+}
+
+function formatSavedDate(isoTimestamp: string): string {
+  return new Date(isoTimestamp).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// One human sentence per lineup comparing the frozen save-time numbers to
+// the player's latest predictions, e.g. "Since you saved it: 4.6 pts up,
+// $1,200 up, $2,500 over the $50,000 cap." Words carry the direction —
+// locker-good/locker-bad colour is never the only signal.
+function describeDrift(
+  drift: SavedLineupDrift,
+  lineup: { budget: number; totalSalaryAtSave: number }
+): string {
+  const parts: string[] = [];
+  if (drift.pointsDelta !== 0) {
+    const direction = drift.pointsDelta > 0 ? "up" : "down";
+    parts.push(`${Math.abs(drift.pointsDelta).toFixed(1)} pts ${direction}`);
+  }
+  if (drift.salaryDelta !== 0) {
+    const direction = drift.salaryDelta > 0 ? "up" : "down";
+    parts.push(`${formatSalary(Math.abs(drift.salaryDelta))} ${direction}`);
+  }
+  const currentSalary = lineup.totalSalaryAtSave + drift.salaryDelta;
+  if (drift.isOverBudget) {
+    parts.push(`${formatSalary(currentSalary - lineup.budget)} over the ${formatSalary(lineup.budget)} cap`);
+  }
+  if (parts.length === 0) {
+    return "Since you saved it: the latest predictions still match the board.";
+  }
+  return `Since you saved it: ${parts.join(", ")}.`;
+}
+
+// SavedLineupsSection — lineups frozen from the optimizer board via
+// /v1/me/lineups. Each card shows what the board said at save time (the
+// per-slot frozen values) plus the drift sentence derived server-side from
+// the latest predictions.
+function SavedLineupsSection() {
+  const queryClient = useQueryClient();
+  const { data: lineups, isPending, isError, refetch } = useQuery({
+    queryKey: ["savedLineups"],
+    queryFn: fetchSavedLineups,
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (lineupId: string) => deleteSavedLineup(lineupId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["savedLineups"] }),
+  });
+
+  if (isPending) {
+    return (
+      <div className="flex justify-center py-8">
+        <BasketballSpinner size="md" label="Loading saved lineups" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="border border-landing-light bg-locker-surface p-5 text-center text-[12.5px] text-locker-ink-muted">
+        Could not load your saved lineups.{" "}
+        <button type="button" onClick={() => refetch()} className="underline hover:text-landing-ink">
+          Try again
+        </button>
+      </p>
+    );
+  }
+
+  if (lineups.length === 0) {
+    return (
+      <p className="border border-dashed border-landing-light bg-locker-surface p-5 text-center text-[12.5px] text-locker-ink-muted">
+        No lineups saved yet.{" "}
+        <Link to="/optimizer" className="underline hover:text-landing-ink">
+          Build one on the optimizer
+        </Link>
+        .
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3">
+      {lineups.map((lineup) => (
+        <div key={lineup.id} className="border border-landing-light bg-locker-surface p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              {/* A named lineup wears its name; an unnamed one falls back to
+                  the save date so a full profile stays tell-apart-able. */}
+              <p className="font-display text-[12.5px] tracking-[0.08em] text-landing-ink uppercase">
+                {lineup.name ?? formatSavedDate(lineup.createdAt)}
+              </p>
+              <p className="mt-1 text-[11px] text-locker-ink-muted">
+                {lineup.totalPredictedPointsAtSave.toFixed(1)} pts · {formatSalary(lineup.totalSalaryAtSave)} of{" "}
+                {formatSalary(lineup.budget)}
+              </p>
+            </div>
+            <LockerButton
+              variant="danger"
+              onClick={() => deleteMutation.mutate(lineup.id)}
+              disabled={deleteMutation.isPending}
+            >
+              Remove
+            </LockerButton>
+          </div>
+
+          {lineup.drift ? (
+            <p className={`mt-3 text-[11.5px] ${lineup.drift.isOverBudget ? "text-locker-bad" : "text-locker-good"}`}>
+              {describeDrift(lineup.drift, lineup)}
+            </p>
+          ) : (
+            <p className="mt-3 text-[11.5px] text-locker-ink-muted">
+              No current prediction for one of these players yet, so drift can't be computed.
+            </p>
+          )}
+
+          <ul className="mt-3 space-y-1 border-t border-landing-light pt-3">
+            {lineup.slots.map((slot) => (
+              <li key={slot.id} className="flex items-baseline justify-between gap-3 text-[11.5px]">
+                <span className="truncate text-landing-ink">
+                  {slot.player.firstName} {slot.player.lastName}
+                  <span className="text-locker-ink-muted">
+                    {" "}
+                    · {slot.player.team ? `${slot.player.team.abbreviation} · ` : ""}
+                    {slot.player.position}
+                  </span>
+                </span>
+                <span className="shrink-0 font-mono text-[10.5px] text-locker-ink-muted">
+                  {slot.predictedPointsAtSave.toFixed(1)} pts · {formatSalary(slot.salaryAtSave)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Two-click confirm, same pattern as AuthStatus.tsx's original
 // DeleteAccountControl (ported here since the header dropdown it lived in
 // is gone — see LandingHeader), restyled to the locker system.
@@ -381,6 +527,11 @@ export function ProfilePage() {
         <div className="mb-6">
           <SectionHeading>Followed players</SectionHeading>
           <FollowedPlayersList players={me.followedPlayers} />
+        </div>
+
+        <div className="mb-6">
+          <SectionHeading>Saved lineups</SectionHeading>
+          <SavedLineupsSection />
         </div>
 
         <div className="border-t border-landing-light pt-6">

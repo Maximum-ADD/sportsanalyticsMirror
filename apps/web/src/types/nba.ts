@@ -218,6 +218,54 @@ export interface PlayerPredictionSummary {
   salary: number | null;
 }
 
+// GET /v1/optimizer/predictions — the latest prediction for every player in
+// one list, player (with team) embedded. The optimizer page's edit mode
+// ranks these by dollars-per-point to suggest value adds that fit the
+// board's remaining budget.
+export interface PlayerPredictionListItem {
+  playerId: string;
+  predictedFantasyPoints: number;
+  salary: number;
+  asOf: string;
+  player: Player;
+}
+
+// GET/POST /v1/me/lineups — a lineup the user saved from the optimizer
+// board. Slots freeze the numbers the board showed at save time
+// (PlayerPrediction is append-and-take-latest, so a live lookup would
+// silently rewrite what the user saved); the current* fields are the
+// player's latest prediction at read time, and drift is derived from the
+// two. Null current fields (and null drift) mean a player has no
+// prediction on record at all.
+export interface SavedLineupSlot {
+  id: string;
+  playerId: string;
+  player: Player;
+  predictedPointsAtSave: number;
+  salaryAtSave: number;
+  currentPredictedFantasyPoints: number | null;
+  currentSalary: number | null;
+}
+
+export interface SavedLineupDrift {
+  pointsDelta: number;
+  salaryDelta: number;
+  isOverBudget: boolean;
+}
+
+export interface SavedLineup {
+  id: string;
+  budget: number;
+  // Optional user-chosen label ("Week 3 flyers"); null means the profile
+  // card falls back to the save date as its title.
+  name: string | null;
+  createdAt: string;
+  totalPredictedPointsAtSave: number;
+  totalSalaryAtSave: number;
+  drift: SavedLineupDrift | null;
+  slots: SavedLineupSlot[];
+}
+
 export interface PagedResult<T> {
   data: T[];
   page: number;
