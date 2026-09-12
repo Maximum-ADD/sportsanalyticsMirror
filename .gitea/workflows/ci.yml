@@ -97,6 +97,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # The sweep in "Start disposable Postgres" below kills every ci-postgres
+    # container it did not start, which is only safe while no other run of
+    # this job is live. Runs on different PRs are different workflow-level
+    # concurrency groups, so without this they can be mid-suite on the shared
+    # runner at the same time — and each one's sweep deletes the other's
+    # still-running database, surfacing as P1001 "Can't reach database
+    # server" in prisma migrate deploy partway through the suite. Serializing
+    # the job repo-wide restores the assumption; newest run wins.
+    concurrency:
+      group: ci-coverage-repo-wide
+      cancel-in-progress: true
+
     # The API e2e suite needs a real, disposable Postgres database, and it is
     # started as a step below rather than with `services:`. Three attempts at
     # the services block never went green (497b2c4, 03d38ba, 566c8d1), and the
