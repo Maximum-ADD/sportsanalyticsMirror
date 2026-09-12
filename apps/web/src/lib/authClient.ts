@@ -1,13 +1,15 @@
 import { createAuthClient } from "better-auth/react";
-import { API_ORIGIN } from "./apiBase";
+import { API_ORIGIN_OVERRIDE } from "./apiBase";
 
-// Talks directly to the API origin rather than through the /api dev proxy —
-// the OAuth redirect (browser -> Google -> back) has to land on a real,
-// stable origin anyway, so the sign-in call goes there directly too. Must
-// match the server's basePath in apps/api/src/auth/auth.config.ts. In
-// production, VITE_API_BASE_URL can override the deployed Render API origin.
+// baseURL is left undefined by default, which makes better-auth's client
+// fall back to window.location.origin (see getBaseURL in
+// better-auth/dist/utils/url.mjs) -- i.e. same-origin, proxied like /api
+// (see apiBase.ts and functions/auth/[[path]].ts for why: cross-origin
+// session cookies don't survive Safari/Firefox's third-party cookie
+// blocking, no matter how they're configured). Must match the server's
+// basePath in apps/api/src/auth/auth.config.ts.
 export const authClient = createAuthClient({
-  baseURL: API_ORIGIN,
+  baseURL: API_ORIGIN_OVERRIDE,
   basePath: "/auth",
 });
 

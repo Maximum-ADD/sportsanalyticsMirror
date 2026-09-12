@@ -25,6 +25,7 @@ apps/api/generated/
 coverage/
 coverage-report/
 test-report.json
+.wrangler/
 
 apps/optimizer/.venv/
 apps/optimizer/__pycache__/
