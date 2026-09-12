@@ -24,6 +24,13 @@ interface RevealProps {
   as?: ElementType;
   className?: string;
   children: ReactNode;
+  /**
+   * Replay the entrance every time the element re-enters the viewport
+   * (landing-page behaviour). Tool pages should pass false so a section
+   * stays put once revealed instead of animating in and out on every
+   * scroll past it.
+   */
+  replay?: boolean;
 }
 
 /**
@@ -33,8 +40,8 @@ interface RevealProps {
  * frame rather than its finished state, which is what makes each return
  * replay the entrance from the top instead of sitting already-visible.
  */
-export function Reveal({ delay = 0, as = "div", className, children }: RevealProps) {
-  const { elementRef, isInView } = useInView<HTMLElement>({ replay: true });
+export function Reveal({ delay = 0, as = "div", className, children, replay = true }: RevealProps) {
+  const { elementRef, isInView } = useInView<HTMLElement>({ replay });
   const RevealTag = as;
 
   return (
