@@ -1,6 +1,7 @@
 import type { Game, PlayerGameStat } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PlayersService } from "./players.service.js";
+import { PlayersService, type PlayerWithTeam } from "./players.service.js";
+import type { GamesService } from "../games/games.service.js";
 import { StatsService } from "./stats.service.js";
 
 function makeGame(overrides: Partial<Game> = {}): Game {
@@ -55,8 +56,15 @@ describe("StatsService", () => {
     playersService = {
       getPlayerSeasonStats: vi.fn(),
       getPlayerSeasonStatsBatch: vi.fn(),
+      getSeasonStatTotalsBatch: vi.fn(),
+      getMatchingPlayers: vi.fn(),
     } as unknown as PlayersService;
-    statsService = new StatsService(playersService);
+    // StatsService resolves upcoming games through GamesService — only
+    // getMatchupProjection touches it, so a bare mock is enough here.
+    const gamesService = {
+      getUpcomingGamesForTeam: vi.fn(),
+    } as unknown as GamesService;
+    statsService = new StatsService(playersService, gamesService);
   });
 
   describe("deriveSeasonAverages", () => {
@@ -188,7 +196,7 @@ describe("StatsService", () => {
 
       const log = await statsService.getPlayerGameLog("player-1");
 
-      expect(log).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 15 }]);
+      expect(log).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 15, season: "2025-26" }]);
     });
 
     it("asks PlayersService for the requested segment only", async () => {
@@ -337,6 +345,72 @@ describe("StatsService", () => {
     });
   });
 
+  describe("getSeasonStatTotalsByPlayerId", () => {
+    it("maps grouped totals into one entry per player, keyed by player id", async () => {
+      vi.mocked(playersService.getSeasonStatTotalsBatch).mockResolvedValue([
+        {
+          playerId: "player-a",
+          _count: { _all: 4 },
+          _sum: { points: 100, rebounds: 40, assists: 20, fieldGoalsAttempted: 80, freeThrowsAttempted: 10 },
+        },
+        {
+          playerId: "player-b",
+          _count: { _all: 2 },
+          _sum: { points: 10, rebounds: 4, assists: 2, fieldGoalsAttempted: 8, freeThrowsAttempted: 1 },
+        },
+      ] as never);
+
+      const totals = await statsService.getSeasonStatTotalsByPlayerId(["player-a", "player-b"], "REGULAR");
+
+      expect(playersService.getSeasonStatTotalsBatch).toHaveBeenCalledWith(["player-a", "player-b"], "REGULAR");
+      expect(totals.get("player-a")).toMatchObject({ gamesPlayed: 4, totalPoints: 100 });
+      expect(totals.get("player-b")).toMatchObject({ gamesPlayed: 2, totalPoints: 10 });
+    });
+
+    it("skips the database round trip when there is nobody to aggregate", async () => {
+      const totals = await statsService.getSeasonStatTotalsByPlayerId([], "REGULAR");
+
+      expect(playersService.getSeasonStatTotalsBatch).not.toHaveBeenCalled();
+      expect(totals.size).toBe(0);
+    });
+  });
+
+  describe("getSeasonLeaders", () => {
+    function makePlayerWithTeam(id: string, lastName: string): PlayerWithTeam {
+      return { id, lastName, firstName: "Test", team: null } as unknown as PlayerWithTeam;
+    }
+
+    it("picks the per-game leader in each category after the participation floor", async () => {
+      const players = [makePlayerWithTeam("player-low", "Low"), makePlayerWithTeam("player-high", "High")];
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue(players as never);
+      // Low: 30.0 PPG over 20 games; High: 35.0 PPG over only 10 — under the
+      // 15-game floor, so Low leads the category despite the lower rate.
+      vi.mocked(playersService.getSeasonStatTotalsBatch).mockResolvedValue([
+        { playerId: "player-low", _count: { _all: 20 }, _sum: { points: 600, rebounds: 0, assists: 0, fieldGoalsAttempted: 400, freeThrowsAttempted: 0 } },
+        { playerId: "player-high", _count: { _all: 10 }, _sum: { points: 350, rebounds: 0, assists: 0, fieldGoalsAttempted: 300, freeThrowsAttempted: 0 } },
+      ] as never);
+
+      const leaders = await statsService.getSeasonLeaders("REGULAR", 15);
+
+      expect(leaders.ppg?.player.id).toBe("player-low");
+      expect(leaders.ppg?.value).toBe(30);
+      expect(leaders.ppg?.gamesPlayed).toBe(20);
+    });
+
+    it("returns null for a category where nobody meets the floor", async () => {
+      const players = [makePlayerWithTeam("player-short", "Short")];
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue(players as never);
+      vi.mocked(playersService.getSeasonStatTotalsBatch).mockResolvedValue([
+        { playerId: "player-short", _count: { _all: 3 }, _sum: { points: 120, rebounds: 0, assists: 0, fieldGoalsAttempted: 80, freeThrowsAttempted: 0 } },
+      ] as never);
+
+      const leaders = await statsService.getSeasonLeaders("REGULAR", 15);
+
+      expect(leaders.ppg).toBeNull();
+      expect(leaders.tsPct).toBeNull();
+    });
+  });
+
   describe("getPlayerStatsBatch", () => {
     it("fetches once for every requested player id and groups the result per player", async () => {
       const statA = {
@@ -352,7 +426,9 @@ describe("StatsService", () => {
       const results = await statsService.getPlayerStatsBatch(["player-a", "player-b"]);
 
       expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledTimes(1);
-      expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledWith(["player-a", "player-b"]);
+      // No segment argument — the batch spans every segment, and the
+      // service forwards that absence explicitly as undefined.
+      expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledWith(["player-a", "player-b"], undefined);
       expect(results).toHaveLength(2);
       expect(results[0]).toMatchObject({ playerId: "player-a", seasonAverages: { pointsPerGame: 20 } });
       expect(results[1]).toMatchObject({ playerId: "player-b", seasonAverages: { pointsPerGame: 30 } });

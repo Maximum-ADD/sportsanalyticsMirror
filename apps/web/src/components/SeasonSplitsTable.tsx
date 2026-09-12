@@ -69,12 +69,12 @@ function formatDelta(delta: number, row: StatRow): string {
 // reads correctly without colour vision.
 //
 // `lowerIsBetter` inverts the palette without touching the sign: a
-// defensive rating that drops still reads "−4.0", but green, because
-// conceding fewer points per 100 possessions is an improvement.
+// defensive rating that drops still reads "−4.0", but in the good colour,
+// because conceding fewer points per 100 possessions is an improvement.
 function deltaClassName(delta: number, row: StatRow): string {
-  if (Math.abs(delta) < NEGLIGIBLE_DELTA) return "text-text-muted";
+  if (Math.abs(delta) < NEGLIGIBLE_DELTA) return "text-locker-ink-muted";
   const isImprovement = row.lowerIsBetter ? delta < 0 : delta > 0;
-  return isImprovement ? "text-emerald-400" : "text-red-400";
+  return isImprovement ? "text-locker-good" : "text-locker-bad";
 }
 
 // A figure the API had no basis to report — rendered as "—" with no delta,
@@ -106,7 +106,7 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
 
   if (postseasonSegments.length === 0) {
     return (
-      <p className="text-sm text-text-muted">
+      <p className="text-[12.5px] text-locker-ink-muted">
         {playerName} has no postseason games in this season, so there's nothing to compare against their regular
         season yet.
       </p>
@@ -118,27 +118,32 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
 
   return (
     <div className="overflow-x-auto">
+      {/* The table primitives carry the dark app shell's colours, so each
+          one takes a light override here — the same call-site pattern the
+          model accuracy ledger uses on the home page. */}
       <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Stat</TableHead>
+        <TableHeader className="bg-landing-hero text-locker-ink-muted">
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="font-mono text-[9.5px] tracking-[0.14em] uppercase">Stat</TableHead>
             {playedSegments.map((seasonType) => (
-              <TableHead key={seasonType}>
+              <TableHead key={seasonType} className="font-mono text-[9.5px] tracking-[0.14em] uppercase">
                 <div>{formatSeasonTypeShort(seasonType)}</div>
                 {/* Games played sits in the header rather than a row of its
                     own so every number underneath is read next to the sample
                     size it came from. */}
-                <div className="text-xs font-normal text-text-muted">
+                <div className="font-mono text-[9px] tracking-[0.1em] font-normal normal-case">
                   {splits[seasonType].gamesPlayed} {splits[seasonType].gamesPlayed === 1 ? "game" : "games"}
                 </div>
               </TableHead>
             ))}
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="divide-landing-light">
           {STAT_ROWS.map((row) => (
-            <TableRow key={row.field}>
-              <TableCell className="font-medium text-text-secondary">{row.label}</TableCell>
+            <TableRow key={row.field} className="hover:bg-landing-hero/60">
+              <TableCell className="font-mono text-[10px] tracking-[0.08em] uppercase text-locker-ink-muted">
+                {row.label}
+              </TableCell>
               {playedSegments.map((seasonType) => {
                 const value = splits[seasonType][row.field];
                 const baselineValue = baseline[row.field];
@@ -153,7 +158,7 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
                 return (
                   <TableCell key={seasonType}>
                     <span
-                      className={dimForSmallSample ? "text-text-muted" : "text-text-primary"}
+                      className={`tabular-nums ${dimForSmallSample ? "text-locker-ink-muted" : "text-landing-ink"}`}
                       title={
                         dimForSmallSample
                           ? `Only ${splits[seasonType].gamesPlayed} games — this rate is easily swung by a handful of attempts.`
@@ -163,7 +168,7 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
                       {formatValue(value, row)}
                     </span>
                     {canShowDelta && (
-                      <span className={`ml-2 text-xs ${deltaClassName(value - baselineValue, row)}`}>
+                      <span className={`ml-2 font-mono text-[10.5px] tabular-nums ${deltaClassName(value - baselineValue, row)}`}>
                         {formatDelta(value - baselineValue, row)}
                       </span>
                     )}

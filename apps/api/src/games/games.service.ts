@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Game, GamePrediction, Prisma, Team } from "@prisma/client";
+import type { Game, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -158,5 +158,25 @@ export class GamesService {
       orderBy: { season: "desc" },
     });
     return rows.map((row) => row.season);
+  }
+
+  // Every still-unplayed game one team is involved in, soonest first — the
+  // schedule a matchup projection charts (see StatsService.getMatchup
+  // Projection). "Unplayed" reads as homeScore null (the same sentinel the
+  // upcoming/completed split above uses), and the gameDate floor keeps
+  // finished games out even if a boxscore backfill left the score columns
+  // momentarily inconsistent. No season filter: during a season, "the
+  // upcoming schedule" is simply whatever hasn't been played yet.
+  getUpcomingGamesForTeam(teamId: string, seasonType: SeasonType) {
+    return this.prisma.game.findMany({
+      where: {
+        homeScore: null,
+        seasonType,
+        gameDate: { gte: new Date() },
+        OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+      },
+      include: { homeTeam: true, awayTeam: true },
+      orderBy: [{ gameDate: "asc" }, { id: "asc" }],
+    });
   }
 }

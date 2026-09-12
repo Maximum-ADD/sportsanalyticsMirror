@@ -61,26 +61,58 @@ async function createGame(
   });
 }
 
-async function createGameStat(playerId: string, gameId: string, overrides: Partial<{ points: number }> = {}) {
+async function createGameStat(
+  playerId: string,
+  gameId: string,
+  overrides: Partial<{
+    points: number;
+    rebounds: number;
+    assists: number;
+    fieldGoalsAttempted: number;
+    freeThrowsAttempted: number;
+  }> = {}
+) {
   return testPrisma.playerGameStat.create({
     data: {
       playerId,
       gameId,
       minutes: 30,
       points: overrides.points ?? 20,
-      rebounds: 5,
-      assists: 4,
+      rebounds: overrides.rebounds ?? 5,
+      assists: overrides.assists ?? 4,
       steals: 1,
       blocks: 1,
       turnovers: 2,
       fieldGoalsMade: 8,
-      fieldGoalsAttempted: 16,
+      fieldGoalsAttempted: overrides.fieldGoalsAttempted ?? 16,
       threesMade: 2,
       threesAttempted: 5,
       freeThrowsMade: 2,
-      freeThrowsAttempted: 2,
+      freeThrowsAttempted: overrides.freeThrowsAttempted ?? 2,
     },
   });
+}
+
+// Gives one player `gameCount` games in one segment, every boxscore row
+// identical, so the derived averages equal the per-game line exactly —
+// a 30-point line over 15 games derives to a 30.0 PPG average.
+async function seedGamesForPlayer(
+  playerId: string,
+  homeTeamId: string,
+  awayTeamId: string,
+  gameCount: number,
+  seasonType: SeasonType,
+  statLine: Parameters<typeof createGameStat>[2]
+) {
+  for (let gameIndex = 0; gameIndex < gameCount; gameIndex++) {
+    const game = await createGame(
+      homeTeamId,
+      awayTeamId,
+      new Date(Date.UTC(2025, 9, 15 + gameIndex)),
+      seasonType
+    );
+    await createGameStat(playerId, game.id, statLine);
+  }
 }
 
 describe("Players API", () => {
@@ -239,6 +271,188 @@ describe("Players API", () => {
     });
   });
 
+  // The leaderboard view: once `sort` appears, the ranking runs league-wide
+  // before the page slice, so the first page holds the league's best — not
+  // merely that page's best.
+  describe("GET /v1/players?sort=&minGames=", () => {
+    it("ranks by points per game across the whole league before slicing a page", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const lowScorer = await createPlayer({ teamId: home.id, lastName: "Alpha" });
+      const topScorer = await createPlayer({ teamId: home.id, lastName: "Bravo" });
+      const midScorer = await createPlayer({ teamId: away.id, lastName: "Charlie" });
+      await seedGamesForPlayer(lowScorer.id, home.id, away.id, 1, "REGULAR", { points: 10 });
+      await seedGamesForPlayer(topScorer.id, home.id, away.id, 1, "REGULAR", { points: 30 });
+      await seedGamesForPlayer(midScorer.id, home.id, away.id, 1, "REGULAR", { points: 20 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?sort=ppg&pageSize=2");
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(3);
+      expect(response.body.data.map((player: { lastName: string }) => player.lastName)).toEqual([
+        "Bravo",
+        "Charlie",
+      ]);
+    });
+
+    it("applies minGames as a participation floor on the ranking", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const oneGameStar = await createPlayer({ teamId: home.id, lastName: "HotNight" });
+      const steadyScorer = await createPlayer({ teamId: away.id, lastName: "Steady" });
+      await seedGamesForPlayer(oneGameStar.id, home.id, away.id, 1, "REGULAR", { points: 40 });
+      await seedGamesForPlayer(steadyScorer.id, home.id, away.id, 2, "REGULAR", { points: 25 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?sort=ppg&minGames=2");
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].lastName).toBe("Steady");
+    });
+
+    it("keeps the alphabetical order when only minGames is given — a floor is a filter, not a ranking", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const lateAlphabet = await createPlayer({ teamId: home.id, lastName: "Zeller" });
+      const earlyAlphabet = await createPlayer({ teamId: away.id, lastName: "Anderson" });
+      await seedGamesForPlayer(lateAlphabet.id, home.id, away.id, 1, "REGULAR", { points: 35 });
+      await seedGamesForPlayer(earlyAlphabet.id, home.id, away.id, 1, "REGULAR", { points: 12 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?minGames=1");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((player: { lastName: string }) => player.lastName)).toEqual([
+        "Anderson",
+        "Zeller",
+      ]);
+    });
+
+    it("ranks within the requested season segment only", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const regularSeasonStar = await createPlayer({ teamId: home.id, lastName: "RegularStar" });
+      const playoffStar = await createPlayer({ teamId: away.id, lastName: "PlayoffStar" });
+      await seedGamesForPlayer(regularSeasonStar.id, home.id, away.id, 1, "REGULAR", { points: 35 });
+      await seedGamesForPlayer(regularSeasonStar.id, home.id, away.id, 1, "PLAYOFFS", { points: 8 });
+      await seedGamesForPlayer(playoffStar.id, home.id, away.id, 1, "REGULAR", { points: 10 });
+      await seedGamesForPlayer(playoffStar.id, home.id, away.id, 1, "PLAYOFFS", { points: 42 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?sort=ppg&seasonType=PLAYOFFS");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((player: { lastName: string }) => player.lastName)).toEqual([
+        "PlayoffStar",
+        "RegularStar",
+      ]);
+    });
+
+    it("orders a stat ranking ascending on request, sinking players with no games in the segment either way", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const highScorer = await createPlayer({ teamId: home.id, lastName: "Bravo" });
+      const lowScorer = await createPlayer({ teamId: home.id, lastName: "Alpha" });
+      const didNotPlay = await createPlayer({ teamId: away.id, lastName: "Charlie" });
+      await seedGamesForPlayer(highScorer.id, home.id, away.id, 1, "REGULAR", { points: 30 });
+      await seedGamesForPlayer(lowScorer.id, home.id, away.id, 1, "REGULAR", { points: 10 });
+      await seedGamesForPlayer(didNotPlay.id, home.id, away.id, 1, "PLAYOFFS", { points: 40 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?sort=ppg&order=asc&seasonType=REGULAR");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((player: { lastName: string }) => player.lastName)).toEqual([
+        "Alpha",
+        "Bravo",
+        "Charlie",
+      ]);
+    });
+
+    it("orders the alphabetical default descending on request", async () => {
+      const earlyAlphabet = await createPlayer({ lastName: "Anderson" });
+      const lateAlphabet = await createPlayer({ lastName: "Zeller" });
+
+      const response = await request(app.getHttpServer()).get("/v1/players?order=desc");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((player: { lastName: string }) => player.lastName)).toEqual([
+        "Zeller",
+        "Anderson",
+      ]);
+    });
+  });
+
+  // The matchup projection: per-opponent scoring history, plus an
+  // opponent-adjusted projected points line for each game still unplayed
+  // on the player's team's schedule.
+  describe("GET /v1/players/:id/matchup-projection", () => {
+    it("splits scoring by opponent and projects each upcoming game with sample-size shrinkage", async () => {
+      const lakers = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const knicks = await createTeam({ name: "Knicks", abbreviation: "NYK" });
+      const heat = await createTeam({ name: "Heat", abbreviation: "MIA" });
+      const player = await createPlayer({ teamId: lakers.id, lastName: "James" });
+
+      // 28.0 PPG overall: 36.0 against Boston (six home, two away),
+      // 20.0 against New York.
+      await seedGamesForPlayer(player.id, lakers.id, celtics.id, 6, "REGULAR", { points: 36 });
+      await seedGamesForPlayer(player.id, celtics.id, lakers.id, 2, "REGULAR", { points: 36 });
+      await seedGamesForPlayer(player.id, lakers.id, knicks.id, 8, "REGULAR", { points: 20 });
+
+      // Two still-unplayed games: hosting Boston, then visiting Miami —
+      // a team the player has never faced.
+      await createGame(lakers.id, celtics.id, new Date(Date.UTC(2099, 0, 1)));
+      await createGame(heat.id, lakers.id, new Date(Date.UTC(2099, 0, 3)));
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/matchup-projection`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.overallPointsPerGame).toBe(28);
+
+      // Splits rank Boston's 36.0 first, New York's 20.0 second.
+      expect(response.body.splits).toEqual([
+        { opponent: expect.objectContaining({ abbreviation: "BOS" }), gamesPlayed: 8, pointsPerGame: 36 },
+        { opponent: expect.objectContaining({ abbreviation: "NYK" }), gamesPlayed: 8, pointsPerGame: 20 },
+      ]);
+
+      // Boston projection: 28 + (36 - 28) * 8/(8+8) = 32.0. Miami has no
+      // history, so it projects the overall rate untouched.
+      expect(response.body.upcomingGames).toHaveLength(2);
+      expect(response.body.upcomingGames[0]).toMatchObject({
+        opponent: expect.objectContaining({ abbreviation: "BOS" }),
+        isHome: true,
+        projectedPoints: 32,
+      });
+      expect(response.body.upcomingGames[1]).toMatchObject({
+        opponent: expect.objectContaining({ abbreviation: "MIA" }),
+        isHome: false,
+        projectedPoints: 28,
+      });
+    });
+
+    it("returns an empty upcoming list when the player's team has nothing left to play", async () => {
+      const lakers = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const knicks = await createTeam({ name: "Knicks", abbreviation: "NYK" });
+      const player = await createPlayer({ teamId: lakers.id });
+      await seedGamesForPlayer(player.id, lakers.id, celtics.id, 3, "REGULAR", { points: 30 });
+
+      // A future game that doesn't involve the player's team.
+      await createGame(celtics.id, knicks.id, new Date(Date.UTC(2099, 0, 1)));
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/matchup-projection`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.splits).toHaveLength(1);
+      expect(response.body.upcomingGames).toEqual([]);
+    });
+
+    it("returns a 404 with the standard error envelope when the player doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/players/does-not-exist/matchup-projection");
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: { code: "NOT_FOUND", message: "Player not found" } });
+    });
+  });
+
   describe("GET /v1/players/:id", () => {
     it("returns the player when it exists", async () => {
       const player = await createPlayer({ lastName: "Curry" });
@@ -282,6 +496,12 @@ describe("Players API", () => {
       expect(response.body.seasonAverages.gamesPlayed).toBe(2);
       expect(response.body.seasonAverages.pointsPerGame).toBe(25);
       expect(response.body.gameLog.map((entry: { points: number }) => entry.points)).toEqual([20, 30]);
+      // Each entry carries its league year so a client can chart one
+      // season at a time from a multi-season log.
+      expect(response.body.gameLog.map((entry: { season: string }) => entry.season)).toEqual([
+        "2025-26",
+        "2025-26",
+      ]);
     });
 
     it("returns zeroed averages and an empty game log for a player with no games played", async () => {
@@ -472,6 +692,110 @@ describe("Players API", () => {
     });
   });
 
+  // The "League leaders" band: one leader per headline category, after a
+  // participation floor keeps a small-sample hot streak from leading.
+  describe("GET /v1/players/leaders", () => {
+    async function seedOneCategoryLeaderEach() {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const scorer = await createPlayer({ teamId: home.id, lastName: "Scorer" });
+      const rebounder = await createPlayer({ teamId: home.id, lastName: "Rebounder" });
+      const playmaker = await createPlayer({ teamId: away.id, lastName: "Playmaker" });
+      const efficient = await createPlayer({ teamId: away.id, lastName: "Efficient" });
+
+      await seedGamesForPlayer(scorer.id, home.id, away.id, 1, "REGULAR", { points: 30 });
+      await seedGamesForPlayer(rebounder.id, home.id, away.id, 1, "REGULAR", { points: 15, rebounds: 12 });
+      await seedGamesForPlayer(playmaker.id, home.id, away.id, 1, "REGULAR", { points: 18, assists: 11 });
+      await seedGamesForPlayer(efficient.id, home.id, away.id, 1, "REGULAR", {
+        points: 28,
+        fieldGoalsAttempted: 10,
+        freeThrowsAttempted: 12,
+      });
+
+      return { scorer, rebounder, playmaker, efficient };
+    }
+
+    it("returns the leader of each headline category with the figure and games played", async () => {
+      const { scorer, rebounder, playmaker, efficient } = await seedOneCategoryLeaderEach();
+
+      const response = await request(app.getHttpServer()).get("/v1/players/leaders?minGames=1");
+
+      expect(response.status).toBe(200);
+      expect(response.body.seasonType).toBe("REGULAR");
+      expect(response.body.minGames).toBe(1);
+      expect(response.body.leaders.ppg).toMatchObject({
+        player: { id: scorer.id },
+        value: 30,
+        gamesPlayed: 1,
+      });
+      expect(response.body.leaders.rpg.player.id).toBe(rebounder.id);
+      expect(response.body.leaders.apg.player.id).toBe(playmaker.id);
+      expect(response.body.leaders.tsPct.player.id).toBe(efficient.id);
+      expect(response.body.leaders.tsPct.value).toBeCloseTo(91.6, 1);
+    });
+
+    it("applies the default 15-game floor in the regular season", async () => {
+      // 14 games at a huge average still can't lead: the floor is about
+      // sample size, not the size of the number.
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const shortSampleStar = await createPlayer({ teamId: home.id, lastName: "HotStart" });
+      const qualified = await createPlayer({ teamId: away.id, lastName: "Steady" });
+      await seedGamesForPlayer(shortSampleStar.id, home.id, away.id, 14, "REGULAR", { points: 50 });
+      await seedGamesForPlayer(qualified.id, home.id, away.id, 15, "REGULAR", { points: 20 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players/leaders");
+
+      expect(response.status).toBe(200);
+      expect(response.body.minGames).toBe(15);
+      expect(response.body.leaders.ppg).toMatchObject({
+        player: { id: qualified.id },
+        value: 20,
+        gamesPlayed: 15,
+      });
+    });
+
+    it("drops the floor to a postseason-sized sample for playoff segments", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const threeGameStar = await createPlayer({ teamId: home.id, lastName: "Brief" });
+      const fourGameStar = await createPlayer({ teamId: away.id, lastName: "Lasted" });
+      await seedGamesForPlayer(threeGameStar.id, home.id, away.id, 3, "PLAYOFFS", { points: 45 });
+      await seedGamesForPlayer(fourGameStar.id, home.id, away.id, 4, "PLAYOFFS", { points: 28 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players/leaders?seasonType=PLAYOFFS");
+
+      expect(response.status).toBe(200);
+      expect(response.body.seasonType).toBe("PLAYOFFS");
+      expect(response.body.minGames).toBe(4);
+      expect(response.body.leaders.ppg.player.id).toBe(fourGameStar.id);
+    });
+
+    it("honours an explicit minGames floor over the segment default", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const threeGameStar = await createPlayer({ teamId: home.id, lastName: "HotStart" });
+      const fiveGameScorer = await createPlayer({ teamId: away.id, lastName: "Steady" });
+      await seedGamesForPlayer(threeGameStar.id, home.id, away.id, 3, "REGULAR", { points: 40 });
+      await seedGamesForPlayer(fiveGameScorer.id, home.id, away.id, 5, "REGULAR", { points: 22 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players/leaders?minGames=3");
+
+      expect(response.status).toBe(200);
+      expect(response.body.minGames).toBe(3);
+      expect(response.body.leaders.ppg.player.id).toBe(threeGameStar.id);
+    });
+
+    it("returns null for a category nobody qualified for", async () => {
+      await createPlayer({ lastName: "NoGames" });
+
+      const response = await request(app.getHttpServer()).get("/v1/players/leaders");
+
+      expect(response.status).toBe(200);
+      expect(response.body.leaders).toEqual({ ppg: null, rpg: null, apg: null, tsPct: null });
+    });
+  });
+
   describe("GET /v1/players/stats-batch", () => {
     it("returns season averages and game log for every requested player in one request", async () => {
       const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
@@ -514,6 +838,28 @@ describe("Players API", () => {
 
       expect(response.status).toBe(200);
       expect(response.body.players).toHaveLength(1);
+    });
+
+    it("narrows every entry to the requested segment when seasonType is given", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const player = await createPlayer({ teamId: home.id, lastName: "James" });
+      const regularGame = await createGame(home.id, away.id, new Date("2025-10-15"));
+      const playoffGame = await createGame(home.id, away.id, new Date("2026-04-20"), "PLAYOFFS", 1);
+      await createGameStat(player.id, regularGame.id, { points: 20 });
+      await createGameStat(player.id, playoffGame.id, { points: 36 });
+
+      const response = await request(app.getHttpServer()).get(
+        `/v1/players/stats-batch?ids=${player.id}&seasonType=PLAYOFFS`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.players).toEqual([
+        expect.objectContaining({
+          playerId: player.id,
+          seasonAverages: expect.objectContaining({ gamesPlayed: 1, pointsPerGame: 36 }),
+        }),
+      ]);
     });
 
     it("returns a 400 when no ids are given", async () => {

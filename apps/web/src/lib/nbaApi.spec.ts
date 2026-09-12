@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchPlayer,
   fetchPlayerComparison,
+  fetchPlayerStatsBatchInChunks,
   fetchPlayers,
   fetchPlayerStats,
   fetchTeam,
@@ -78,6 +79,21 @@ describe("nbaApi", () => {
   it("fetchTeam requests the single-team endpoint", async () => {
     await fetchTeam("team-1");
     expect(fetch).toHaveBeenCalledWith("/api/v1/teams/team-1", { credentials: "include" });
+  });
+
+  it("fetchPlayerStatsBatchInChunks splits oversized id lists across sequential requests and merges the rows", async () => {
+    const ids = Array.from({ length: 51 }, (_, index) => `player-${index}`);
+    mockFetchOnce({ players: [{ playerId: "any", seasonAverages: {}, gameLog: [] }] });
+
+    const result = await fetchPlayerStatsBatchInChunks(ids, "REGULAR");
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const [firstUrl] = vi.mocked(fetch).mock.calls[0];
+    const [secondUrl] = vi.mocked(fetch).mock.calls[1];
+    expect(String(firstUrl)).toContain("ids=player-0,player-1");
+    expect(String(secondUrl)).toContain("player-50");
+    expect(String(secondUrl)).toContain("seasonType=REGULAR");
+    expect(result.players).toHaveLength(2);
   });
 
   it("rejects with an error when the response is not ok", async () => {

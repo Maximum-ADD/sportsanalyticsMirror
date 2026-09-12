@@ -341,7 +341,7 @@ describe("PredictionsPage", () => {
             offensiveRating: 115,
             defensiveRating: 108,
           },
-          gameLog: [{ gameId: "g1", gameDate: "2026-01-01T00:00:00.000Z", points: 28 }],
+          gameLog: [{ gameId: "g1", gameDate: "2026-01-01T00:00:00.000Z", points: 28, season: "2025-26" }],
         },
       ],
     });
