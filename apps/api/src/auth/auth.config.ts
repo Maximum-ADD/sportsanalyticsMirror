@@ -66,6 +66,36 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
     },
   },
+  account: {
+    // BetterAuth double-submits a signed "state" cookie against the OAuth
+    // callback as an extra CSRF layer on top of the state value Google
+    // itself echoes back (which is already checked against the Postgres
+    // verification row — see generateGenericState/parseGenericState in
+    // better-auth/dist/state.mjs). That cookie is set as the response to a
+    // cross-origin fetch() from authClient.signIn.social() (web app on
+    // Cloudflare Pages calling the API on Render — see authClient.ts),
+    // never as part of a top-level navigation. Browsers with stricter
+    // third-party-cookie defaults (Safari's full 3rd-party block, Firefox's
+    // Total Cookie Protection, Brave) silently drop or partition a cookie
+    // set that way, so it never comes back on Google's callback redirect —
+    // producing the exact same `state_mismatch` ("sign-in link expired")
+    // as the maxAge/SameSite issues above, but only for users on those
+    // browsers, which is why it looked random. Widening maxAge and adding
+    // SameSite=None (see advanced.cookies.state and defaultCookieAttributes
+    // below) can't fix this, since the cookie is being blocked outright,
+    // not just misconfigured. skipStateCookieCheck drops that cookie
+    // double-submit and relies solely on the random state value + the
+    // 10-minute, single-use Postgres row for CSRF protection — still solid
+    // against a forged callback, just without the second layer. The one
+    // thing it gives up is a narrow "login CSRF" case (tricking a victim
+    // into landing in the attacker's own Google session via a crafted
+    // callback link) rather than any form of credential or data theft. The
+    // fully-defended alternative is a shared parent domain for the web app
+    // and API with `advanced.crossSubDomainCookies` (see the still-open
+    // domain question in docs/decisions/ADR-003-hosting-topology.md), which
+    // keeps the cookie check meaningful because it's no longer cross-site.
+    skipStateCookieCheck: true,
+  },
   user: {
     additionalFields: {
       // RBAC role for this app (see RolesGuard). input: false means neither
