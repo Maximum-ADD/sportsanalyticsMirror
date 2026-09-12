@@ -1,4 +1,3 @@
-import { Heart } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { followPlayer, unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
@@ -37,13 +36,13 @@ export function FollowPlayerButton({ playerId, playerName }: FollowPlayerButtonP
       aria-label={isFollowing ? `Unfollow ${playerName}` : `Follow ${playerName}`}
       disabled={isPending}
       onClick={() => (isFollowing ? unfollowMutation.mutate() : followMutation.mutate())}
-      className={`border p-1.5 transition-colors disabled:opacity-50 ${
+      className={`border px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors disabled:opacity-50 ${
         isFollowing
-          ? "border-locker-leather text-locker-leather hover:border-locker-bad hover:text-locker-bad"
-          : "border-landing-light text-locker-ink-muted hover:border-locker-leather hover:text-locker-leather"
+          ? "border-locker-leather bg-locker-leather text-white hover:border-locker-bad hover:bg-locker-bad"
+          : "border-landing-light bg-locker-surface text-landing-ink hover:border-locker-leather"
       }`}
     >
-      <Heart aria-hidden className="size-3.5" fill={isFollowing ? "currentColor" : "none"} />
+      {isFollowing ? "Following" : "Follow"}
     </button>
   );
 }

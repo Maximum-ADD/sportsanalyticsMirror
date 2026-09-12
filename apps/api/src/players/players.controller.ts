@@ -1,13 +1,21 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { SeasonType } from "@prisma/client";
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService } from "./players.service.js";
 import {
+  DEFAULT_LEADERS_MIN_GAMES,
+  POSTSEASON_LEADERS_MIN_GAMES,
+  parseMinGames,
+  parsePlayerStatSort,
+  parseSortOrder,
   StatsService,
   type PlayerComparisonEntry,
+  type PlayerMatchupProjection,
   type PlayerSeasonSplits,
   type PlayerStatsEntry,
+  type SeasonLeaders,
 } from "./stats.service.js";
 
 // A comparison needs at least two players to be a comparison, and the UI
@@ -65,7 +73,13 @@ export class PlayersController {
     private readonly statsService: StatsService
   ) {}
 
-  // GET /v1/players?teamId=&position=&search=&page=&pageSize= — paginated player list.
+  // GET /v1/players?teamId=&position=&search=&page=&pageSize=&sort=&order=&minGames=
+  // — paginated player list. Alphabetical by last name is the default; once
+  // `sort`, `order`, or `minGames` appears the request is a leaderboard and
+  // the ranking runs league-wide in StatsService before the page slice, so
+  // one page's best never masquerades as the league's best. `order` alone
+  // still routes here: it is the direction of the alphabetical default, and
+  // the plain listing path can't honour a descending one.
   @Get()
   @ApiOperation({ summary: "List players (paginated)" })
   @ApiQuery({ name: "teamId", required: false, description: "Filter by team ID" })
@@ -73,8 +87,18 @@ export class PlayersController {
   @ApiQuery({ name: "search", required: false, description: "Search by player name" })
   @ApiQuery({ name: "page", required: false, type: Number, description: "Page number (default: 1)" })
   @ApiQuery({ name: "pageSize", required: false, type: Number, description: "Items per page (default: 25, max: 100)" })
+  @ApiQuery({ name: "sort", required: false, description: "Rank by a season stat (ppg, rpg, apg, ts); omitted means alphabetical" })
+  @ApiQuery({ name: "order", required: false, description: "Sort direction (asc, desc); defaults to desc for stat rankings, asc for alphabetical" })
+  @ApiQuery({ name: "minGames", required: false, type: Number, description: "Only players with at least this many games in the segment" })
   @ApiResponse({ status: 200, description: "Paginated player list" })
   listPlayers(@Query() query: Record<string, unknown>) {
+    if (
+      parsePlayerStatSort(query.sort) !== undefined ||
+      parseSortOrder(query.order) !== undefined ||
+      parseMinGames(query.minGames) !== undefined
+    ) {
+      return this.statsService.getPlayersRanked(query);
+    }
     return this.playersService.getPlayers(query);
   }
 
@@ -125,10 +149,61 @@ export class PlayersController {
   // this app's own bug, not bad input worth surfacing to the caller as an
   // error.
   @Get("stats-batch")
-  async getPlayerStatsBatch(@Query("ids") ids: unknown): Promise<{ players: PlayerStatsEntry[] }> {
+  async getPlayerStatsBatch(
+    @Query("ids") ids: unknown,
+    @Query("seasonType") rawSeasonType: unknown
+  ): Promise<{ players: PlayerStatsEntry[] }> {
     const playerIds = parseBatchStatsIds(ids);
-    const players = await this.statsService.getPlayerStatsBatch(playerIds);
+    const seasonType = parseSeasonType(rawSeasonType);
+    const players = await this.statsService.getPlayerStatsBatch(playerIds, seasonType);
     return { players };
+  }
+
+  // GET /v1/players/leaders?seasonType=&minGames= — the leader in each
+  // headline category (PPG/RPG/APG/TS%) for one segment, after a
+  // participation floor. Declared before ":id" so "leaders" is never
+  // swallowed as a player id. The floor defaults to a near-full regular
+  // season (DEFAULT_LEADERS_MIN_GAMES) and drops to a postseason-sized
+  // sample (POSTSEASON_LEADERS_MIN_GAMES) for the short playoff segments,
+  // where the regular-season floor would leave every category leaderless.
+  @Get("leaders")
+  @ApiOperation({ summary: "Season leaders by headline category" })
+  @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
+  @ApiQuery({ name: "minGames", required: false, type: Number, description: "Participation floor; defaults to 15 in the regular season, 4 in postseason segments" })
+  @ApiResponse({ status: 200, description: "Season leaders by category" })
+  async getSeasonLeaders(
+    @Query("seasonType") rawSeasonType: unknown,
+    @Query("minGames") rawMinGames: unknown
+  ): Promise<{ seasonType: SeasonType; minGames: number; leaders: SeasonLeaders }> {
+    const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    const defaultMinGames =
+      seasonType === SeasonType.REGULAR ? DEFAULT_LEADERS_MIN_GAMES : POSTSEASON_LEADERS_MIN_GAMES;
+    const minGames = parseMinGames(rawMinGames) ?? defaultMinGames;
+
+    const leaders = await this.statsService.getSeasonLeaders(seasonType, minGames);
+    return { seasonType, minGames, leaders };
+  }
+
+  // GET /v1/players/:id/matchup-projection?seasonType= — how this player
+  // has scored against each opponent, plus an opponent-adjusted projected
+  // points line for every game still unplayed on their team's schedule
+  // (the basis of the profile page's projected trend chart). Declared
+  // before ":id" so the literal segment wins over the parameter route.
+  @Get(":id/matchup-projection")
+  @ApiOperation({ summary: "Opponent splits and upcoming-game scoring projections" })
+  @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiQuery({ name: "seasonType", required: false, description: "Season segment the splits are drawn from (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
+  @ApiResponse({ status: 200, description: "Opponent splits and upcoming-game projections" })
+  @ApiResponse({ status: 404, description: "Player not found" })
+  async getMatchupProjection(
+    @Param("id") id: string,
+    @Query("seasonType") rawSeasonType: unknown
+  ): Promise<PlayerMatchupProjection> {
+    const projection = await this.statsService.getMatchupProjection(id, rawSeasonType);
+    if (!projection) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
+    }
+    return projection;
   }
 
   @Get(":id")

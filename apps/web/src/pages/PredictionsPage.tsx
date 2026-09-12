@@ -11,6 +11,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { SectionLoading } from "@/components/ui/loading-overlay";
+import { Reveal } from "@/components/landing/Reveal";
 import { useMe } from "@/lib/useMe";
 import { PERCENT, formatMargin, isCompleted, wasModelHit } from "@/lib/predictions";
 import {
@@ -835,18 +836,25 @@ export function PredictionsPage() {
       <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
         {/* Hero — explains the page and how to read it, the same job the
             homepage's own opening band does, not a second landing-page
-            hero (no photo, nothing viewport-filling). */}
-        <div className="mb-6 border border-landing-light bg-locker-surface p-6">
-          <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Predictions</h1>
-          <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed text-locker-ink-muted">
-            Elo-based win probability and Four Factors-based predicted margin for every ingested game. Cards for
-            games already played show whether the model actually called it right. Search a team or pick a season
-            below, or open any card for the full breakdown — predicted top scorers, an illustrative court formation,
-            and a chance to try your own scorer predictions.
-          </p>
-        </div>
+            hero (no photo, nothing viewport-filling). Each major block
+            below rises in lightly as it enters the viewport (the landing
+            page's Reveal idiom) — entrances only, interactive controls
+            stay put. */}
+        <Reveal>
+          <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+            <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Predictions</h1>
+            <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed text-locker-ink-muted">
+              Elo-based win probability and Four Factors-based predicted margin for every ingested game. Cards for
+              games already played show whether the model actually called it right. Search a team or pick a season
+              below, or open any card for the full breakdown — predicted top scorers, an illustrative court formation,
+              and a chance to try your own scorer predictions.
+            </p>
+          </div>
+        </Reveal>
 
-        <ModelHighlightsSection />
+        <Reveal>
+          <ModelHighlightsSection />
+        </Reveal>
 
         {/* Recent results + Your matchups, side by side — the page's own
             track record before asking anyone to trust the live predictions
@@ -856,8 +864,9 @@ export function PredictionsPage() {
             mutation elsewhere) blurs this section in place rather than the
             whole thing disappearing and reappearing. */}
         {hasLoadedRecentGamesOnce && (
-          <SectionLoading loading={recentGamesQuery.isFetching} label="Loading recent results" className="mb-6">
-            <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+          <Reveal>
+            <SectionLoading loading={recentGamesQuery.isFetching} label="Loading recent results" className="mb-6">
+              <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
               <section>
                 <div className="mb-3 flex items-center gap-3.5">
                   <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
@@ -909,7 +918,8 @@ export function PredictionsPage() {
 
               <YourMatchupsSection games={games} recentGames={recentGames} />
             </div>
-          </SectionLoading>
+            </SectionLoading>
+          </Reveal>
         )}
 
         {/* Filter + search */}
@@ -966,7 +976,8 @@ export function PredictionsPage() {
         {gamesQuery.isError && <ErrorState message="Could not load games." onRetry={() => gamesQuery.refetch()} />}
 
         {(gamesQuery.isSuccess || gamesQuery.isPending) && (
-          <SectionLoading loading={gamesQuery.isFetching}>
+          <Reveal>
+            <SectionLoading loading={gamesQuery.isFetching}>
             {gamesQuery.isPending ? (
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
                 {Array.from({ length: CARDS_PAGE_SIZE }, (_, index) => (
@@ -1007,27 +1018,34 @@ export function PredictionsPage() {
                 )}
               </>
             )}
-          </SectionLoading>
+            </SectionLoading>
+          </Reveal>
         )}
 
         <div className="mt-8">
-          <PlayerCardsDisplay
-            title="Top 5 to watch"
-            description="The model's standout predicted scorers across the soonest upcoming games — man of the match and consistency picks, pooled across games rather than scoped to just one."
-            players={upcomingCards.players}
-            isPending={upcomingCards.isPending}
-            count={5}
-          />
+          <Reveal>
+            <PlayerCardsDisplay
+              title="Top 5 to watch"
+              description="The model's standout predicted scorers across the soonest upcoming games — man of the match and consistency picks, pooled across games rather than scoped to just one."
+              players={upcomingCards.players}
+              isPending={upcomingCards.isPending}
+              count={5}
+            />
+          </Reveal>
         </div>
 
         {hasLoadedRecentGamesOnce && (
-          <SectionLoading loading={recentGamesQuery.isFetching} label="Loading model track record" className="mt-8">
-            <ModelTrackRecordSection recentGames={recentGames} />
-          </SectionLoading>
+          <Reveal>
+            <SectionLoading loading={recentGamesQuery.isFetching} label="Loading model track record" className="mt-8">
+              <ModelTrackRecordSection recentGames={recentGames} />
+            </SectionLoading>
+          </Reveal>
         )}
 
         <div className="mt-8">
-          <HowItWorksSection />
+          <Reveal>
+            <HowItWorksSection />
+          </Reveal>
         </div>
       </div>
     </div>

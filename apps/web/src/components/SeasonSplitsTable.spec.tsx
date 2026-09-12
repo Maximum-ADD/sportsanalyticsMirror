@@ -114,12 +114,12 @@ describe("SeasonSplitsTable", () => {
     // A 100% three-point rate off two games is noise, and is dimmed and
     // explained rather than presented as an 82-game figure would be.
     const smallSampleRate = screen.getByText("100.0%");
-    expect(smallSampleRate).toHaveClass("text-text-muted");
+    expect(smallSampleRate).toHaveClass("text-locker-ink-muted");
     expect(smallSampleRate).toHaveAttribute("title", expect.stringContaining("Only 2 games"));
 
     // Counting stats from the same segment aren't dimmed — a small sample
     // distorts rates far more than it distorts points per game.
-    expect(screen.getByText("30.0")).toHaveClass("text-text-primary");
+    expect(screen.getByText("30.0")).toHaveClass("text-landing-ink");
   });
 
   describe("advanced stat rows", () => {
@@ -179,7 +179,7 @@ describe("SeasonSplitsTable", () => {
       render(<SeasonSplitsTable splits={splits} playerName="LeBron James" />);
 
       const delta = screen.getByText("−6.0");
-      expect(delta).toHaveClass("text-emerald-400");
+      expect(delta).toHaveClass("text-locker-good");
     });
 
     it("still colours a rising offensive rating as an improvement", () => {
@@ -190,7 +190,7 @@ describe("SeasonSplitsTable", () => {
 
       render(<SeasonSplitsTable splits={splits} playerName="LeBron James" />);
 
-      expect(screen.getByText("+8.0")).toHaveClass("text-emerald-400");
+      expect(screen.getByText("+8.0")).toHaveClass("text-locker-good");
     });
 
     it("shows assist-to-turnover at two decimal places", () => {
