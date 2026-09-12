@@ -40,7 +40,7 @@ function makeSlot(playerId: string, overrides: Partial<SaveLineupInput["slots"][
 }
 
 function makeInput(slots: SaveLineupInput["slots"], budget = BUDGET): SaveLineupInput {
-  return { budget, slots };
+  return { budget, name: "Test lineup", slots };
 }
 
 // A solver-legal board: two guards, two forwards, one center.
@@ -132,7 +132,7 @@ describe("assertMeetsSolverConstraints", () => {
 
 describe("deriveLineupDrift", () => {
   const savedLineup = {
-    budget: BUDGET,
+    budgetAtSave: BUDGET,
     slots: [
       makeSlot("a", { predictedPointsAtSave: 40, salaryAtSave: 10_000 }),
       makeSlot("b", { predictedPointsAtSave: 35.5, salaryAtSave: 9_500 }),
@@ -191,7 +191,11 @@ describe("SavedLineupsService", () => {
       prisma.savedLineup.create.mockResolvedValue({
         id: "saved-1",
         userId: "user-1",
-        budget: BUDGET,
+        name: "Test lineup",
+        sourceLineupId: null,
+        totalPredictedPointsAtSave: 150,
+        totalSalaryAtSave: 45_000,
+        budgetAtSave: BUDGET,
         createdAt: new Date("2026-09-12T10:00:00Z"),
         slots: LEGAL_SLOTS.map((slot, index) => ({
           id: `slot-${index}`,
@@ -210,7 +214,10 @@ describe("SavedLineupsService", () => {
       expect(prisma.savedLineup.create).toHaveBeenCalledWith({
         data: {
           userId: "user-1",
-          budget: BUDGET,
+          name: "Test lineup",
+          budgetAtSave: BUDGET,
+          totalPredictedPointsAtSave: 150,
+          totalSalaryAtSave: 45_000,
           slots: { create: input.slots },
         },
         include: { slots: { include: { player: { include: { team: true } } } } },
@@ -261,7 +268,17 @@ describe("SavedLineupsService", () => {
         player: makePlayer(slot.playerId, LEGAL_POSITIONS[index]),
       }));
       prisma.savedLineup.findMany.mockResolvedValue([
-        { id: "saved-1", userId: "user-1", budget: BUDGET, createdAt: new Date("2026-09-12T10:00:00Z"), slots: frozenSlots },
+        {
+          id: "saved-1",
+          userId: "user-1",
+          name: "Test lineup",
+          sourceLineupId: null,
+          totalPredictedPointsAtSave: 150,
+          totalSalaryAtSave: 45_000,
+          budgetAtSave: BUDGET,
+          createdAt: new Date("2026-09-12T10:00:00Z"),
+          slots: frozenSlots,
+        },
       ]);
       prisma.playerPrediction.findMany.mockResolvedValue(
         LEGAL_SLOTS.map((slot, index) => ({
@@ -293,7 +310,17 @@ describe("SavedLineupsService", () => {
         },
       ];
       prisma.savedLineup.findMany.mockResolvedValue([
-        { id: "saved-1", userId: "user-1", budget: BUDGET, createdAt: new Date(), slots: frozenSlots },
+        {
+          id: "saved-1",
+          userId: "user-1",
+          name: "Test lineup",
+          sourceLineupId: null,
+          totalPredictedPointsAtSave: 30,
+          totalSalaryAtSave: 9_000,
+          budgetAtSave: BUDGET,
+          createdAt: new Date(),
+          slots: frozenSlots,
+        },
       ]);
       // findMany is ordered asOf desc by the query itself, so the mock must
       // return rows newest-first, the way Postgres would.

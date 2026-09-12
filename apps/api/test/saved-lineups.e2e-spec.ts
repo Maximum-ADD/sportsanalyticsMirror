@@ -348,7 +348,10 @@ describe("Saved lineups API", () => {
       await testPrisma.savedLineup.create({
         data: {
           userId: "user-1",
-          budget: BUDGET,
+          name: "Older lineup",
+          budgetAtSave: BUDGET,
+          totalPredictedPointsAtSave: 1,
+          totalSalaryAtSave: 1,
           createdAt: new Date("2026-09-10T08:00:00Z"),
           slots: { create: [{ playerId: players[0].id, predictedPointsAtSave: 1, salaryAtSave: 1 }] },
         },

@@ -22,8 +22,8 @@ export interface SaveLineupSlotInput {
 export interface SaveLineupInput {
   budget: number;
   // Required: every saved lineup gets a name so a profile full of saves
-  // stays findable. (The column stays nullable only for rows saved before
-  // the name existed.)
+  // stays findable. Stored in the NOT NULL name column the home_personalization
+  // migration created — POST rejects a missing or blank one.
   name: string;
   slots: SaveLineupSlotInput[];
 }
@@ -46,8 +46,10 @@ export interface SavedLineupDrift {
 
 export interface SavedLineupSummary {
   id: string;
+  // budgetAtSave in storage; the API speaks "budget" because that is the
+  // concept the client optimizes against.
   budget: number;
-  name: string | null;
+  name: string;
   createdAt: Date;
   totalPredictedPointsAtSave: number;
   totalSalaryAtSave: number;
@@ -135,7 +137,7 @@ export function assertMeetsSolverConstraints(
  *          read. Callers render "no current prediction" instead of a delta.
  */
 export function deriveLineupDrift(
-  savedLineup: Pick<SavedLineup, "budget"> & {
+  savedLineup: Pick<SavedLineup, "budgetAtSave"> & {
     slots: Pick<SavedLineupSlot, "playerId" | "predictedPointsAtSave" | "salaryAtSave">[];
   },
   latestPredictionByPlayerId: ReadonlyMap<string, Pick<PlayerPrediction, "playerId" | "predictedFantasyPoints" | "salary">>
@@ -157,7 +159,7 @@ export function deriveLineupDrift(
   return {
     pointsDelta: roundToTenth(currentPredictedPoints - savedPredictedPoints),
     salaryDelta: currentSalary - savedSalary,
-    isOverBudget: currentSalary > savedLineup.budget,
+    isOverBudget: currentSalary > savedLineup.budgetAtSave,
   };
 }
 
@@ -167,13 +169,13 @@ function summarizeSavedLineup(
 ): SavedLineupSummary {
   return {
     id: savedLineup.id,
-    budget: savedLineup.budget,
+    budget: savedLineup.budgetAtSave,
     name: savedLineup.name,
     createdAt: savedLineup.createdAt,
-    totalPredictedPointsAtSave: roundToTenth(
-      savedLineup.slots.reduce((sum, slot) => sum + slot.predictedPointsAtSave, 0)
-    ),
-    totalSalaryAtSave: savedLineup.slots.reduce((sum, slot) => sum + slot.salaryAtSave, 0),
+    // Totals are read back from the columns frozen at save time (see the
+    // schema's SavedLineup comment) rather than re-summed from the slots.
+    totalPredictedPointsAtSave: roundToTenth(savedLineup.totalPredictedPointsAtSave),
+    totalSalaryAtSave: savedLineup.totalSalaryAtSave,
     drift: deriveLineupDrift(savedLineup, latestPredictionByPlayerId),
     slots: savedLineup.slots.map((slot) => ({
       id: slot.id,
@@ -227,8 +229,12 @@ export class SavedLineupsService {
     const created = await this.prisma.savedLineup.create({
       data: {
         userId,
-        budget: input.budget,
         name: input.name,
+        budgetAtSave: input.budget,
+        // Freeze the totals alongside the slots: these are the numbers the
+        // user was looking at when they hit save, not a live recomputation.
+        totalPredictedPointsAtSave: input.slots.reduce((sum, slot) => sum + slot.predictedPointsAtSave, 0),
+        totalSalaryAtSave: input.slots.reduce((sum, slot) => sum + slot.salaryAtSave, 0),
         slots: {
           create: input.slots.map((slot) => ({
             playerId: slot.playerId,

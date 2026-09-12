@@ -90,7 +90,7 @@ function makeSavedLineup(overrides: Partial<SavedLineup> = {}): SavedLineup {
   return {
     id: "saved-1",
     budget: 50_000,
-    name: null,
+    name: "Week 3 flyers",
     createdAt: "2026-09-12T08:00:00.000Z",
     totalPredictedPointsAtSave: 81.8,
     totalSalaryAtSave: 18_200,

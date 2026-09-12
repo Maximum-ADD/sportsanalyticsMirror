@@ -256,9 +256,9 @@ export interface SavedLineupDrift {
 export interface SavedLineup {
   id: string;
   budget: number;
-  // Optional user-chosen label ("Week 3 flyers"); null means the profile
-  // card falls back to the save date as its title.
-  name: string | null;
+  // Every lineup gets a name on save — the API rejects a missing or blank
+  // one — so a shelf of saves stays tell-apart-able.
+  name: string;
   createdAt: string;
   totalPredictedPointsAtSave: number;
   totalSalaryAtSave: number;

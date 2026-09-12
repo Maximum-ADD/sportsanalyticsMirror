@@ -379,36 +379,49 @@ model LineupSlot {
 // A lineup a user chose to keep, snapshotted from the optimizer board —
 // written by the NestJS API (POST /v1/me/lineups), unlike Lineup above
 // which the Python optimizer service writes. One user can save any number
-// of lineups over a season.
+// of lineups over a season. The table itself is created by the
+// home_personalization migration (the home page shipped this model first);
+// the column set below must stay in sync with that migration.
 model SavedLineup {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // Optional user-chosen label, so a profile full of saves stays
-  // tell-apart-able ("Week 3 flyers") instead of date-or-nothing.
-  name      String?
-  budget    Int
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Every lineup gets a name on save — POST /v1/me/lineups rejects a missing
+  // or blank one — so a shelf of saves stays tell-apart-able.
+  name   String
+
+  // Which optimizer run the save came from. Optional and currently unused:
+  // this API freezes the client-sent board instead of copying the optimizer's
+  // own Lineup row, but the column exists for the home-page flow that does.
+  sourceLineupId String?
+
+  // ── Totals snapshot, taken at the moment the lineup was saved ──
+  // PlayerPrediction is append-and-take-latest-by-asOf: the optimizer writes
+  // a fresh row per player per run and readers take the newest. Re-deriving
+  // these totals on read would therefore quietly return different numbers
+  // than the ones the user was looking at when they hit save — the lineup
+  // would appear to change on its own. Storing them makes the saved lineup a
+  // record of a decision rather than a live recomputation.
+  totalPredictedPointsAtSave Float
+  totalSalaryAtSave          Int
+  budgetAtSave               Int
+
   createdAt DateTime @default(now())
 
   slots SavedLineupSlot[]
 
-  @@index([userId])
+  @@index([userId, createdAt])
 }
 
+// One player within a saved lineup, with that player's predicted points and
+// salary as they stood at save time — same reason as SavedLineup's totals.
 model SavedLineupSlot {
   id            String      @id @default(uuid())
   savedLineupId String
   savedLineup   SavedLineup @relation(fields: [savedLineupId], references: [id], onDelete: Cascade)
   playerId      String
-  player        Player      @relation(fields: [playerId], references: [id])
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
-  // Frozen copies of what the board showed when the user saved — NOT live
-  // lookups. PlayerPrediction is append-and-take-latest, so the "current"
-  // value for a player drifts every optimizer run; storing the numbers at
-  // save time is what makes drift computable later ("up 4.6 points and
-  // $1,200 over cap since you saved it") instead of silently rewriting
-  // history. Totals are deliberately not stored on SavedLineup: they are
-  // derived from these slots, the single source of truth.
   predictedPointsAtSave Float
   salaryAtSave          Int
 

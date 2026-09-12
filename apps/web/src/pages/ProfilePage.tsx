@@ -280,14 +280,6 @@ function formatSalary(valueInDollars: number): string {
   return `$${valueInDollars.toLocaleString("en-US")}`;
 }
 
-function formatSavedDate(isoTimestamp: string): string {
-  return new Date(isoTimestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 // One human sentence per lineup comparing the frozen save-time numbers to
 // the player's latest predictions, e.g. "Since you saved it: 4.6 pts up,
 // $1,200 up, $2,500 over the $50,000 cap." Words carry the direction —
@@ -367,10 +359,10 @@ function SavedLineupsSection() {
         <div key={lineup.id} className="border border-landing-light bg-locker-surface p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              {/* A named lineup wears its name; an unnamed one falls back to
-                  the save date so a full profile stays tell-apart-able. */}
+              {/* Every lineup is named on save (the API enforces it), so the
+                  name is always the card's title. */}
               <p className="font-display text-[12.5px] tracking-[0.08em] text-landing-ink uppercase">
-                {lineup.name ?? formatSavedDate(lineup.createdAt)}
+                {lineup.name}
               </p>
               <p className="mt-1 text-[11px] text-locker-ink-muted">
                 {lineup.totalPredictedPointsAtSave.toFixed(1)} pts · {formatSalary(lineup.totalSalaryAtSave)} of{" "}
