@@ -207,11 +207,11 @@ function LineupRow({ lineup }: { lineup: SavedLineup }) {
  */
 function DriftLine({ drift, savedOn }: { drift: SavedLineupDrift | null; savedOn: string }) {
   const savedOnLabel = new Date(savedOn).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-
   // Null drift is not zero drift: it means no player in the lineup has a
   // current prediction to compare against, so there is nothing to say. A "0.0"
-  // here would claim the lineup had been re-checked and found unmoved.
-  if (!drift) {
+  // here would claim the lineup had been re-checked and found unmoved — and a
+  // bare save date would leave the reader to guess why no movement is shown.
+  if (drift === null) {
     return <>saved {savedOnLabel} · no current prediction to compare against</>;
   }
 
