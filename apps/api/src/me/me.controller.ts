@@ -26,7 +26,9 @@ import { isValidUsername, MeService, type MeProfile } from "./me.service.js";
 // controller, since "look up someone else's profile" isn't a feature this
 // app has, and skipping the param removes an entire class of authorization
 // bug (no id to double check against request.user.id).
-function requestUserId(request: Request): string {
+// Exported for the other v1/me controller (SavedLineupsController), which
+// lives in its own file but follows the same no-userId-param rule.
+export function requestUserId(request: Request): string {
   // Populated by SessionAuthGuard from the BetterAuth session — see its own
   // doc comment. Narrow-cast the same way RolesGuard does for request.user,
   // rather than trusting `any`.

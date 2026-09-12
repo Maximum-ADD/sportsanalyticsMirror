@@ -53,4 +53,25 @@ export class OptimizerService {
       salary: prediction?.salary ?? null,
     };
   }
+
+  // Every player's latest prediction in one round trip — the optimizer
+  // page's edit mode uses this to suggest value picks (best dollars-per-
+  // point that still fit the board's remaining budget) without firing one
+  // request per candidate. Same newest-first-then-distinct pattern as
+  // getLatestLineup()'s prediction lookup, with the player embedded so the
+  // client never has to join.
+  async getLatestPlayerPredictions() {
+    const predictions = await this.prisma.playerPrediction.findMany({
+      orderBy: { asOf: "desc" },
+      distinct: ["playerId"],
+      include: { player: { include: { team: true } } },
+    });
+    return predictions.map((prediction) => ({
+      playerId: prediction.playerId,
+      predictedFantasyPoints: prediction.predictedFantasyPoints,
+      salary: prediction.salary,
+      asOf: prediction.asOf,
+      player: prediction.player,
+    }));
+  }
 }

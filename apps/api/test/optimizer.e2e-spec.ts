@@ -174,4 +174,74 @@ describe("Optimizer API", () => {
       expect(response.body).toEqual({ predictedFantasyPoints: null, salary: null });
     });
   });
+
+  describe("GET /v1/optimizer/predictions", () => {
+    it("requires a signed-in session", async () => {
+      vi.mocked(auth.api.getSession).mockResolvedValueOnce(null);
+
+      const response = await request(app.getHttpServer()).get("/v1/optimizer/predictions");
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toEqual({ code: "UNAUTHENTICATED", message: "Sign in required" });
+    });
+
+    it("returns an empty list when no predictions exist yet", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/optimizer/predictions");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it("returns each player's latest prediction with the player embedded", async () => {
+      const team = await createTeam();
+      const player = await createPlayer(team.id);
+      await testPrisma.playerPrediction.create({
+        data: {
+          playerId: player.id,
+          predictedFantasyPoints: 20,
+          salary: 5000,
+          asOf: new Date("2026-09-12T08:00:00Z"),
+        },
+      });
+      await testPrisma.playerPrediction.create({
+        data: {
+          playerId: player.id,
+          predictedFantasyPoints: 25,
+          salary: 5500,
+          asOf: new Date("2026-09-12T09:00:00Z"),
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/optimizer/predictions");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveLength(1);
+      expect(response.body[0].playerId).toBe(player.id);
+      // Newest-first ordering means the 09:00 round wins over the 08:00 one.
+      expect(response.body[0].predictedFantasyPoints).toBe(25);
+      expect(response.body[0].salary).toBe(5500);
+      expect(response.body[0].player.lastName).toBe(player.lastName);
+      expect(response.body[0].player.team.abbreviation).toBe(team.abbreviation);
+    });
+
+    it("lists only one entry per player across multiple players", async () => {
+      const team = await createTeam();
+      const first = await createPlayer(team.id, { lastName: "First" });
+      const second = await createPlayer(team.id, { lastName: "Second" });
+      await testPrisma.playerPrediction.create({
+        data: { playerId: first.id, predictedFantasyPoints: 30, salary: 7000 },
+      });
+      await testPrisma.playerPrediction.create({
+        data: { playerId: second.id, predictedFantasyPoints: 28, salary: 6800 },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/optimizer/predictions");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveLength(2);
+      expect(response.body.map((entry: { playerId: string }) => entry.playerId).sort()).toEqual(
+        [first.id, second.id].sort()
+      );
+    });
+  });
 });
