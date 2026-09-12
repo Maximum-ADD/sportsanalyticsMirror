@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AuthStatus } from "@/components/AuthStatus";
 import { FlameBallLogo } from "./FlameBallLogo";
@@ -18,63 +18,19 @@ const LINK_CLASS =
 interface LandingHeaderProps {
   signInCallbackURL?: string;
   // The one deliberate per-page exception to "the header looks the same
-  // everywhere": a slot for the landing page's live-match widget, rendered
-  // inline between the nav links and AuthStatus. Everything else about the
-  // header — links, logo, layout — stays identical on every page.
+  // everywhere": a slot for the landing page's compact match-updates
+  // banner, rendered inline between the nav links and AuthStatus. Slotted
+  // content is expected to fit inside the h-14 row (the widget renders at
+  // h-10). Everything else about the header — links, logo, layout — stays
+  // identical on every page.
   beforeAuthStatus?: ReactNode;
 }
-
-// Gap kept between the widget's right edge and AuthStatus's left edge —
-// same number used for both the initial CSS guess (before the real
-// measurement lands) and the measured position below, so there's no visible
-// jump between them.
-const WIDGET_GAP_PX = 24;
 
 // The one app-shell header, shared by the landing page and every signed-in
 // page alike (see AppLayout) — no per-page variants beyond beforeAuthStatus
 // above, so "the header" otherwise always means the same look and the same
 // links everywhere.
 export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHeaderProps) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const authStatusRef = useRef<HTMLDivElement>(null);
-  // Right offset (in px, from the header row's own right edge) that puts
-  // the widget flush against AuthStatus's real left edge. AuthStatus's
-  // rendered width varies (sign-in button vs. an avatar + username of
-  // unpredictable length, only known once GET /v1/me resolves), so a fixed
-  // Tailwind offset can't track it — this measures the real gap instead.
-  // Starts null (rendered via the CSS fallback below) until the first
-  // layout pass has real boxes to measure.
-  const [widgetRightPx, setWidgetRightPx] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    if (!beforeAuthStatus) return;
-    const rowEl = rowRef.current;
-    const authStatusEl = authStatusRef.current;
-    if (!rowEl || !authStatusEl) return;
-
-    function measure() {
-      const rowRect = rowEl!.getBoundingClientRect();
-      const authStatusRect = authStatusEl!.getBoundingClientRect();
-      setWidgetRightPx(rowRect.right - authStatusRect.left + WIDGET_GAP_PX);
-    }
-
-    measure();
-    window.addEventListener("resize", measure);
-
-    // AuthStatus's box changes width once useSession/useMe resolve (button
-    // -> avatar+username) — a plain mount-time measurement would miss that
-    // and leave the widget offset from the sign-in button's old position.
-    // Not implemented in jsdom (the component's test environment) — real
-    // browsers have had this since 2020, so this only ever skips in tests.
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    observer?.observe(authStatusEl);
-
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [beforeAuthStatus]);
-
   return (
     <header className="relative inset-x-0 top-0 z-20 shrink-0">
       <a
@@ -83,7 +39,7 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
       >
         Skip to content
       </a>
-      <div ref={rowRef} className="relative flex h-14 items-center gap-x-6 bg-landing-ink px-6 lg:px-14">
+      <div className="flex h-14 items-center gap-x-6 bg-landing-ink px-6 lg:px-14">
         <Link
           to="/"
           aria-label="Court Vision, home"
@@ -91,41 +47,32 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
         >
           <FlameBallLogo className="h-7" />
         </Link>
-        <nav aria-label="Primary" className="flex flex-1 items-center gap-x-6 lg:gap-x-10">
-          <ul className="flex items-center gap-x-6 lg:gap-x-10">
+        {/* The link row is the one part of the header allowed to scroll: at
+            phone widths six nowrap links cannot fit, and letting them blow
+            out the row instead both overflows the page horizontally and
+            (via flex shrink) squeezes AuthStatus until its button wraps
+            into a tall block. flex-1 + overflow-x-auto keeps every link
+            reachable by swiping, while AuthStatus stays pinned at full
+            size. */}
+        <nav aria-label="Primary" className="flex min-w-0 flex-1 items-center gap-x-6 lg:gap-x-10">
+          <ul className="flex flex-1 items-center gap-x-6 overflow-x-auto scrollbar-none lg:gap-x-10">
             {APP_LINKS.map((link) => (
-              <li key={link.label}>
+              <li key={link.label} className="shrink-0">
                 <Link to={link.to} className={LINK_CLASS}>
                   {link.label}
                 </Link>
               </li>
             ))}
           </ul>
-          {/* Positioned against the header ROW (this component's outer
-              relative div, a real fixed h-14 box) rather than against
-              AuthStatus's own wrapper — anchoring to AuthStatus directly
-              made the widget's vertical position track AuthStatus's own
-              (shorter, content-sized) box instead of the header's true
-              edge. top-3 overlaps it down into the header from that row's
-              real top. Horizontal position is the measured widgetRightPx
-              once available; before that first layout pass, right-24
-              (matching WIDGET_GAP_PX) is a reasonable guess for the
-              sign-in button's width so there's no visible jump. absolute
-              keeps the widget (much taller than this row) out of flex
-              flow entirely: as a normal flex child, even with self-start,
-              it would stretch nav/this row to its own height instead of
-              just overhanging past them. Hidden below xl: at narrower
-              widths the nav links alone already crowd the row, and this
-              would only ever overlap them, not sit in real empty space. */}
-          {beforeAuthStatus && (
-            <div
-              className="absolute top-3 hidden xl:block"
-              style={{ right: widgetRightPx ?? WIDGET_GAP_PX }}
-            >
-              {beforeAuthStatus}
-            </div>
-          )}
-          <div ref={authStatusRef} className="ml-auto flex items-center">
+          {/* The landing page's match banner slots in as a plain inline flex
+              child between the links and AuthStatus, sized h-10 so it sits
+              inside this h-14 row. No absolute anchoring or measurement is
+              needed anymore — that rig only existed to hang the old,
+              taller-than-the-bar card off the row's top edge. Hidden below
+              xl: at narrower widths the nav links alone already crowd the
+              row. */}
+          {beforeAuthStatus && <div className="hidden shrink-0 xl:block">{beforeAuthStatus}</div>}
+          <div className="ml-auto flex shrink-0 items-center">
             <AuthStatus signInCallbackURL={signInCallbackURL} />
           </div>
         </nav>
