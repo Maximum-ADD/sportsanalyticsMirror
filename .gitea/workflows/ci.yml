@@ -285,12 +285,7 @@ jobs:
               exit 1
             fi
             HOSTPORT="$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')"
-            # `ip` (iproute2) isn't guaranteed to be installed in the job's own
-            # container — under `set -e`, a missing binary inside this command
-            # substitution would exit the whole step with code 127 rather than
-            # falling through to the loopback attempt below, so failure here
-            # must degrade to an empty HOSTGATEWAY instead of killing the step.
-            HOSTGATEWAY="$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')" || HOSTGATEWAY=""
+            HOSTGATEWAY="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || true)"
             if [ -n "$HOSTPORT" ] && [ -n "$HOSTGATEWAY" ] && try_target "$HOSTGATEWAY" "$HOSTPORT"; then
               TARGET="$HOSTGATEWAY:$HOSTPORT"
               echo "reachable on the published port through host gateway $HOSTGATEWAY"
