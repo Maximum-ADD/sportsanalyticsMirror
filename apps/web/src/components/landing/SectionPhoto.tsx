@@ -9,23 +9,25 @@ interface SectionPhotoProps {
   name: string;
   narrowName?: string;
   priority?: boolean;
+  /** Intrinsic size of the rendered box, e.g. "100vw" or "(min-width: 1024px) 640px". */
+  sizes?: string;
   className?: string;
 }
 
-export function SectionPhoto({ name, narrowName, priority = false, className }: SectionPhotoProps) {
+export function SectionPhoto({ name, narrowName, priority = false, sizes = "100vw", className }: SectionPhotoProps) {
   return (
     <picture>
       {narrowName ? (
         <source
           type="image/webp"
           media={NARROW_MEDIA}
-          sizes="100vw"
+          sizes={sizes}
           srcSet={NARROW_WIDTHS.map((w) => `/photos/${narrowName}-${w}.webp ${w}w`).join(", ")}
         />
       ) : null}
       <source
         type="image/webp"
-        sizes="100vw"
+        sizes={sizes}
         srcSet={WIDTHS.map((width) => `/photos/${name}-${width}.webp ${width}w`).join(", ")}
       />
       <img

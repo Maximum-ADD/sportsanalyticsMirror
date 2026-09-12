@@ -64,6 +64,21 @@ describe("LandingMatchWidget", () => {
     expect(card).toHaveTextContent(/LAL 38, NYK 24/);
   });
 
+  it("fits inside the top bar as a compact single-row banner", async () => {
+    mockFetchGames.mockResolvedValue({ data: [GAME], page: 1, pageSize: 1, total: 1 });
+
+    renderWithProviders(<LandingMatchWidget />);
+
+    // h-10 is the contract with LandingHeader's h-14 row — the banner must
+    // sit inside the bar, not overhang it like the old h-36 card did.
+    const banner = await screen.findByRole("group", { name: /match updates/i });
+    expect(banner).toHaveClass("h-10");
+    expect(banner).toHaveTextContent("VS");
+    // Blends into the bar: no panel background or border of its own.
+    expect(banner).not.toHaveClass("bg-surface-nav");
+    expect(banner).not.toHaveClass("border");
+  });
+
   it("only ever asks for a completed game, never an upcoming one with no score yet", async () => {
     mockFetchGames.mockResolvedValue({ data: [GAME], page: 1, pageSize: 1, total: 1 });
 

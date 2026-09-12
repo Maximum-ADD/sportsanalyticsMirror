@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { signInWithGoogle, useSession } from "@/lib/authClient";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { AuthBootScreen } from "@/components/ui/loading-overlay";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -10,11 +10,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { data: session, isPending } = useSession();
 
   if (isPending) {
-    return (
-      <div className="flex min-h-full items-center justify-center bg-landing-hero">
-        <BasketballSpinner size="lg" label="Loading" />
-      </div>
-    );
+    return <AuthBootScreen />;
   }
 
   if (!session) {

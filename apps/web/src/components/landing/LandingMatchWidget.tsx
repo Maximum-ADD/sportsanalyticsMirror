@@ -15,8 +15,13 @@ export function LandingMatchWidget() {
 
   if (isError) return null;
 
+  // h-10 sits inside the h-14 landing header row with an 8px margin above
+  // and below, so it reads as part of the bar rather than a strip bleeding
+  // out of it. The loading placeholder mirrors that same height, as a
+  // faint white wash rather than a raised panel, so it blends the way the
+  // resolved banner does and the row doesn't shift when the game lands.
   if (isPending) {
-    return <Skeleton className="h-36 w-44 rounded-none opacity-70" />;
+    return <Skeleton className="h-10 w-56 bg-white/10 opacity-70" />;
   }
 
   const game = data?.data[0];
@@ -26,47 +31,51 @@ export function LandingMatchWidget() {
     <div
       role="group"
       aria-labelledby={captionId}
-      className="relative flex h-36 w-44 flex-col shadow-[0_10px_28px_rgba(0,0,0,0.45)]"
+      className="relative flex h-10 items-center gap-3"
     >
+      <p id={captionId} className="sr-only">
+        Match Updates
+      </p>
       <p className="sr-only">
         Most recent result: {game.homeTeam.abbreviation} {game.homeScore}, {game.awayTeam.abbreviation}{" "}
         {game.awayScore}
       </p>
-      {/* Glass-like sheen sweeping across the whole card, on top of every
-          band — a flat gradient rather than a real reflection, but enough
-          to read as "glossy" instead of matte. pointer-events-none so it
-          never intercepts a click meant for the card underneath. */}
+      {/* Deliberately no panel: no background, border, or sheen, so the
+          banner blends straight into the header's bg-landing-ink. All
+          contrast comes from the white logo discs and the white mono
+          score, and the hairline rule below is the only structure
+          separating the two halves. */}
+      {/* Logo VS logo, nothing drawn between them — with the panel gone,
+          the orange center line read as a stray mark on the bar rather
+          than a court cue. The badges render at size-8 (TeamBadge's
+          className override wins over its md size-10 via tailwind-merge)
+          so two of them fill most of the banner's height — the largest
+          they can be while still clearing it with an even ring of
+          background around each disc. */}
+      <div aria-hidden className="relative flex items-center gap-1.5">
+        <TeamBadge team={game.homeTeam} size="md" className="relative size-8 bg-white/90" />
+        <span className="relative px-0.5 font-mono text-[9px] tracking-[0.1em] text-white uppercase">VS</span>
+        <TeamBadge team={game.awayTeam} size="md" className="relative size-8 bg-white/90" />
+      </div>
+      {/* Hairline separating "who played" from "how it ended". With no
+          panel around the banner this vertical rule is the only structure,
+          so it sits a touch stronger than it needed to against the old
+          box edge. The visible score is aria-hidden because the sr-only
+          caption above already announces the result — repeating it here
+          would double every screen-reader visit. */}
+      <div aria-hidden className="h-5 w-px bg-white/20" />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/25 via-white/5 to-transparent"
-      />
-      <p id={captionId} className="bg-black py-1.5 text-center font-mono text-[10px] tracking-[0.14em] text-white uppercase">
-        Match Updates
-      </p>
-      {/* A dark court, not a real photo — CSS-only so there's no image
-          cropping/artifact risk. The center line (a 2px vertical bar) and
-          center circle (a plain ring) run right through "VS", the same
-          spot a real court's center line splits the two team benches. */}
-      <div className="relative flex-1 overflow-hidden bg-surface-nav px-3 py-1.5">
-        <div aria-hidden className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-brand-accent/70" />
-        <div
-          aria-hidden
-          className="absolute top-1/2 left-1/2 size-9 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-brand-accent/70"
-        />
-        <div aria-hidden className="relative flex h-full items-center justify-between gap-1">
-          <TeamBadge team={game.homeTeam} size="md" className="bg-white/90" />
-          <span className="font-mono text-[10px] tracking-[0.1em] text-white uppercase">VS</span>
-          <TeamBadge team={game.awayTeam} size="md" className="bg-white/90" />
-        </div>
-      </div>
-      <div aria-hidden className="flex items-center justify-between bg-black px-3 py-1.5">
-        <span className="font-mono text-[13px] text-white uppercase">
+        className="flex items-baseline gap-1.5 font-mono text-xs whitespace-nowrap text-white uppercase"
+      >
+        <span>
           {game.homeTeam.abbreviation} <span className="tabular-nums">{game.homeScore}</span>
         </span>
-        <span className="font-mono text-[9px] text-white/50 uppercase">final</span>
-        <span className="font-mono text-[13px] text-white uppercase">
+        <span className="text-white/40">-</span>
+        <span>
           <span className="tabular-nums">{game.awayScore}</span> {game.awayTeam.abbreviation}
         </span>
+        <span className="text-[9px] text-white/50">final</span>
       </div>
     </div>
   );

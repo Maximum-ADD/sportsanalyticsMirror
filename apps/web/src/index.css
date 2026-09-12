@@ -176,6 +176,73 @@
     }
   }
 
+  --animate-landing-rise: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  @keyframes landing-rise {
+    from {
+      opacity: 0;
+      transform: translateY(1.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  --animate-landing-scan: landing-scan 3.8s ease-in-out infinite;
+  @keyframes landing-scan {
+    0%,
+    100% {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    18%,
+    72% {
+      opacity: 1;
+    }
+    90% {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+  }
+
+  /* The hero court's comet: one lap of the boundary outline per cycle.
+     dashoffset advances by exactly one dash period — 1940 units, the
+     outline's perimeter (see HeroCourtLines) — so laps join seamlessly.
+     The intermediate stops sit on the court's four corners and every
+     segment runs ease-in-out, so the comet decelerates into each corner
+     and surges down the sidelines instead of grinding along at constant
+     speed. A second, faster opacity pass (hero-court-breathe) shimmers
+     the streak between laps so it never reads as a mechanical loop. */
+  --animate-hero-court-pulse: hero-court-pulse 16s ease-in-out infinite;
+  @keyframes hero-court-pulse {
+    0% {
+      stroke-dashoffset: 0;
+    }
+    24.23% {
+      stroke-dashoffset: -470; /* top-left corner */
+    }
+    50% {
+      stroke-dashoffset: -970; /* top-right corner */
+    }
+    74.23% {
+      stroke-dashoffset: -1440; /* bottom-right corner */
+    }
+    100% {
+      stroke-dashoffset: -1940; /* back to the start */
+    }
+  }
+
+  --animate-hero-court-breathe: hero-court-breathe 4.2s ease-in-out infinite;
+  @keyframes hero-court-breathe {
+    0%,
+    100% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
   /* Condensed display face for hero-scale headlines — regular system fonts
      read as generic at this size; a real display face is what makes a hero
      look designed rather than just "big text". Falls through to a
@@ -203,6 +270,24 @@ body {
   background-position: center;
 }
 
+/* Leather fill for the headline's first line: the macro ball texture
+   (public/textures/basketball-leather.webp) is clipped into the glyphs via
+   background-clip: text, so "NBA" is set in basketball skin. Where clipping
+   is unsupported the letters fall back to the plain landing-accent fill. */
+@utility hero-leather-text {
+  color: transparent;
+  background-image: url("/textures/basketball-leather.webp");
+  background-size: cover;
+  background-position: center;
+  background-clip: text;
+  -webkit-background-clip: text;
+
+  @supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+    color: var(--color-landing-accent);
+    background-image: none;
+  }
+}
+
 /* Outlined treatment for the headline's third line. A solid near-black
    measured 1.08:1 against the page — lighting only the glyph edges keeps
    the hollow look and measures 17.2:1. */
@@ -217,35 +302,70 @@ body {
   }
 }
 
+@utility landing-rise {
+  animation: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-rise-delay-1 {
+  animation: landing-rise 0.8s 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-rise-delay-2 {
+  animation: landing-rise 0.8s 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-rise-delay-3 {
+  animation: landing-rise 0.8s 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-scan {
+  animation: landing-scan 3.8s ease-in-out infinite;
+}
+
+@utility hero-court-pulse {
+  animation:
+    hero-court-pulse 16s ease-in-out infinite,
+    hero-court-breathe 4.2s ease-in-out infinite;
+}
+
+/* Hides the scrollbar on the header's horizontally scrollable link row
+   (mobile) — the row is short and the swipe gesture is discoverable from
+   the partially visible next link, so a visible scrollbar would only add
+   a stripe across the 56px header. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-rise,
+  .landing-rise-delay-1,
+  .landing-rise-delay-2,
+  .landing-rise-delay-3,
+  .landing-scan,
+  .hero-court-pulse {
+    animation: none;
+  }
+
+  /* A frozen comet would read as a stray dash stuck on the court outline —
+     with motion off, the faint static diagram alone is the decoration. */
+  .hero-court-pulse {
+    opacity: 0;
+  }
+}
+
+/* Both reels blacked out: the former layered-gradient "symbiote"/"crystal"
+   materials fought the photography around them. Flat black reads as a quiet
+   divider band. The two classes stay separate so the bands can diverge
+   again later without touching the component. */
 @utility reel-symbiote {
-  background-color: #0a0a10;
-  background-image:
-    repeating-linear-gradient(96deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 15px),
-    radial-gradient(120% 180% at 18% -60%, rgba(198, 205, 255, 0.16), transparent 62%),
-    radial-gradient(70% 160% at 72% 150%, rgba(122, 96, 190, 0.22), transparent 70%),
-    radial-gradient(45% 130% at 44% 130%, rgba(255, 255, 255, 0.05), transparent 72%),
-    linear-gradient(90deg, #06060a 0%, #13111c 44%, #0b0a12 100%);
-  color: #e9eaf5;
-  box-shadow:
-    inset 0 1px 0 rgba(226, 230, 255, 0.14),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.85);
+  background-color: #000;
+  color: var(--color-text-primary);
 }
 
 @utility reel-crystal {
-  background-color: #06303a;
-  background-image:
-    repeating-linear-gradient(
-      72deg,
-      rgba(255, 255, 255, 0.065) 0 7px,
-      transparent 7px 26px,
-      rgba(0, 0, 0, 0.12) 26px 31px,
-      transparent 31px 52px
-    ),
-    repeating-linear-gradient(-24deg, rgba(190, 255, 246, 0.05) 0 14px, transparent 14px 58px),
-    radial-gradient(90% 200% at 12% -70%, rgba(150, 255, 240, 0.18), transparent 60%),
-    linear-gradient(96deg, #04262f 0%, #08444a 42%, #0a5850 74%, #063a42 100%);
-  color: #dff6f1;
-  box-shadow:
-    inset 0 1px 0 rgba(190, 255, 246, 0.2),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.55);
+  background-color: #000;
+  color: var(--color-text-primary);
 }

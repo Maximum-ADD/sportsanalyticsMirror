@@ -18,6 +18,21 @@ export function PageLoading({ label = "Loading" }: PageLoadingProps) {
   );
 }
 
+// The one loading screen for the whole auth-boot sequence: the nested gate
+// chain ProtectedRoute -> ProfileGate each render THIS while their own
+// query pends. Both gates must stay visually identical — a fresh page load
+// runs them back to back, and if the later gate styled its pending state
+// differently (ProfileGate once used a transparent card over the dark app
+// shell), the loader visibly "replayed" — ball restarting on a new
+// background — instead of reading as one continuous loading screen.
+export function AuthBootScreen() {
+  return (
+    <div className="flex min-h-full items-center justify-center bg-landing-hero">
+      <BasketballSpinner size="lg" label="Loading" />
+    </div>
+  );
+}
+
 interface SectionLoadingProps {
   loading: boolean;
   label?: string;

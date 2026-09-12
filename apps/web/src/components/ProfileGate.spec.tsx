@@ -48,6 +48,14 @@ describe("ProfileGate", () => {
 
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+
+    // Regression guard for the double-loading replay: this gate's pending
+    // screen must be the SAME off-white full-area screen ProtectedRoute
+    // shows, or a fresh page load visibly restarts the loader on the dark
+    // app shell when the gates hand off (see AuthBootScreen).
+    const status = screen.getByRole("status");
+    expect(status.parentElement).toHaveClass("bg-landing-hero");
+    expect(status.parentElement).toHaveClass("min-h-full");
   });
 
   it("redirects to /onboarding when the profile has no username yet", async () => {
