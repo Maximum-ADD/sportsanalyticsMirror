@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/apiClient";
 import { fetchSavedComparisons, fetchSavedLineups } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
-import type { LineupDrift, Player, SavedComparison, SavedLineup } from "@/types/nba";
+import type { Player, SavedComparison, SavedLineup, SavedLineupDrift } from "@/types/nba";
 import { SavedShelfCard } from "./SavedShelfCard";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -46,14 +46,14 @@ const COMPARISON: SavedComparison = {
   ],
 };
 
-function createLineup(drift: LineupDrift): SavedLineup {
+function createLineup(drift: SavedLineupDrift | null): SavedLineup {
   return {
     id: "lineup-1",
     name: "Value Core",
     createdAt: "2026-02-01T00:00:00.000Z",
-    sourceLineupId: "src-1",
     totalPredictedPointsAtSave: 214.8,
-    budgetAtSave: 50_000,
+    totalSalaryAtSave: 49_000,
+    budget: 50_000,
     slots: [],
     drift,
   };
@@ -63,7 +63,7 @@ function page<T>(rows: T[]) {
   return { data: rows, page: 1, pageSize: 5, total: rows.length };
 }
 
-const NO_DRIFT: LineupDrift = { pointsDelta: 0, salaryDelta: 0, isOverBudget: false };
+const NO_DRIFT: SavedLineupDrift = { pointsDelta: 0, salaryDelta: 0, isOverBudget: false };
 
 describe("SavedShelfCard", () => {
   beforeEach(() => {
@@ -92,6 +92,15 @@ describe("SavedShelfCard", () => {
     renderWithProviders(<SavedShelfCard />);
 
     expect(await screen.findByText(/unchanged since you saved it/i)).toBeInTheDocument();
+  });
+
+  it("falls back to the save date when drift has not been computed yet", async () => {
+    vi.mocked(fetchSavedLineups).mockResolvedValue(page([createLineup(null)]));
+
+    renderWithProviders(<SavedShelfCard />);
+
+    expect(await screen.findByText(/saved Feb 1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/unchanged since you saved it/i)).not.toBeInTheDocument();
   });
 
   // The deltas are signed and both directions are real. The placeholder this

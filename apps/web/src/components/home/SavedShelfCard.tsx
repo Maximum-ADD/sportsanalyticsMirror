@@ -5,7 +5,7 @@ import { fetchSavedComparisons, fetchSavedLineups } from "@/lib/nbaApi";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { Card } from "@/components/ui/card";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
-import type { LineupDrift, SavedComparison, SavedLineup } from "@/types/nba";
+import type { SavedComparison, SavedLineup, SavedLineupDrift } from "@/types/nba";
 
 const UNAUTHENTICATED_STATUS = 401;
 
@@ -189,7 +189,7 @@ function LineupRow({ lineup }: { lineup: SavedLineup }) {
       </span>
       <span className="text-right text-[11px] text-locker-ink-muted tabular-nums">
         {lineup.totalPredictedPointsAtSave.toFixed(1)} pts
-        <br />${CURRENCY.format(lineup.budgetAtSave)}
+        <br />${CURRENCY.format(lineup.budget)}
       </span>
     </li>
   );
@@ -202,8 +202,14 @@ function LineupRow({ lineup }: { lineup: SavedLineup }) {
  * as easily as better. The previous version of this card said "up X pts"
  * unconditionally, which would have reported a fall as a rise.
  */
-function DriftLine({ drift, savedOn }: { drift: LineupDrift; savedOn: string }) {
+function DriftLine({ drift, savedOn }: { drift: SavedLineupDrift | null; savedOn: string }) {
   const savedOnLabel = new Date(savedOn).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  // Drift is null until the saved players have fresh predictions to compare
+  // against — fall back to the save date alone.
+  if (drift === null) {
+    return <>saved {savedOnLabel}</>;
+  }
+
 
   if (drift.pointsDelta === 0 && drift.salaryDelta === 0) {
     return <>unchanged since you saved it, {savedOnLabel}</>;

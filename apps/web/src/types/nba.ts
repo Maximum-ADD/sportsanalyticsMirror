@@ -577,27 +577,3 @@ export interface SavedComparison {
   players: SavedComparisonPlayer[];
 }
 
-export interface SavedLineupSlot {
-  playerId: string;
-  predictedPointsAtSave: number;
-  salaryAtSave: number;
-  player: Player;
-}
-
-/** How far a saved lineup has moved since it was saved. Deltas are signed. */
-export interface LineupDrift {
-  pointsDelta: number;
-  salaryDelta: number;
-  isOverBudget: boolean;
-}
-
-export interface SavedLineup {
-  id: string;
-  name: string;
-  createdAt: string;
-  sourceLineupId: string;
-  totalPredictedPointsAtSave: number;
-  budgetAtSave: number;
-  slots: SavedLineupSlot[];
-  drift: LineupDrift;
-}
