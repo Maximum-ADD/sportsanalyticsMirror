@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useMe } from "@/lib/useMe";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { AuthBootScreen } from "@/components/ui/loading-overlay";
 
 interface ProfileGateProps {
   children: ReactNode;
@@ -18,11 +18,7 @@ export function ProfileGate({ children }: ProfileGateProps) {
   const { data: me, isPending } = useMe();
 
   if (isPending) {
-    return (
-      <div className="mx-auto flex min-h-80 max-w-lg items-center justify-center px-6">
-        <BasketballSpinner size="lg" label="Loading" />
-      </div>
-    );
+    return <AuthBootScreen />;
   }
 
   if (me && me.username === null) {
