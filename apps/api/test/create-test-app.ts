@@ -27,6 +27,11 @@ export async function createTestApp(): Promise<INestApplication> {
   // "stream is not readable" (500). Harmless while the API was read-only —
   // fatal the moment a POST/PATCH/PUT route exists.
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    // Same bodyParser: false as main.ts — the express.json() above is the
+    // app's single JSON parser. Leaving Nest's default body parser enabled
+    // too would consume the request stream twice, and any POST with a JSON
+    // body would die in body-parser with "stream is not readable".
+    bodyParser: false,
     logger: false,
     abortOnError: false,
     bodyParser: false,
