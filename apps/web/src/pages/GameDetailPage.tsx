@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import { fetchGameDetail, fetchPlayerStats } from "@/lib/nbaApi";
 import { ErrorState } from "@/components/ErrorState";
 import { TeamBadge, resolveTeamColors } from "@/components/TeamBadge";
@@ -9,6 +9,7 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { CourtView } from "@/components/CourtView";
 import { PlayerCardsDisplay, usePlayerReliability } from "@/components/PlayerCards";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { PageLoading } from "@/components/ui/loading-overlay";
 import {
   computeReliability,
   reliabilityToneClass,
@@ -20,6 +21,12 @@ import {
 import type { Game, PredictedScorer } from "@/types/nba";
 
 const PERCENT = (value: number) => `${Math.round(value * 100)}%`;
+
+// Same back-button styling as the player and team profile pages' own
+// LOCKER_BUTTON_CLASS — a bordered button with the "←" glyph, not the plain
+// text-link-with-icon this page used before.
+const LOCKER_BUTTON_CLASS =
+  "border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather";
 
 function formatMargin(predictedMarginHome: number | null, homeTeam: Game["homeTeam"], awayTeam: Game["awayTeam"]): string {
   if (predictedMarginHome === null) return "—";
@@ -344,6 +351,16 @@ export function GameDetailPage() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
 
+  // Browser-back when there is history to return to (the usual path in from
+  // the predictions list) — same pattern as the player and team profile
+  // pages' own goBack. A direct landing has no in-app history, so the
+  // fallback goes to the predictions list rather than navigating away from
+  // the app entirely.
+  function goBack() {
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/predictions");
+  }
+
   const gameQuery = useQuery({
     queryKey: ["gameDetail", gameId],
     queryFn: () => fetchGameDetail(gameId!),
@@ -384,8 +401,8 @@ export function GameDetailPage() {
 
   if (gameQuery.isPending) {
     return (
-      <div className="flex min-h-[28rem] items-center justify-center bg-landing-hero p-6">
-        <BasketballSpinner size="lg" label="Loading game" />
+      <div className="min-h-full bg-landing-hero p-6">
+        <PageLoading label="Loading game" />
       </div>
     );
   }
@@ -420,13 +437,8 @@ export function GameDetailPage() {
   return (
     <div className="min-h-full bg-landing-hero">
       <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="mb-4 flex items-center gap-1.5 font-mono text-[10.5px] tracking-[0.12em] text-locker-ink-muted uppercase hover:text-landing-ink"
-        >
-          <ArrowLeft aria-hidden className="size-3.5" />
-          Back
+        <button type="button" onClick={goBack} className={`mb-4 ${LOCKER_BUTTON_CLASS}`}>
+          ← Back
         </button>
 
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">

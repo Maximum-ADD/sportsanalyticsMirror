@@ -9,6 +9,11 @@ function getSearchTerms(search: unknown): string[] {
   return typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean) : [];
 }
 
+function roundToDecimalPlaces(value: number, decimalPlaces: number): number {
+  const scalingFactor = 10 ** decimalPlaces;
+  return Math.round(value * scalingFactor) / scalingFactor;
+}
+
 export interface TeamEloRating {
   team: Team;
   elo: number;
@@ -27,6 +32,29 @@ export interface SuggestedPlayer {
   player: PlayerWithTeam;
   usagePercentage: number | null;
 }
+
+// A team's win/loss record, derived from completed games only (both scores
+// present) — a scheduled or in-progress game has nothing to score yet, so it
+// is excluded rather than counted as neither a win nor a loss. Ties are
+// impossible in the NBA, so every completed game is exactly one or the other.
+export interface TeamRecord {
+  teamId: string;
+  wins: number;
+  losses: number;
+  // Rounded to 3 decimal places (e.g. 0.583); null for a team with no
+  // completed games yet rather than a misleading 0.
+  winPercentage: number | null;
+  // Most recent game last, so the array reads left-to-right the same
+  // direction the games were played in. Capped at RECENT_FORM_GAME_COUNT.
+  recentForm: ("W" | "L")[];
+}
+
+// How many of a team's most recent completed games recentForm reports —
+// enough to read a hot or cold streak at a glance without turning the teams
+// list into a game log.
+const RECENT_FORM_GAME_COUNT = 5;
+
+const WIN_PERCENTAGE_DECIMAL_PLACES = 3;
 
 // How many ranked players the onboarding step's "suggested players to
 // follow" prompt gets — enough to feel like a real choice without listing
@@ -116,6 +144,55 @@ export class TeamsService {
     }
 
     return Array.from(latestByTeamId.values()).sort((a, b) => b.elo - a.elo);
+  }
+
+  // Every team's win/loss record and recent form, derived from completed
+  // games (both scores present) the same way getEloRatings derives its
+  // ratings from Game rows rather than a stored column — nothing here is
+  // pre-computed or cached, so a newly ingested result is reflected
+  // immediately.
+  //
+  // One query for every completed game across the league, newest first, then
+  // reduced to one record per team in application code — a team can appear
+  // as either homeTeamId or awayTeamId, so there is no single WHERE clause
+  // that fetches "this team's games" without fetching every team's.
+  async getTeamRecords(): Promise<TeamRecord[]> {
+    const teams = await this.prisma.team.findMany({ select: { id: true } });
+    const games = await this.prisma.game.findMany({
+      where: { homeScore: { not: null }, awayScore: { not: null } },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, gameDate: true },
+      orderBy: { gameDate: "desc" },
+    });
+
+    const gamesByTeamId = new Map<string, { won: boolean }[]>();
+    for (const team of teams) {
+      gamesByTeamId.set(team.id, []);
+    }
+    for (const game of games) {
+      // homeScore/awayScore are guaranteed non-null by the where clause
+      // above; Prisma's generated type can't express that, hence the `!`.
+      const homeWon = game.homeScore! > game.awayScore!;
+      gamesByTeamId.get(game.homeTeamId)?.push({ won: homeWon });
+      gamesByTeamId.get(game.awayTeamId)?.push({ won: !homeWon });
+    }
+
+    return teams.map(({ id: teamId }) => {
+      const teamGames = gamesByTeamId.get(teamId) ?? [];
+      const wins = teamGames.filter((game) => game.won).length;
+      const losses = teamGames.length - wins;
+      const winPercentage =
+        teamGames.length === 0
+          ? null
+          : roundToDecimalPlaces(wins / teamGames.length, WIN_PERCENTAGE_DECIMAL_PLACES);
+      // teamGames is newest-first (games was ordered that way); recentForm
+      // reads oldest-to-newest left-to-right, so the slice is reversed.
+      const recentForm = teamGames
+        .slice(0, RECENT_FORM_GAME_COUNT)
+        .reverse()
+        .map((game): "W" | "L" => (game.won ? "W" : "L"));
+
+      return { teamId, wins, losses, winPercentage, recentForm };
+    });
   }
 
   // Ranks a team's current roster by usage percentage, highest first — the

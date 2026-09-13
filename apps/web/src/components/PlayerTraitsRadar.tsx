@@ -17,9 +17,11 @@ interface PlayerTraitsRadarProps {
 // button: clicking one pins the trait and shows the raw season figures
 // behind its normalised shape in the panel below — a 78 "Scoring" pentagon
 // is a lot more meaningful next to "32.1 PTS/G on 19.4 FGA/G".
-type TraitKey = "scoring" | "rebounding" | "playmaking" | "defense" | "efficiency";
+// Exported for ComparisonTraitsRadar, which plots the same five traits for
+// more than one player and needs the identical key set and ordering.
+export type TraitKey = "scoring" | "rebounding" | "playmaking" | "defense" | "efficiency";
 
-const TRAIT_LABELS: Record<TraitKey, string> = {
+export const TRAIT_LABELS: Record<TraitKey, string> = {
   scoring: "Scoring",
   rebounding: "Rebounding",
   playmaking: "Playmaking",
@@ -29,9 +31,12 @@ const TRAIT_LABELS: Record<TraitKey, string> = {
 
 // Display order around the pentagon — production first, then role, then
 // efficiency, matching the profile page's top-to-bottom reading order.
-const TRAITS_IN_ORDER: readonly TraitKey[] = ["scoring", "rebounding", "playmaking", "defense", "efficiency"];
+export const TRAITS_IN_ORDER: readonly TraitKey[] = ["scoring", "rebounding", "playmaking", "defense", "efficiency"];
 
-interface TraitStatLine {
+// Exported for ComparisonTraitsRadar's drill-down panel, which shows the
+// same per-trait stat lines but one column per selected player instead of
+// one player's figures alone.
+export interface TraitStatLine {
   label: string;
   // null when the season line has no recorded figure — renders as "—",
   // same convention as the stat tiles.
@@ -55,7 +60,7 @@ const TS_EXPLAIN =
 // What the panel shows per trait: the exact inputs the radar normalises,
 // plus the context figures that make those inputs meaningful. Declared as
 // data, not markup, so adding a trait means one entry here.
-const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
+export const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
   scoring: [
     {
       label: "PTS/G",
@@ -154,39 +159,45 @@ const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
   ],
 };
 
-// Normalises raw per-game figures onto a 0-100 scale so wildly different
-// units (points vs. blocks) can share one radar chart, matching the
-// "stat traits" panel from the reference dashboard.
-function buildTraitData(seasonAverages: SeasonAverages) {
-  // The ceiling each raw input is measured against — the same inputs the
-  // panel surfaces, kept next to each other so a trait and its display
-  // can never disagree about what feeds it.
-  const traitCeilings: Record<TraitKey, number> = {
-    scoring: 35,
-    rebounding: 15,
-    playmaking: 12,
-    defense: 4,
-    efficiency: 65,
-  };
-  const traitInputs: Record<TraitKey, number> = {
+// The ceiling each raw input is measured against — the same inputs the
+// panel surfaces, kept next to each other so a trait and its display can
+// never disagree about what feeds it. Exported so ComparisonTraitsRadar
+// normalises every player onto the exact same 0-100 scale this component
+// uses, rather than risking the two drifting apart.
+export const TRAIT_CEILINGS: Record<TraitKey, number> = {
+  scoring: 35,
+  rebounding: 15,
+  playmaking: 12,
+  defense: 4,
+  efficiency: 65,
+};
+
+export function traitInputsFor(seasonAverages: SeasonAverages): Record<TraitKey, number> {
+  return {
     scoring: seasonAverages.pointsPerGame,
     rebounding: seasonAverages.reboundsPerGame,
     playmaking: seasonAverages.assistsPerGame,
     defense: seasonAverages.stealsPerGame + seasonAverages.blocksPerGame,
     efficiency: seasonAverages.fieldGoalPercentage,
   };
+}
 
+// Normalises raw per-game figures onto a 0-100 scale so wildly different
+// units (points vs. blocks) can share one radar chart, matching the
+// "stat traits" panel from the reference dashboard.
+function buildTraitData(seasonAverages: SeasonAverages) {
+  const traitInputs = traitInputsFor(seasonAverages);
   return TRAITS_IN_ORDER.map((trait) => ({
     trait,
-    value: clampToPercent(traitInputs[trait], traitCeilings[trait]),
+    value: clampToPercent(traitInputs[trait], TRAIT_CEILINGS[trait]),
   }));
 }
 
-function clampToPercent(value: number, ceiling: number): number {
+export function clampToPercent(value: number, ceiling: number): number {
   return Math.min(100, Math.round((value / ceiling) * 100));
 }
 
-function formatTraitStatLine(line: TraitStatLine, averages: SeasonAverages): string {
+export function formatTraitStatLine(line: TraitStatLine, averages: SeasonAverages): string {
   const value = line.selectValue(averages);
   return value === null ? "—" : line.format(value);
 }

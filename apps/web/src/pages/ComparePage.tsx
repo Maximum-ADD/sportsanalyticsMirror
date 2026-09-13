@@ -7,12 +7,16 @@ import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { SectionLoading } from "@/components/ui/loading-overlay";
 import { ErrorState } from "@/components/ErrorState";
+import { Reveal } from "@/components/landing/Reveal";
+import { ComparisonTraitsRadar } from "@/components/ComparisonTraitsRadar";
 import { cn } from "@/lib/utils";
 import { NO_VALUE, formatAge, formatHeight } from "@/lib/playerBio";
 import { formatNumber, formatPercentage, formatPlusMinus, formatRatio } from "@/lib/advancedStats";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
+import { COMPARISON_PLAYER_COLORS } from "@/lib/comparisonColors";
 import type { Player, PlayerComparisonEntry, SeasonAverages, SeasonType } from "@/types/nba";
 
 const MAX_PLAYERS = 4;
@@ -236,6 +240,19 @@ const STAT_GROUPS: StatGroup[] = [
   },
 ];
 
+// Plain-terms gloss for every abbreviation this page's table and radar use,
+// shown once at the bottom rather than repeated next to each stat — a
+// glossary a reader checks when they hit a term they don't recognise,
+// not something that has to sit beside the number every time.
+const GLOSSARY_TERMS: { term: string; explain: string }[] = [
+  { term: "TS%", explain: "True shooting percentage — scoring efficiency that counts threes and free throws, so volume shooters and efficient scorers aren't lumped together." },
+  { term: "eFG%", explain: "Effective field goal percentage — adjusts shooting percentage to weigh a three-pointer as worth more than a two." },
+  { term: "Usage %", explain: "The share of their team's possessions that end in this player shooting, drawing a foul, or turning it over while they're on the floor." },
+  { term: "AST:TO", explain: "Assist-to-turnover ratio — playmaking weighed against mistakes. Above 2.0 means a player creates twice as often as they cough it up." },
+  { term: "+/-", explain: "Point differential while this player is on the floor — positive means their team outscored the opponent during their minutes." },
+  { term: "Offensive / defensive rating", explain: "Points scored (offensive) or allowed (defensive) per 100 possessions — pace-adjusted so a fast team and a slow team can be compared fairly. Lower is better on defense." },
+];
+
 // Indexes of the entries holding the best value for this row. Empty when the
 // row isn't comparable, there are fewer than two players, or every player has
 // the same value (nothing to single out).
@@ -256,6 +273,31 @@ function bestEntryIndexes(entries: PlayerComparisonEntry[], row: StatRow): Set<n
   const higherIsBetter = row.higherIsBetter ?? true;
   const best = higherIsBetter ? Math.max(...comparableValues) : Math.min(...comparableValues);
   return new Set(values.flatMap((value, index) => (value !== null && value === best ? [index] : [])));
+}
+
+// How full each entry's head-to-head bar should be for a comparable row —
+// proportional to the row's largest value among the filled slots, so the
+// leader's bar always reaches the full width and the rest read relative to
+// it. null (row isn't comparable, or this slot has no figure) means "don't
+// draw a bar" rather than a zero-width one, which would misreport "no data"
+// as "worst in the field".
+function barWidthPercentages(entries: PlayerComparisonEntry[], row: StatRow): (number | null)[] {
+  const compareValue = row.compareValue;
+  if (!compareValue) return entries.map(() => null);
+
+  const values = entries.map((entry) => compareValue(entry.seasonAverages));
+  const comparableValues = values.filter((value): value is number => value !== null);
+  if (comparableValues.length < MIN_PLAYERS_FOR_COMPARISON) return entries.map(() => null);
+
+  // Bar length always reads as "more of this raw number" — even for rows
+  // where lower is better (turnovers), so the bar and the number always
+  // agree. Which value is actually the *better* one is still called out by
+  // bestEntryIndexes' text highlight; the bar isn't trying to also encode that.
+  const max = Math.max(...comparableValues);
+  return values.map((value) => {
+    if (value === null || max <= 0) return null;
+    return Math.max(4, Math.round((value / max) * 100));
+  });
 }
 
 function useSelectedPlayerIds(): [string[], (playerIds: string[]) => void] {
@@ -306,10 +348,15 @@ function gridStyle(slotCount: number) {
 // two tiles rather than off to the left of centre.
 const PLAYER_COLUMNS_SPAN = { gridColumn: "2 / -1" };
 
+// Was a solid dark-theme circle (bg-surface-raised) left over from before
+// this page moved to the locker palette — it read as a UI glitch sitting on
+// the light background rather than an inviting "pick someone" prompt. A
+// dashed outline in the same leather accent as "Add another player" reads
+// as part of the empty-slot's own dashed border instead of a stray dark blob.
 function PlaceholderHeadshot() {
   return (
-    <div className="flex size-20 items-center justify-center rounded-full bg-surface-raised text-text-muted">
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-10" fill="currentColor">
+    <div className="flex size-20 items-center justify-center rounded-full border-2 border-dashed border-locker-leather/40 text-locker-leather/60">
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-9" fill="currentColor">
         <circle cx="12" cy="8" r="4" />
         <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8z" />
       </svg>
@@ -376,6 +423,7 @@ function EmptySlotTile({
         placeholder="Select player"
         label={`Select player ${slotNumber}`}
         variant="locker"
+        suggestWhenEmpty
       />
     </div>
   );
@@ -452,132 +500,195 @@ export function ComparePage() {
     setPlayerIds(playerIds.filter((id) => id !== playerId));
   }
 
+  const showRadar = entries.length >= MIN_PLAYERS_FOR_COMPARISON;
+
   return (
     <div className="min-h-full bg-landing-hero">
       <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
-        {/* Laid out on the same column grid as the tiles below, so the title
-            centres over the player columns like every group heading does. */}
-        <div className="mb-6 border border-landing-light bg-locker-surface p-6">
-          <div className="grid gap-x-3" style={columns}>
-            <div style={PLAYER_COLUMNS_SPAN} className="text-center">
-              <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">
-                Player comparison
-              </h1>
-              <p className="mt-2 text-[12.5px] text-locker-ink-muted">
-                Compare up to {MAX_PLAYERS} players side by side on their {formatSeasonType(seasonType).toLowerCase()}{" "}
-                averages.
-              </p>
-              <div className="mt-4 flex justify-center">
-                <LockerSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
-              </div>
+        {/* Left-aligned like every other page's header band (Teams,
+            Predictions) rather than centred over the player columns. */}
+        <Reveal>
+          <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+            <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">
+              Player comparison
+            </h1>
+            <p className="mt-2 max-w-2xl text-[12.5px] text-locker-ink-muted">
+              Compare up to {MAX_PLAYERS} players side by side on their {formatSeasonType(seasonType).toLowerCase()}{" "}
+              averages.
+            </p>
+            <div className="mt-4">
+              <LockerSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
             </div>
           </div>
-        </div>
+        </Reveal>
 
-        <div className="grid items-center gap-x-3" style={columns}>
-          <div className="pr-3">
-            {canAddSlot && (
-              <button
-                type="button"
-                className="flex w-full flex-col items-center gap-2 px-2 py-4 text-center transition-colors hover:bg-locker-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
-                onClick={() => setExtraSlots((slots) => slots + 1)}
-              >
-                {/* An SVG plus rather than a text "+": a glyph is placed off the
-                    font's baseline, so it centres low inside the circle. */}
-                <span className="flex size-9 items-center justify-center rounded-full border border-locker-leather text-locker-leather">
-                  <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
-                </span>
-                <span className="font-mono text-[10px] tracking-[0.1em] text-locker-leather uppercase">
-                  Add another player
-                </span>
-              </button>
+        {/* Main comparison column plus the trait radar sidebar — the sidebar
+            only earns its place once there is something to plot (two or more
+            players), otherwise the two empty-slot tiles would sit next to an
+            empty panel. Stacks under the main column on narrow screens. */}
+        <div className={showRadar ? "grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]" : undefined}>
+          <div>
+            {/* z-20 on the Reveal itself, not something inside it: Reveal's
+                rise animation applies a CSS transform to its own wrapper
+                element, and a transform creates a new stacking context —
+                z-index set on a descendant only settles ordering against
+                other descendants of that SAME transformed wrapper, never
+                against a sibling Reveal's contents. The empty slots'
+                player-search dropdown needs to paint above the stat-group
+                sections below (each in their own Reveal, later in DOM
+                order), so the stacking context that actually matters here
+                — this Reveal wrapper — is the one that needs the z-index. */}
+            <Reveal className="relative z-20">
+              <div className="grid items-center gap-x-3" style={columns}>
+                <div className="pr-3">
+                  {canAddSlot && (
+                    <button
+                      type="button"
+                      className="flex w-full flex-col items-center gap-2 px-2 py-4 text-center transition-colors hover:bg-locker-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
+                      onClick={() => setExtraSlots((slots) => slots + 1)}
+                    >
+                      {/* An SVG plus rather than a text "+": a glyph is placed off the
+                          font's baseline, so it centres low inside the circle. */}
+                      <span className="flex size-9 items-center justify-center rounded-full border border-locker-leather text-locker-leather">
+                        <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
+                      </span>
+                      <span className="font-mono text-[10px] tracking-[0.1em] text-locker-leather uppercase">
+                        Add another player
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                {slots.map((entry, index) =>
+                  entry ? (
+                    <PlayerTile
+                      key={entry.player.id}
+                      player={entry.player}
+                      onRemove={() => removePlayer(entry.player.id)}
+                    />
+                  ) : index < playerIds.length && activeQuery.isPending ? (
+                    <LoadingSlotTile key={`loading-${index}`} />
+                  ) : (
+                    <EmptySlotTile
+                      key={`empty-${index}`}
+                      slotNumber={index + 1}
+                      onSelect={addPlayer}
+                      onCancel={
+                        index >= requiredColumns
+                          ? () => setExtraSlots((slots) => Math.max(0, slots - 1))
+                          : undefined
+                      }
+                      excludedPlayerIds={playerIds}
+                    />
+                  )
+                )}
+              </div>
+            </Reveal>
+
+            {activeQuery.isError && (
+              <div className="mt-6">
+                <ErrorState message="Could not load the comparison." onRetry={() => activeQuery.refetch()} />
+              </div>
+            )}
+
+            {showRadar && (
+              <Reveal>
+                <SectionLoading loading={activeQuery.isFetching} label="Loading comparison" className="mt-6">
+                  <div>
+                    {STAT_GROUPS.map((group) => (
+                      <section
+                        key={group.title}
+                        className="mt-6 grid items-center gap-x-3 gap-y-1.5 border border-landing-light bg-locker-surface p-4 first:mt-0"
+                        style={columns}
+                      >
+                        <div style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
+                          <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">
+                            {group.title}
+                          </h2>
+                          {group.caption && (
+                            <p className="mt-1 text-[11px] text-locker-ink-muted">{group.caption}</p>
+                          )}
+                        </div>
+
+                        {group.rows.map((row) => {
+                          const bestIndexes = bestEntryIndexes(entries, row);
+                          const barWidths = barWidthPercentages(entries, row);
+                          return (
+                            <div key={row.label} className="contents">
+                              <div className="pr-3 text-left font-mono text-[10px] tracking-[0.1em] text-locker-ink-muted uppercase">
+                                {row.label}
+                              </div>
+                              {slots.map((entry, index) => {
+                                const barWidth = index < barWidths.length ? barWidths[index] : null;
+                                return entry ? (
+                                  <div key={entry.player.id} className="relative bg-landing-hero px-3 py-2 text-center">
+                                    {barWidth !== null && (
+                                      <span
+                                        aria-hidden
+                                        className="absolute inset-y-1 left-0 opacity-35"
+                                        style={{ width: `${barWidth}%`, backgroundColor: COMPARISON_PLAYER_COLORS[index] }}
+                                      />
+                                    )}
+                                    <span
+                                      className={cn(
+                                        "relative inline-block px-2.5 py-0.5 text-[13px] text-landing-ink tabular-nums",
+                                        bestIndexes.has(index) &&
+                                          "bg-locker-leather/15 font-semibold text-locker-leather"
+                                      )}
+                                    >
+                                      {row.render(entry.seasonAverages, entry.player)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  // An unfilled slot still gets a real cell, so its column
+                                  // reads as "waiting for a player" rather than as a hole
+                                  // in the table.
+                                  <div
+                                    key={`empty-${index}`}
+                                    className="bg-landing-hero px-3 py-2 text-center text-[13px] text-locker-ink-muted"
+                                  >
+                                    {NO_VALUE}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </section>
+                    ))}
+                  </div>
+                </SectionLoading>
+              </Reveal>
             )}
           </div>
 
-          {slots.map((entry, index) =>
-            entry ? (
-              <PlayerTile
-                key={entry.player.id}
-                player={entry.player}
-                onRemove={() => removePlayer(entry.player.id)}
-              />
-            ) : index < playerIds.length && activeQuery.isPending ? (
-              <LoadingSlotTile key={`loading-${index}`} />
-            ) : (
-              <EmptySlotTile
-                key={`empty-${index}`}
-                slotNumber={index + 1}
-                onSelect={addPlayer}
-                onCancel={
-                  index >= requiredColumns
-                    ? () => setExtraSlots((slots) => Math.max(0, slots - 1))
-                    : undefined
-                }
-                excludedPlayerIds={playerIds}
-              />
-            )
+          {showRadar && (
+            <Reveal>
+              <div className="border border-landing-light bg-locker-surface p-4 xl:sticky xl:top-6">
+                <h2 className="mb-3 text-center font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">
+                  Trait radar
+                </h2>
+                <ComparisonTraitsRadar entries={entries} />
+              </div>
+            </Reveal>
           )}
         </div>
 
-        {activeQuery.isError && (
-          <div className="mt-6">
-            <ErrorState message="Could not load the comparison." onRetry={() => activeQuery.refetch()} />
-          </div>
-        )}
-
-        {entries.length >= MIN_PLAYERS_FOR_COMPARISON &&
-          STAT_GROUPS.map((group) => (
-            <section
-              key={group.title}
-              className="mt-6 grid items-center gap-x-3 gap-y-1.5 border border-landing-light bg-locker-surface p-4"
-              style={columns}
-            >
-              <div style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
-                <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">
-                  {group.title}
-                </h2>
-                {group.caption && (
-                  <p className="mt-1 text-[11px] text-locker-ink-muted">{group.caption}</p>
-                )}
-              </div>
-
-              {group.rows.map((row) => {
-                const bestIndexes = bestEntryIndexes(entries, row);
-                return (
-                  <div key={row.label} className="contents">
-                    <div className="pr-3 text-left font-mono text-[10px] tracking-[0.1em] text-locker-ink-muted uppercase">
-                      {row.label}
-                    </div>
-                    {slots.map((entry, index) =>
-                      entry ? (
-                        <div key={entry.player.id} className="bg-landing-hero px-3 py-2 text-center">
-                          <span
-                            className={cn(
-                              "inline-block px-2.5 py-0.5 text-[13px] text-landing-ink tabular-nums",
-                              bestIndexes.has(index) &&
-                                "bg-locker-leather/15 font-semibold text-locker-leather"
-                            )}
-                          >
-                            {row.render(entry.seasonAverages, entry.player)}
-                          </span>
-                        </div>
-                      ) : (
-                        // An unfilled slot still gets a real cell, so its column
-                        // reads as "waiting for a player" rather than as a hole
-                        // in the table.
-                        <div
-                          key={`empty-${index}`}
-                          className="bg-landing-hero px-3 py-2 text-center text-[13px] text-locker-ink-muted"
-                        >
-                          {NO_VALUE}
-                        </div>
-                      )
-                    )}
+        {entries.length > 0 && (
+          <Reveal>
+            <div className="mt-6 border border-landing-light bg-locker-surface p-6">
+              <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">Glossary</h2>
+              <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
+                {GLOSSARY_TERMS.map(({ term, explain }) => (
+                  <div key={term}>
+                    <dt className="font-mono text-[10.5px] tracking-[0.08em] text-locker-leather uppercase">{term}</dt>
+                    <dd className="mt-0.5 text-[12px] leading-snug text-locker-ink-muted">{explain}</dd>
                   </div>
-                );
-              })}
-            </section>
-          ))}
+                ))}
+              </dl>
+            </div>
+          </Reveal>
+        )}
       </div>
     </div>
   );

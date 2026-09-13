@@ -171,7 +171,9 @@ describe("ComparePage", () => {
     });
 
     renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
-    await screen.findByText("LeBron James");
+    // LeBron's name appears on his tile and again in the trait radar's
+    // legend once two players are being compared.
+    await screen.findAllByText("LeBron James");
 
     // makePlayer leaves birthDate null, so Age is the one row where both real
     // players already show a dash, and nowhere else.
@@ -212,7 +214,9 @@ describe("ComparePage", () => {
 
     renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
 
-    expect(await screen.findByText("LeBron James")).toBeInTheDocument();
+    // LeBron's name appears on his tile and again in the trait radar's
+    // legend once two players are being compared.
+    expect(await screen.findAllByText("LeBron James")).not.toHaveLength(0);
     expect(screen.getByText("Age")).toBeInTheDocument();
     // Birthday still to come in 2026 for one, already past for the other.
     expect(screen.getByText("41")).toBeInTheDocument();
@@ -237,8 +241,9 @@ describe("ComparePage", () => {
 
     renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
 
-    expect(await screen.findByText("LeBron James")).toBeInTheDocument();
-    expect(screen.getByText("Stephen Curry")).toBeInTheDocument();
+    // Each name appears on its tile and again in the trait radar's legend.
+    expect(await screen.findAllByText("LeBron James")).not.toHaveLength(0);
+    expect(screen.getAllByText("Stephen Curry").length).toBeGreaterThan(0);
 
     // Group headings carry the "(per game)" qualifier so the row names stay short.
     expect(screen.getByRole("heading", { name: "Points (per game)" })).toBeInTheDocument();
@@ -246,6 +251,49 @@ describe("ComparePage", () => {
 
     expect(screen.getByText("30")).toHaveClass("text-locker-leather");
     expect(screen.getByText("22")).not.toHaveClass("text-locker-leather");
+  });
+
+  it("draws a head-to-head bar behind each comparable cell, sized relative to the row's leader", async () => {
+    vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
+      players: [
+        { player: makePlayer({ id: "player-1", lastName: "James" }), seasonAverages: makeAverages({ pointsPerGame: 30 }) },
+        {
+          player: makePlayer({ id: "player-2", firstName: "Stephen", lastName: "Curry", nbaPlayerId: 2 }),
+          seasonAverages: makeAverages({ pointsPerGame: 15 }),
+        },
+      ],
+    });
+
+    renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
+    await screen.findAllByText("LeBron James");
+
+    const leaderCell = screen.getByText("30").parentElement!;
+    const leaderBar = leaderCell.querySelector("[aria-hidden]") as HTMLElement;
+    const trailerCell = screen.getByText("15").parentElement!;
+    const trailerBar = trailerCell.querySelector("[aria-hidden]") as HTMLElement;
+
+    expect(leaderBar.style.width).toBe("100%");
+    expect(trailerBar.style.width).toBe("50%");
+  });
+
+  it("draws no bar for a non-comparable row like Age", async () => {
+    vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
+      players: [
+        { player: makePlayer({ id: "player-1", lastName: "James", birthDate: "1984-12-30" }), seasonAverages: makeAverages() },
+        {
+          player: makePlayer({ id: "player-2", firstName: "Stephen", lastName: "Curry", nbaPlayerId: 2, birthDate: "1988-03-14" }),
+          seasonAverages: makeAverages(),
+        },
+      ],
+    });
+
+    renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
+    await screen.findByText("Age");
+
+    const ageRow = screen.getByText("Age").parentElement!.parentElement!;
+    expect(ageRow.querySelector("[aria-hidden]")).not.toBeInTheDocument();
   });
 
   it("renders shooting rows as made / attempted (accuracy) in a single cell", async () => {

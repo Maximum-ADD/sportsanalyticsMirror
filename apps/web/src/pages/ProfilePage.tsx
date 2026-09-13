@@ -6,6 +6,7 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { PageLoading } from "@/components/ui/loading-overlay";
 import { authClient } from "@/lib/authClient";
 import { deleteSavedLineup, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
@@ -474,8 +475,8 @@ export function ProfilePage() {
 
   if (isPending) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-landing-hero">
-        <BasketballSpinner size="lg" label="Loading profile" />
+      <div className="min-h-full bg-landing-hero">
+        <PageLoading label="Loading profile" />
       </div>
     );
   }

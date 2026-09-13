@@ -6,6 +6,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { PageLoading } from "@/components/ui/loading-overlay";
 import { updateMe, followPlayer, fetchSuggestedPlayers } from "@/lib/meApi";
 import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
@@ -278,8 +279,8 @@ export function OnboardingPage() {
 
   if (isMePending) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-landing-hero">
-        <BasketballSpinner size="lg" label="Loading" />
+      <div className="min-h-full bg-landing-hero">
+        <PageLoading label="Loading" />
       </div>
     );
   }
