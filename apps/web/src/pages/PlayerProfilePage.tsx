@@ -5,7 +5,6 @@ import { fetchPlayer, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlaye
 import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowPlayerButton } from "@/components/FollowPlayerButton";
 import { MatchupAnalysis } from "@/components/MatchupAnalysis";
@@ -13,7 +12,7 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { SeasonSplitsTable } from "@/components/SeasonSplitsTable";
-import { SectionLoading } from "@/components/ui/loading-overlay";
+import { PageLoading, SectionLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
 import { formatAge, formatHeight } from "@/lib/playerBio";
 import { formatNumber, formatPercentage, formatPlusMinus } from "@/lib/advancedStats";
@@ -281,8 +280,8 @@ export function PlayerProfilePage() {
 
   if (playerQuery.isPending || statsQuery.isPending) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-landing-hero p-6">
-        <BasketballSpinner size="lg" label="Loading player" />
+      <div className="min-h-full bg-landing-hero p-6">
+        <PageLoading label="Loading player" />
       </div>
     );
   }

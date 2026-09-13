@@ -84,8 +84,11 @@ export function LeaderboardCard() {
           </tr>
         </thead>
         <tbody>
-          {data.entries.map((entry) => (
-            <LeaderboardRow key={`${entry.kind}-${entry.name}`} entry={entry} />
+          {/* Keyed by position, not name: display names aren't unique (two
+              "Alex"es can both qualify), and the public payload deliberately
+              carries no user id to key by instead. */}
+          {data.entries.map((entry, position) => (
+            <LeaderboardRow key={`${entry.kind}-${position}`} entry={entry} />
           ))}
         </tbody>
       </table>

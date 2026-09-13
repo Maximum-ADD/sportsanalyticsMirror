@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PickOutcome } from "@prisma/client";
+import { USER_ACTIVITY_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { EvaluatedGame } from "./evaluated-game.js";
 import {
@@ -21,6 +23,23 @@ const MODEL_DISPLAY_NAME = "Elo model";
 // against localeCompare.
 const UNNAMED_USER_DISPLAY_NAME = "Anonymous";
 
+// Namespace for the cached user half of the board. Exported so PicksService
+// can invalidate it the moment a new call changes someone's counts.
+export const LEADERBOARD_CACHE_NAMESPACE = "analytics:leaderboard";
+
+// One user's running totals while the grouped pick counts are folded together.
+interface PickTally {
+  calls: number;
+  correct: number;
+}
+
+// One row of the gamePick groupBy over (userId, outcome).
+interface PickCountRow {
+  userId: string;
+  outcome: PickOutcome;
+  _count: { _all: number };
+}
+
 // What GET /v1/analytics/leaderboard returns.
 export interface Leaderboard {
   // Echoed so a user who is absent from the board can tell WHY — "you need
@@ -35,7 +54,10 @@ export interface Leaderboard {
 // module has another (how they are ordered).
 @Injectable()
 export class LeaderboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
+  ) {}
 
   /**
    * Builds the accuracy leaderboard: qualifying users plus the model.
@@ -62,47 +84,62 @@ export class LeaderboardService {
   }
 
   /**
+   * The user half of the board, cached for USER_ACTIVITY_TTL_MS.
+   *
+   * @returns one candidate per qualifying user.
+   *
+   * Cached briefly because this route is public and loads on the home page.
+   * Staleness is bounded from both sides: other users' new calls appear
+   * within the TTL, and the caller's own call clears the cache immediately
+   * (see PicksService.createPick).
+   */
+  private readUserCandidates(): Promise<LeaderboardCandidate[]> {
+    return this.cache.getOrLoad(
+      buildCacheKey(`${LEADERBOARD_CACHE_NAMESPACE}-users`),
+      USER_ACTIVITY_TTL_MS,
+      () => this.readUncachedUserCandidates()
+    );
+  }
+
+  /**
    * Counts every user's graded calls and correct calls.
    *
    * @returns one candidate per user who has called at least one game.
    *
-   * Two groupBys and one findMany rather than reading GamePick rows and
-   * tallying in Node: the counting happens in Postgres, so the data crossing
-   * the wire is one row per USER instead of one per CALL. At ten thousand
-   * picks across fifty users that is fifty rows rather than ten thousand, and
-   * it stays fifty as the pick table grows.
+   * One groupBy over (userId, outcome) and one findMany, rather than reading
+   * GamePick rows and tallying in Node: the counting happens in Postgres, so
+   * the data crossing the wire is a few rows per USER instead of one per
+   * CALL. At ten thousand picks across fifty users that is at most a hundred
+   * rows rather than ten thousand, and it stays that size as the pick table
+   * grows.
    *
    * Only names for the users who actually qualify are fetched, so a database
    * full of accounts that have never called a game costs nothing here.
    */
-  private async readUserCandidates(): Promise<LeaderboardCandidate[]> {
-    const [callsByUser, correctByUser] = await Promise.all([
-      this.prisma.gamePick.groupBy({ by: ["userId"], _count: { _all: true } }),
-      this.prisma.gamePick.groupBy({
-        by: ["userId"],
-        where: { outcome: PickOutcome.CORRECT },
-        _count: { _all: true },
-      }),
-    ]);
+  private async readUncachedUserCandidates(): Promise<LeaderboardCandidate[]> {
+    const pickCountRows = await this.prisma.gamePick.groupBy({
+      by: ["userId", "outcome"],
+      _count: { _all: true },
+    });
+    const tallyByUserId = tallyPicksByUser(pickCountRows);
 
-    const correctCountByUserId = new Map(
-      correctByUser.map((row) => [row.userId, row._count._all])
-    );
-
-    const qualifyingUserIds = callsByUser
-      .filter((row) => row._count._all >= MINIMUM_CALLS_REQUIRED)
-      .map((row) => row.userId);
+    const qualifyingUserIds = [...tallyByUserId]
+      .filter(([, tally]) => tally.calls >= MINIMUM_CALLS_REQUIRED)
+      .map(([userId]) => userId);
 
     const nameByUserId = await this.readDisplayNames(qualifyingUserIds);
 
-    return callsByUser
-      .filter((row) => nameByUserId.has(row.userId))
-      .map((row) => ({
-        kind: "user" as const,
-        name: nameByUserId.get(row.userId) ?? UNNAMED_USER_DISPLAY_NAME,
-        calls: row._count._all,
-        correct: correctCountByUserId.get(row.userId) ?? 0,
-      }));
+    return qualifyingUserIds
+      .filter((userId) => nameByUserId.has(userId))
+      .map((userId) => {
+        const tally = tallyByUserId.get(userId) ?? { calls: 0, correct: 0 };
+        return {
+          kind: "user" as const,
+          name: nameByUserId.get(userId) ?? UNNAMED_USER_DISPLAY_NAME,
+          calls: tally.calls,
+          correct: tally.correct,
+        };
+      });
   }
 
   /**
@@ -126,6 +163,24 @@ export class LeaderboardService {
 
     return new Map(users.map((user) => [user.id, user.name || UNNAMED_USER_DISPLAY_NAME]));
   }
+}
+
+/**
+ * Folds (userId, outcome) pick counts into one tally per user.
+ *
+ * @param pickCountRows - the grouped counts, one row per outcome a user has.
+ * @returns userId -> { calls, correct }. `calls` counts every outcome, the
+ *   same as the old ungrouped count; `correct` counts CORRECT only.
+ */
+function tallyPicksByUser(pickCountRows: PickCountRow[]): Map<string, PickTally> {
+  const tallyByUserId = new Map<string, PickTally>();
+  for (const row of pickCountRows) {
+    const tally = tallyByUserId.get(row.userId) ?? { calls: 0, correct: 0 };
+    tally.calls += row._count._all;
+    if (row.outcome === PickOutcome.CORRECT) tally.correct += row._count._all;
+    tallyByUserId.set(row.userId, tally);
+  }
+  return tallyByUserId;
 }
 
 /**

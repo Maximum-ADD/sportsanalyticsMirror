@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { followPlayer, unfollowPlayer } from "@/lib/meApi";
-import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
+import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
+import { useMe } from "@/lib/useMe";
 
 interface FollowPlayerButtonProps {
   playerId: string;
@@ -17,11 +18,11 @@ export function FollowPlayerButton({ playerId, playerName }: FollowPlayerButtonP
 
   const followMutation = useMutation({
     mutationFn: () => followPlayer(playerId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY }),
+    onSuccess: () => invalidatePreferenceQueries(queryClient),
   });
   const unfollowMutation = useMutation({
     mutationFn: () => unfollowPlayer(playerId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY }),
+    onSuccess: () => invalidatePreferenceQueries(queryClient),
   });
 
   if (!session || !me) return null;
@@ -30,19 +31,29 @@ export function FollowPlayerButton({ playerId, playerName }: FollowPlayerButtonP
   const isPending = followMutation.isPending || unfollowMutation.isPending;
 
   return (
-    <button
-      type="button"
-      aria-pressed={isFollowing}
-      aria-label={isFollowing ? `Unfollow ${playerName}` : `Follow ${playerName}`}
-      disabled={isPending}
-      onClick={() => (isFollowing ? unfollowMutation.mutate() : followMutation.mutate())}
-      className={`border px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors disabled:opacity-50 ${
-        isFollowing
-          ? "border-locker-leather bg-locker-leather text-white hover:border-locker-bad hover:bg-locker-bad"
-          : "border-landing-light bg-locker-surface text-landing-ink hover:border-locker-leather"
-      }`}
-    >
-      {isFollowing ? "Following" : "Follow"}
-    </button>
+    <>
+      <button
+        type="button"
+        aria-pressed={isFollowing}
+        aria-label={isFollowing ? `Unfollow ${playerName}` : `Follow ${playerName}`}
+        disabled={isPending}
+        onClick={() => {
+          followMutation.reset();
+          unfollowMutation.reset();
+          if (isFollowing) unfollowMutation.mutate();
+          else followMutation.mutate();
+        }}
+        className={`border px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors disabled:opacity-50 ${
+          isFollowing
+            ? "border-locker-leather bg-locker-leather text-white hover:border-locker-bad hover:bg-locker-bad"
+            : "border-landing-light bg-locker-surface text-landing-ink hover:border-locker-leather"
+        }`}
+      >
+        {isFollowing ? "Following" : "Follow"}
+      </button>
+      {(followMutation.isError || unfollowMutation.isError) && (
+        <span role="alert">Could not save your preference. Please try again.</span>
+      )}
+    </>
   );
 }

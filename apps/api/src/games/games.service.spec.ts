@@ -1,6 +1,7 @@
 import type { Game, Team } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GamesService } from "./games.service.js";
+import { ResponseCacheService } from "../cache/response-cache.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 
 const HOME_TEAM = { id: "team-home" } as Team;
@@ -21,12 +22,16 @@ function makeGame(overrides: Partial<Game> = {}): Game {
 }
 
 describe("GamesService", () => {
-  let prisma: { game: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> } };
+  let prisma: {
+    game: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
+    gamePredictionRun: { findMany: ReturnType<typeof vi.fn> };
+  };
   let gamesService: GamesService;
 
   beforeEach(() => {
-    prisma = { game: { findMany: vi.fn(), count: vi.fn() } };
-    gamesService = new GamesService(prisma as unknown as PrismaService);
+    prisma = { game: { findMany: vi.fn(), count: vi.fn() }, gamePredictionRun: { findMany: vi.fn() } };
+    // A disabled cache, so every call below reaches the mocked Prisma client.
+    gamesService = new GamesService(prisma as unknown as PrismaService, new ResponseCacheService({ enabled: false }));
   });
 
   it("lists soonest-upcoming games before most-recently-completed games, not by plain gameDate order", async () => {
@@ -149,6 +154,22 @@ describe("GamesService", () => {
     expect(prisma.game.count).toHaveBeenCalledWith({ where: { season: "2024-25" } });
   });
 
+  it("serves a repeated page request from the cache instead of querying again", async () => {
+    const cachedGamesService = new GamesService(
+      prisma as unknown as PrismaService,
+      new ResponseCacheService({ enabled: true })
+    );
+    prisma.game.findMany.mockResolvedValue([]);
+    prisma.game.count.mockResolvedValue(0);
+
+    await cachedGamesService.getGames({ status: "upcoming", pageSize: 6 });
+    await cachedGamesService.getGames({ status: "upcoming", pageSize: 6 });
+    await cachedGamesService.getGames({ status: "upcoming", pageSize: 12 });
+
+    // The third call asks for a different page size, so it is a new key.
+    expect(prisma.game.findMany).toHaveBeenCalledTimes(2);
+  });
+
   it("getSeasons returns distinct seasons most-recent first", async () => {
     prisma.game.findMany.mockResolvedValue([{ season: "2026-27" }, { season: "2025-26" }, { season: "2024-25" }]);
 
@@ -158,5 +179,20 @@ describe("GamesService", () => {
     expect(prisma.game.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ distinct: ["season"], orderBy: { season: "desc" } })
     );
+  });
+
+  it("getPredictionHistoryForGame returns every model version's run, oldest first", async () => {
+    const runs = [
+      { id: "run-1", gameId: "game-1", modelVersion: "elo-v1+ff-v1", createdAt: new Date("2026-01-01") },
+    ];
+    prisma.gamePredictionRun.findMany.mockResolvedValue(runs);
+
+    const result = await gamesService.getPredictionHistoryForGame("game-1");
+
+    expect(result).toEqual(runs);
+    expect(prisma.gamePredictionRun.findMany).toHaveBeenCalledWith({
+      where: { gameId: "game-1" },
+      orderBy: { createdAt: "asc" },
+    });
   });
 });

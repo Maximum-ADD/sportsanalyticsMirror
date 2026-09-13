@@ -1,7 +1,6 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
-import { PredictionsService } from "../predictions/predictions.service.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
@@ -14,7 +13,6 @@ import { GamesService } from "./games.service.js";
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly predictionsService: PredictionsService,
     private readonly gameDetailService: GameDetailService
   ) {}
 
@@ -54,7 +52,8 @@ export class GamesController {
   // Factors predicted margin for this game, written by apps/predictor's
   // predict_games.py. Two-step 404: game not found vs. game found but not
   // yet predicted are different problems, same pattern as
-  // PlayersController's :id/stats route.
+  // PlayersController's :id/stats route. getGameById already joins the
+  // prediction, so both checks come from one query.
   @Get(":id/prediction")
   @ApiOperation({ summary: "Get Elo win probability and Four Factors prediction" })
   @ApiParam({ name: "id", description: "Game UUID" })
@@ -66,7 +65,7 @@ export class GamesController {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
     }
 
-    const prediction = await this.predictionsService.getPredictionForGame(id);
+    const { prediction } = game;
     if (!prediction) {
       throw new ApiException(
         HttpStatus.NOT_FOUND,
@@ -75,5 +74,25 @@ export class GamesController {
       );
     }
     return prediction;
+  }
+
+  // GET /v1/games/:id/prediction/history — every model version's
+  // prediction ever produced for this game, oldest first. The
+  // reproducibility half of model versioning: :id/prediction above always
+  // reflects the latest model run, so this is how a caller sees what the
+  // game was predicted to be under a version that's since been superseded.
+  // Empty array, not 404, when the game exists but has no prediction runs
+  // yet — a collection endpoint, same convention as GET /v1/games.
+  @Get(":id/prediction/history")
+  @ApiOperation({ summary: "Get every model version's prediction for this game" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Prediction history, oldest first" })
+  @ApiResponse({ status: 404, description: "Game not found" })
+  async getGamePredictionHistory(@Param("id") id: string) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    }
+    return this.gamesService.getPredictionHistoryForGame(id);
   }
 }

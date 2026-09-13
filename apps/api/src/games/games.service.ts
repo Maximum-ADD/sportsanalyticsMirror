@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Game, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS, REFERENCE_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -26,7 +28,10 @@ function parseSeasonFilter(query: Record<string, unknown>): string | undefined {
 
 @Injectable()
 export class GamesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
+  ) {}
 
   // Soonest-upcoming-first, then most-recently-completed — NOT a plain
   // gameDate desc/asc. A single "most recent first" order made sense back
@@ -75,11 +80,31 @@ export class GamesService {
   // games" page (see PlayerCards.tsx's useUpcomingPlayerReliability) could
   // silently reshuffle which games/players it showed between page loads
   // with no data having actually changed.
-  async getGames(query: Record<string, unknown>): Promise<PagedResult<GameWithTeamsAndPrediction>> {
+  //
+  // Cached per distinct filter + page combination (see ResponseCacheService):
+  // the Predictions page and PlayerCards ask for the same few pages on every
+  // visit, and the rows only change when a batch job runs.
+  getGames(query: Record<string, unknown>): Promise<PagedResult<GameWithTeamsAndPrediction>> {
     const { page, pageSize } = parsePageParams(query);
     const status = parseStatusFilter(query);
     const season = parseSeasonFilter(query);
     const seasonType = parseSeasonType(query.seasonType);
+
+    return this.cache.getOrLoad(
+      buildCacheKey("games:list", [status, season, seasonType, page, pageSize]),
+      DERIVED_DATA_TTL_MS,
+      () => this.readGamesPage(status, season, seasonType, page, pageSize)
+    );
+  }
+
+  // The uncached read behind getGames, with its query parameters already parsed.
+  private async readGamesPage(
+    status: GameStatusFilter,
+    season: string | undefined,
+    seasonType: SeasonType | undefined,
+    page: number,
+    pageSize: number
+  ): Promise<PagedResult<GameWithTeamsAndPrediction>> {
     const rowsNeeded = page * pageSize;
 
     const seasonWhere: Prisma.GameWhereInput = {
@@ -151,13 +176,17 @@ export class GamesService {
   // String-sorted, not date-sorted: this project's season strings
   // ("2023-24", "2024-25", ...) already sort correctly as plain strings,
   // and there's no reliable "season start date" column to sort by instead.
-  async getSeasons(): Promise<string[]> {
-    const rows = await this.prisma.game.findMany({
-      distinct: ["season"],
-      select: { season: true },
-      orderBy: { season: "desc" },
+  // A distinct scan over every game, for a list that changes a few times a
+  // year, so it is cached as reference data.
+  getSeasons(): Promise<string[]> {
+    return this.cache.getOrLoad(buildCacheKey("games:seasons"), REFERENCE_DATA_TTL_MS, async () => {
+      const rows = await this.prisma.game.findMany({
+        distinct: ["season"],
+        select: { season: true },
+        orderBy: { season: "desc" },
+      });
+      return rows.map((row) => row.season);
     });
-    return rows.map((row) => row.season);
   }
 
   // Every still-unplayed game one team is involved in, soonest first — the
@@ -177,6 +206,20 @@ export class GamesService {
       },
       include: { homeTeam: true, awayTeam: true },
       orderBy: [{ gameDate: "asc" }, { id: "asc" }],
+    });
+  }
+
+  // Every model version's prediction for one game, oldest first. Model
+  // versioning's whole point is that GamePrediction (the "current" row
+  // above) moves on when MODEL_VERSION changes without erasing what came
+  // before — this is how a caller actually sees that history rather than
+  // it only existing as an inert DB table. Empty array (not 404) when the
+  // game exists but predict_games.py hasn't run yet, same collection
+  // convention as getGames.
+  getPredictionHistoryForGame(gameId: string) {
+    return this.prisma.gamePredictionRun.findMany({
+      where: { gameId },
+      orderBy: { createdAt: "asc" },
     });
   }
 }

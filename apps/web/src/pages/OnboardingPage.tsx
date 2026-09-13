@@ -6,8 +6,10 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
-import { updateMe, followPlayer, fetchSuggestedPlayers } from "@/lib/meApi";
-import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
+import { PageLoading } from "@/components/ui/loading-overlay";
+import { updateMe, followPlayer, unfollowPlayer, fetchSuggestedPlayers } from "@/lib/meApi";
+import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
+import { useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
 import type { Team } from "@/types/nba";
 
@@ -147,6 +149,7 @@ function UsernameStep({ onNext }: { onNext: (username: string) => void }) {
 }
 
 function TeamStep({ onNext }: { onNext: (team: Team) => void }) {
+  const queryClient = useQueryClient();
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -157,6 +160,7 @@ function TeamStep({ onNext }: { onNext: (team: Team) => void }) {
     setErrorMessage(null);
     try {
       await updateMe({ favoriteTeamId: selectedTeam.id });
+      await invalidatePreferenceQueries(queryClient, false);
       onNext(selectedTeam);
     } catch {
       setErrorMessage("Couldn't save your favorite team. Please try again.");
@@ -185,21 +189,26 @@ function PlayersStep({ team, onFinish }: { team: Team; onFinish: () => void }) {
   });
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
 
+  const queryClient = useQueryClient();
   const followMutation = useMutation({
-    mutationFn: (playerId: string) => followPlayer(playerId),
+    mutationFn: async ({ playerId, following }: { playerId: string; following: boolean }) => {
+      if (following) await followPlayer(playerId);
+      else await unfollowPlayer(playerId);
+    },
+    onSuccess: async (_, { playerId, following }) => {
+      setFollowedIds((current) => {
+        const next = new Set(current);
+        if (following) next.add(playerId);
+        else next.delete(playerId);
+        return next;
+      });
+      await invalidatePreferenceQueries(queryClient, false);
+    },
   });
 
   function toggleFollow(playerId: string) {
-    const alreadyFollowed = followedIds.has(playerId);
-    if (!alreadyFollowed) {
-      followMutation.mutate(playerId);
-    }
-    setFollowedIds((current) => {
-      const next = new Set(current);
-      if (alreadyFollowed) next.delete(playerId);
-      else next.add(playerId);
-      return next;
-    });
+    if (followMutation.isPending) return;
+    followMutation.mutate({ playerId, following: !followedIds.has(playerId) });
   }
 
   const players = suggestedQuery.data?.players ?? [];
@@ -227,6 +236,7 @@ function PlayersStep({ team, onFinish }: { team: Team; onFinish: () => void }) {
                 key={player.id}
                 type="button"
                 aria-pressed={isFollowed}
+                disabled={followMutation.isPending}
                 onClick={() => toggleFollow(player.id)}
                 className={`flex flex-col items-center gap-2 border p-3 text-center transition-colors ${
                   isFollowed
@@ -255,7 +265,13 @@ function PlayersStep({ team, onFinish }: { team: Team; onFinish: () => void }) {
       )}
 
       <div className="mt-6 flex gap-2.5">
-        <PrimaryButton onClick={onFinish}>{followedIds.size > 0 ? "Finish" : "Skip"}</PrimaryButton>
+        {followMutation.isError && <p role="alert">Could not save your player preference. Please try again.</p>}
+        <PrimaryButton
+          disabled={followMutation.isPending}
+          onClick={() => { if (!followMutation.isPending) onFinish(); }}
+        >
+          {followedIds.size > 0 ? "Finish" : "Skip"}
+        </PrimaryButton>
       </div>
     </div>
   );
@@ -278,8 +294,8 @@ export function OnboardingPage() {
 
   if (isMePending) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-landing-hero">
-        <BasketballSpinner size="lg" label="Loading" />
+      <div className="min-h-full bg-landing-hero">
+        <PageLoading label="Loading" />
       </div>
     );
   }
@@ -291,7 +307,7 @@ export function OnboardingPage() {
     // immediately — without this, the ProfileGate redirect logic would
     // still see the stale null username from before onboarding and bounce
     // straight back here.
-    queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+    void invalidatePreferenceQueries(queryClient);
     navigate("/home", { replace: true });
   }
 

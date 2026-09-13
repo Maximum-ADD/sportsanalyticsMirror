@@ -11,7 +11,7 @@ import { Reveal } from "@/components/landing/Reveal";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { PageLoading } from "@/components/ui/loading-overlay";
 import type { LineupSlot, Player, PlayerPredictionListItem, PlayerPredictionSummary } from "@/types/nba";
 
 // A fantasy lineup is a 5-player roster (see apps/optimizer/optimize.py) —
@@ -355,9 +355,7 @@ export function OptimizerPage() {
         <div className="mx-auto max-w-[1100px] px-6 py-6 lg:px-8">
           <Reveal>
             <PageHeader />
-            <div className="flex min-h-[20rem] items-center justify-center">
-              <BasketballSpinner size="lg" label="Loading optimized lineup" />
-            </div>
+            <PageLoading label="Loading optimized lineup" />
           </Reveal>
         </div>
       </div>

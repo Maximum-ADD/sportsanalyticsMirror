@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma, Team } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS, REFERENCE_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { PlayersService, type PlayerWithTeam } from "../players/players.service.js";
@@ -7,6 +9,11 @@ import { StatsService } from "../players/stats.service.js";
 
 function getSearchTerms(search: unknown): string[] {
   return typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean) : [];
+}
+
+function roundToDecimalPlaces(value: number, decimalPlaces: number): number {
+  const scalingFactor = 10 ** decimalPlaces;
+  return Math.round(value * scalingFactor) / scalingFactor;
 }
 
 export interface TeamEloRating {
@@ -28,6 +35,29 @@ export interface SuggestedPlayer {
   usagePercentage: number | null;
 }
 
+// A team's win/loss record, derived from completed games only (both scores
+// present) — a scheduled or in-progress game has nothing to score yet, so it
+// is excluded rather than counted as neither a win nor a loss. Ties are
+// impossible in the NBA, so every completed game is exactly one or the other.
+export interface TeamRecord {
+  teamId: string;
+  wins: number;
+  losses: number;
+  // Rounded to 3 decimal places (e.g. 0.583); null for a team with no
+  // completed games yet rather than a misleading 0.
+  winPercentage: number | null;
+  // Most recent game last, so the array reads left-to-right the same
+  // direction the games were played in. Capped at RECENT_FORM_GAME_COUNT.
+  recentForm: ("W" | "L")[];
+}
+
+// How many of a team's most recent completed games recentForm reports —
+// enough to read a hot or cold streak at a glance without turning the teams
+// list into a game log.
+const RECENT_FORM_GAME_COUNT = 5;
+
+const WIN_PERCENTAGE_DECIMAL_PLACES = 3;
+
 // How many ranked players the onboarding step's "suggested players to
 // follow" prompt gets — enough to feel like a real choice without listing
 // an entire 15-man roster of names a brand-new user won't recognise.
@@ -38,12 +68,24 @@ export class TeamsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly playersService: PlayersService,
-    private readonly statsService: StatsService
+    private readonly statsService: StatsService,
+    private readonly cache: ResponseCacheService
   ) {}
 
-  async getTeams(query: Record<string, unknown>): Promise<PagedResult<Team>> {
+  // Teams change a few times a year at most, so listings and single-team
+  // lookups are cached as reference data.
+  getTeams(query: Record<string, unknown>): Promise<PagedResult<Team>> {
     const { page, pageSize } = parsePageParams(query);
     const searchTerms = getSearchTerms(query.search);
+    return this.cache.getOrLoad(
+      buildCacheKey("teams:list", [searchTerms, page, pageSize]),
+      REFERENCE_DATA_TTL_MS,
+      () => this.readTeamsPage(searchTerms, page, pageSize)
+    );
+  }
+
+  // The uncached read behind getTeams.
+  private async readTeamsPage(searchTerms: string[], page: number, pageSize: number): Promise<PagedResult<Team>> {
     const where: Prisma.TeamWhereInput = {
       AND: searchTerms.map((searchTerm) => ({
         OR: [
@@ -68,7 +110,9 @@ export class TeamsService {
   }
 
   getTeamById(teamId: string): Promise<Team | null> {
-    return this.prisma.team.findUnique({ where: { id: teamId } });
+    return this.cache.getOrLoad(buildCacheKey("teams:id", [teamId]), REFERENCE_DATA_TTL_MS, () =>
+      this.prisma.team.findUnique({ where: { id: teamId } })
+    );
   }
 
   // Every team's current Elo rating, most recent first — "current" meaning
@@ -84,7 +128,15 @@ export class TeamsService {
   // (same as OptimizerService.getLatestLineup for PlayerPrediction) since a
   // team's most recent game could be on either side — merged and reduced
   // to one row per team in application code afterward.
-  async getEloRatings(): Promise<TeamEloRating[]> {
+  //
+  // Cached: both queries scan every predicted game, and ratings only move
+  // when predict_games.py runs.
+  getEloRatings(): Promise<TeamEloRating[]> {
+    return this.cache.getOrLoad(buildCacheKey("teams:elo"), DERIVED_DATA_TTL_MS, () => this.readEloRatings());
+  }
+
+  // The uncached read behind getEloRatings.
+  private async readEloRatings(): Promise<TeamEloRating[]> {
     const [asHome, asAway] = await Promise.all([
       this.prisma.game.findMany({
         where: { prediction: { isNot: null } },
@@ -118,6 +170,55 @@ export class TeamsService {
     return Array.from(latestByTeamId.values()).sort((a, b) => b.elo - a.elo);
   }
 
+  // Every team's win/loss record and recent form, derived from completed
+  // games (both scores present) the same way getEloRatings derives its
+  // ratings from Game rows rather than a stored column — nothing here is
+  // pre-computed or cached, so a newly ingested result is reflected
+  // immediately.
+  //
+  // One query for every completed game across the league, newest first, then
+  // reduced to one record per team in application code — a team can appear
+  // as either homeTeamId or awayTeamId, so there is no single WHERE clause
+  // that fetches "this team's games" without fetching every team's.
+  async getTeamRecords(): Promise<TeamRecord[]> {
+    const teams = await this.prisma.team.findMany({ select: { id: true } });
+    const games = await this.prisma.game.findMany({
+      where: { homeScore: { not: null }, awayScore: { not: null } },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, gameDate: true },
+      orderBy: { gameDate: "desc" },
+    });
+
+    const gamesByTeamId = new Map<string, { won: boolean }[]>();
+    for (const team of teams) {
+      gamesByTeamId.set(team.id, []);
+    }
+    for (const game of games) {
+      // homeScore/awayScore are guaranteed non-null by the where clause
+      // above; Prisma's generated type can't express that, hence the `!`.
+      const homeWon = game.homeScore! > game.awayScore!;
+      gamesByTeamId.get(game.homeTeamId)?.push({ won: homeWon });
+      gamesByTeamId.get(game.awayTeamId)?.push({ won: !homeWon });
+    }
+
+    return teams.map(({ id: teamId }) => {
+      const teamGames = gamesByTeamId.get(teamId) ?? [];
+      const wins = teamGames.filter((game) => game.won).length;
+      const losses = teamGames.length - wins;
+      const winPercentage =
+        teamGames.length === 0
+          ? null
+          : roundToDecimalPlaces(wins / teamGames.length, WIN_PERCENTAGE_DECIMAL_PLACES);
+      // teamGames is newest-first (games was ordered that way); recentForm
+      // reads oldest-to-newest left-to-right, so the slice is reversed.
+      const recentForm = teamGames
+        .slice(0, RECENT_FORM_GAME_COUNT)
+        .reverse()
+        .map((game): "W" | "L" => (game.won ? "W" : "L"));
+
+      return { teamId, wins, losses, winPercentage, recentForm };
+    });
+  }
+
   // Ranks a team's current roster by usage percentage, highest first — the
   // onboarding step's "suggested players to follow" prompt, so a brand-new
   // user picking their team sees the players who actually run that team's
@@ -131,7 +232,17 @@ export class TeamsService {
   // with a real rate — present rather than silently dropped, since
   // "no usage data yet" is itself useful information for who's a safe
   // pick to suggest.
-  async getSuggestedPlayers(teamId: string, count = DEFAULT_SUGGESTED_PLAYER_COUNT): Promise<SuggestedPlayer[]> {
+  //
+  // Cached per team and count: it reads the whole roster's full boxscore
+  // history to rank one short list.
+  getSuggestedPlayers(teamId: string, count = DEFAULT_SUGGESTED_PLAYER_COUNT): Promise<SuggestedPlayer[]> {
+    return this.cache.getOrLoad(buildCacheKey("teams:suggested", [teamId, count]), DERIVED_DATA_TTL_MS, () =>
+      this.readSuggestedPlayers(teamId, count)
+    );
+  }
+
+  // The uncached read behind getSuggestedPlayers.
+  private async readSuggestedPlayers(teamId: string, count: number): Promise<SuggestedPlayer[]> {
     const roster = await this.playersService.getTeamRoster(teamId);
     if (roster.length === 0) return [];
 

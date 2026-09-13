@@ -212,38 +212,50 @@ model Player {
 
   savedComparisonSlots SavedComparisonPlayer[]
   savedLineupSlots     SavedLineupSlot[]
+
+  // Roster lookups (team profile, game detail, suggested players) filter on it.
+  @@index([teamId])
 }
 
 model Game {
-  id           String   @id @default(uuid())
-  nbaGameId    String   @unique
-  gameDate     DateTime
-  season       String
-  homeTeamId   String
-  awayTeamId   String
-  homeTeam     Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeam     Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  homeScore    Int?
-  awayScore    Int?
+  id         String   @id @default(uuid())
+  nbaGameId  String   @unique
+  gameDate   DateTime
+  season     String
+  homeTeamId String
+  awayTeamId String
+  homeTeam   Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam   Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeScore  Int?
+  awayScore  Int?
 
   // Defaulting to REGULAR is exactly right for backfill, not just a
   // convenient fallback: every Game row that existed before this column
   // came through LeagueGameFinder with season_type_nullable="Regular
   // Season" (see apps/ingestion/games.py), so the migration needs no data
   // cleanup pass.
-  seasonType   SeasonType @default(REGULAR)
+  seasonType SeasonType @default(REGULAR)
 
   // 1-4 for PLAYOFFS/FINALS games, null for REGULAR and PLAY_IN. Derived
   // from the NBA game id at ingestion time — see classify_game().
   playoffRound Int?
 
-  playerStats  PlayerGameStat[]
-  events       GameEvent[]
-  prediction   GamePrediction?
+  playerStats    PlayerGameStat[]
+  events         GameEvent[]
+  prediction     GamePrediction?
+  predictionRuns GamePredictionRun[]
 
-  picks        GamePick[]
+  picks GamePick[]
 
   @@index([seasonType])
+  // Nearly every Game read orders by gameDate (upcoming/completed lists,
+  // recent results, evaluated games), and every per-player stats read orders
+  // its rows by the joined game's date.
+  @@index([gameDate])
+  // A team's schedule and results filter on one side and order by date;
+  // Postgres combines the two indexes for the OR across home and away.
+  @@index([homeTeamId, gameDate])
+  @@index([awayTeamId, gameDate])
 }
 
 // Raw play-by-play events — the source of truth every derived stat traces back to.
@@ -327,11 +339,15 @@ model PlayerGameStat {
   // instead (see StatsService). Those three were verified to match this
   // endpoint's values exactly, so storing them would add a second source of
   // truth for a number already computable from the boxscore.
-  usagePercentage  Float?
-  offensiveRating  Float?
-  defensiveRating  Float?
+  usagePercentage Float?
+  offensiveRating Float?
+  defensiveRating Float?
 
   @@unique([playerId, gameId])
+  // The unique index above leads with playerId, so it can't serve lookups
+  // from the game side: a game's boxscore, or joins filtered on Game columns
+  // (seasonType, gameDate) that start from the matching games.
+  @@index([gameId])
 }
 
 // Below models support the fantasy-lineup optimizer: a small Python service
@@ -438,6 +454,12 @@ model SavedLineupSlot {
 // wants "what did we predict for this game last Tuesday vs today" the way
 // fantasy-point predictions do, so a single row keeps reads a direct
 // `game.prediction` relation instead of a DISTINCT ON query.
+//
+// This table is deliberately still upsert-only — it's the fast "current
+// prediction" view every existing read path (picks, leaderboard, follows,
+// teams) depends on via the `game.prediction` 1:1 relation. Reproducibility
+// across model changes lives in GamePredictionRun below instead of here, so
+// none of those read paths had to change shape to get it.
 model GamePrediction {
   id String @id @default(uuid())
 
@@ -466,8 +488,48 @@ model GamePrediction {
   // predictedMarginHome.
   marginMethod String?
 
+  // Which predictor model definition produced this row — see
+  // GamePredictionRun.modelVersion below. Lets a caller see, without a
+  // second query, whether "the current prediction" was made under today's
+  // model or an older one that just hasn't been rerun yet.
+  modelVersion String @default("unversioned")
+
   createdAt DateTime @default(now())
 
+  @@index([gameId])
+}
+
+// Append-only prediction history: one row per (game, model version) ever
+// produced by predict_games.py, upserted only within the same version and
+// never overwritten across a version change. GamePrediction above always
+// reflects the latest run, so once MODEL_VERSION is bumped in
+// predict_games.py, every prior version's numbers stay exactly as they were
+// computed — "a figure published under one definition stays reproducible
+// after it changes" — queryable here instead of only living in a report PDF
+// or being silently replaced in place.
+model GamePredictionRun {
+  id String @id @default(uuid())
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id])
+
+  // Identifies the exact model definition this row was computed under —
+  // see predict_games.py's MODEL_VERSION docstring for the versioning
+  // convention (bump the Elo or Four Factors component independently).
+  modelVersion String
+
+  homeWinProbability  Float
+  homeTeamEloPre      Float
+  awayTeamEloPre      Float
+  predictedMarginHome Float?
+  marginMethod        String?
+
+  createdAt DateTime @default(now())
+
+  // One row per game per version — rerunning the same version (e.g. after
+  // reseeding data) refreshes its numbers rather than accumulating
+  // duplicate rows for a definition that hasn't actually changed.
+  @@unique([gameId, modelVersion])
   @@index([gameId])
 }
 
@@ -484,8 +546,6 @@ model GamePrediction {
 // enough to make a re-ingestion that deletes and rewrites roster rows fail
 // outright — a user's bookmark must never be able to block the data pipeline.
 // ─────────────────────────────────────────────────────────────────────────
-
-
 
 // Whether the user's call turned out right, once the game has a final score.
 enum PickOutcome {

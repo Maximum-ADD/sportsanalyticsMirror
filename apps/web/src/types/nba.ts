@@ -459,6 +459,18 @@ export interface TeamEloRating {
   asOfGameDate: string;
 }
 
+// GET /v1/teams/records' per-team entry — win/loss record and recent form
+// derived from completed games. winPercentage is null for a team with no
+// completed games yet. recentForm is oldest-to-newest left-to-right, capped
+// at 5 games — see TeamsService.getTeamRecords.
+export interface TeamRecord {
+  teamId: string;
+  wins: number;
+  losses: number;
+  winPercentage: number | null;
+  recentForm: ("W" | "L")[];
+}
+
 // Mirrors the Prisma Role enum (apps/api/prisma/schema.prisma) — kept as a
 // plain union rather than imported, the same way SeasonType's values are
 // hand-mirrored elsewhere in this file, since the frontend has no direct

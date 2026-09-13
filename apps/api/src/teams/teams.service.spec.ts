@@ -1,6 +1,7 @@
 import type { Game, GamePrediction, Player, Team } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamsService } from "./teams.service.js";
+import { ResponseCacheService } from "../cache/response-cache.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import type { PlayersService } from "../players/players.service.js";
 import type { StatsService } from "../players/stats.service.js";
@@ -48,7 +49,8 @@ describe("TeamsService.getEloRatings", () => {
     teamsService = new TeamsService(
       prisma as unknown as PrismaService,
       {} as unknown as PlayersService,
-      {} as unknown as StatsService
+      {} as unknown as StatsService,
+      new ResponseCacheService({ enabled: false })
     );
   });
 
@@ -105,6 +107,76 @@ describe("TeamsService.getEloRatings", () => {
   });
 });
 
+function makeCompletedGame(overrides: Partial<Game> = {}) {
+  return {
+    homeTeamId: LAKERS.id,
+    awayTeamId: CELTICS.id,
+    homeScore: 100,
+    awayScore: 98,
+    gameDate: new Date("2026-01-01"),
+    ...overrides,
+  };
+}
+
+describe("TeamsService.getTeamRecords", () => {
+  let prisma: {
+    team: { findMany: ReturnType<typeof vi.fn> };
+    game: { findMany: ReturnType<typeof vi.fn> };
+  };
+  let teamsService: TeamsService;
+
+  beforeEach(() => {
+    prisma = { team: { findMany: vi.fn() }, game: { findMany: vi.fn() } };
+    teamsService = new TeamsService(
+      prisma as unknown as PrismaService,
+      {} as unknown as PlayersService,
+      {} as unknown as StatsService
+    );
+    prisma.team.findMany.mockResolvedValue([{ id: LAKERS.id }, { id: CELTICS.id }]);
+  });
+
+  it("counts wins and losses from completed games on either side", async () => {
+    prisma.game.findMany.mockResolvedValue([
+      makeCompletedGame({ homeTeamId: LAKERS.id, awayTeamId: CELTICS.id, homeScore: 100, awayScore: 98 }),
+      makeCompletedGame({ homeTeamId: CELTICS.id, awayTeamId: LAKERS.id, homeScore: 90, awayScore: 95 }),
+    ]);
+
+    const records = await teamsService.getTeamRecords();
+    const lakers = records.find((record) => record.teamId === LAKERS.id);
+
+    expect(lakers).toMatchObject({ wins: 2, losses: 0, winPercentage: 1 });
+  });
+
+  it("excludes games with a null score", async () => {
+    prisma.game.findMany.mockResolvedValue([]);
+
+    const records = await teamsService.getTeamRecords();
+    const lakers = records.find((record) => record.teamId === LAKERS.id);
+
+    expect(lakers).toMatchObject({ wins: 0, losses: 0, winPercentage: null, recentForm: [] });
+  });
+
+  it("reports recent form oldest-to-newest, capped at 5 games", async () => {
+    const games = Array.from({ length: 6 }, (_, index) =>
+      makeCompletedGame({
+        homeTeamId: LAKERS.id,
+        awayTeamId: CELTICS.id,
+        // Newest first, matching the service's orderBy: gameDate desc — the
+        // most recent game (index 0) is a loss, everything before it a win.
+        homeScore: index === 0 ? 90 : 100,
+        awayScore: index === 0 ? 100 : 90,
+        gameDate: new Date(2026, 0, 10 - index),
+      })
+    );
+    prisma.game.findMany.mockResolvedValue(games);
+
+    const records = await teamsService.getTeamRecords();
+    const lakers = records.find((record) => record.teamId === LAKERS.id);
+
+    expect(lakers?.recentForm).toEqual(["W", "W", "W", "W", "L"]);
+  });
+});
+
 function makePlayer(overrides: Partial<Player> = {}): Player & { team: Team | null } {
   return {
     id: "player-1",
@@ -142,7 +214,8 @@ describe("TeamsService.getSuggestedPlayers", () => {
     teamsService = new TeamsService(
       {} as unknown as PrismaService,
       playersService as unknown as PlayersService,
-      statsService as unknown as StatsService
+      statsService as unknown as StatsService,
+      new ResponseCacheService({ enabled: false })
     );
   });
 

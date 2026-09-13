@@ -6,7 +6,9 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { PageLoading } from "@/components/ui/loading-overlay";
 import { authClient } from "@/lib/authClient";
+import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
 import { deleteSavedLineup, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
@@ -190,7 +192,7 @@ function FavoriteTeamEditor({ favoriteTeam }: { favoriteTeam: Team | null }) {
   const updateMutation = useMutation({
     mutationFn: (teamId: string) => updateMe({ favoriteTeamId: teamId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+      invalidatePreferenceQueries(queryClient);
       setIsEditing(false);
     },
   });
@@ -215,6 +217,7 @@ function FavoriteTeamEditor({ favoriteTeam }: { favoriteTeam: Team | null }) {
 
   return (
     <div>
+      {updateMutation.isError && <p role="alert">Could not save your favorite team. Please try again.</p>}
       <TeamPicker selectedTeamId={selected?.id ?? null} onSelect={setSelected} />
       <div className="mt-3 flex gap-2.5">
         <LockerButton
@@ -233,7 +236,7 @@ function FollowedPlayersList({ players }: { players: { id: string; firstName: st
   const queryClient = useQueryClient();
   const unfollowMutation = useMutation({
     mutationFn: (playerId: string) => unfollowPlayer(playerId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY }),
+    onSuccess: () => invalidatePreferenceQueries(queryClient),
   });
 
   if (players.length === 0) {
@@ -246,6 +249,7 @@ function FollowedPlayersList({ players }: { players: { id: string; firstName: st
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {unfollowMutation.isError && <p role="alert">Could not unfollow this player. Please try again.</p>}
       {players.map((player) => (
         <div key={player.id} className="flex items-center gap-2.5 border border-landing-light bg-locker-surface p-2.5">
           <PlayerHeadshot player={player} size="sm" />
@@ -474,8 +478,8 @@ export function ProfilePage() {
 
   if (isPending) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-landing-hero">
-        <BasketballSpinner size="lg" label="Loading profile" />
+      <div className="min-h-full bg-landing-hero">
+        <PageLoading label="Loading profile" />
       </div>
     );
   }

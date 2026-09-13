@@ -1,6 +1,7 @@
 import type { Game, PlayerGameStat } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayersService, type PlayerWithTeam } from "./players.service.js";
+import { ResponseCacheService } from "../cache/response-cache.service.js";
 import type { GamesService } from "../games/games.service.js";
 import { StatsService } from "./stats.service.js";
 
@@ -51,6 +52,7 @@ function makeStat(overrides: Partial<PlayerGameStat> = {}): PlayerGameStat {
 describe("StatsService", () => {
   let statsService: StatsService;
   let playersService: PlayersService;
+  let gamesService: GamesService;
 
   beforeEach(() => {
     playersService = {
@@ -58,13 +60,18 @@ describe("StatsService", () => {
       getPlayerSeasonStatsBatch: vi.fn(),
       getSeasonStatTotalsBatch: vi.fn(),
       getMatchingPlayers: vi.fn(),
+      // The real where-clause builder is pure, and the ranking cache keys on
+      // its output, so the spec uses it rather than a stub.
+      buildPlayerWhere: (query: Record<string, unknown>) => PlayersService.prototype.buildPlayerWhere(query),
     } as unknown as PlayersService;
     // StatsService resolves upcoming games through GamesService — only
     // getMatchupProjection touches it, so a bare mock is enough here.
-    const gamesService = {
+    gamesService = {
       getUpcomingGamesForTeam: vi.fn(),
     } as unknown as GamesService;
-    statsService = new StatsService(playersService, gamesService);
+    // A disabled cache, so each test sees its own mocked reads. The caching
+    // tests below build their own enabled instance.
+    statsService = new StatsService(playersService, gamesService, new ResponseCacheService({ enabled: false }));
   });
 
   describe("deriveSeasonAverages", () => {
@@ -169,62 +176,48 @@ describe("StatsService", () => {
     });
   });
 
-  describe("getPlayerSeasonAverages", () => {
-    it("delegates to PlayersService and derives averages from the result", async () => {
-      vi.mocked(playersService.getPlayerSeasonStats).mockResolvedValue([makeStat({ points: 10 })] as never);
-
-      const averages = await statsService.getPlayerSeasonAverages("player-1");
-
-      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "REGULAR");
-      expect(averages.gamesPlayed).toBe(1);
-      expect(averages.pointsPerGame).toBe(10);
-    });
-
-    it("asks PlayersService for the requested segment only", async () => {
-      vi.mocked(playersService.getPlayerSeasonStats).mockResolvedValue([makeStat({ points: 30 })] as never);
-
-      await statsService.getPlayerSeasonAverages("player-1", "FINALS");
-
-      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "FINALS");
-    });
-  });
-
-  describe("getPlayerGameLog", () => {
-    it("delegates to PlayersService and derives a sorted game log", async () => {
+  describe("getPlayerSeasonLine", () => {
+    it("derives both the averages and the game log from a single read", async () => {
       const stat = { ...makeStat({ gameId: "game-1", points: 15 }), game: makeGame({ gameDate: new Date("2025-10-15") }) };
       vi.mocked(playersService.getPlayerSeasonStats).mockResolvedValue([stat] as never);
 
-      const log = await statsService.getPlayerGameLog("player-1");
+      const line = await statsService.getPlayerSeasonLine("player-1");
 
-      expect(log).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 15, season: "2025-26" }]);
+      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledTimes(1);
+      expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "REGULAR");
+      expect(line.seasonAverages).toMatchObject({ gamesPlayed: 1, pointsPerGame: 15 });
+      expect(line.gameLog).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 15, season: "2025-26" }]);
     });
 
     it("asks PlayersService for the requested segment only", async () => {
       vi.mocked(playersService.getPlayerSeasonStats).mockResolvedValue([] as never);
 
-      await statsService.getPlayerGameLog("player-1", "PLAY_IN");
+      await statsService.getPlayerSeasonLine("player-1", "PLAY_IN");
 
       expect(playersService.getPlayerSeasonStats).toHaveBeenCalledWith("player-1", "PLAY_IN");
     });
   });
 
   describe("getPlayerSeasonSplits", () => {
-    it("derives one independent season line per segment", async () => {
+    function makeStatInSegment(seasonType: Game["seasonType"], points: number) {
+      return { ...makeStat({ points }), game: makeGame({ seasonType }) };
+    }
+
+    it("reads every segment in one query and derives one independent line per segment", async () => {
       // A different points total per segment, so a split that silently
       // reused another segment's rows would show up as an equal average
       // rather than passing unnoticed.
-      const pointsBySeasonType: Record<string, number> = {
-        REGULAR: 20,
-        PLAY_IN: 12,
-        PLAYOFFS: 26,
-        FINALS: 31,
-      };
-      vi.mocked(playersService.getPlayerSeasonStats).mockImplementation((_playerId, seasonType) =>
-        Promise.resolve([makeStat({ points: pointsBySeasonType[seasonType ?? "REGULAR"] })] as never)
-      );
+      vi.mocked(playersService.getPlayerSeasonStatsBatch).mockResolvedValue([
+        makeStatInSegment("REGULAR", 20),
+        makeStatInSegment("PLAY_IN", 12),
+        makeStatInSegment("PLAYOFFS", 26),
+        makeStatInSegment("FINALS", 31),
+      ] as never);
 
       const splits = await statsService.getPlayerSeasonSplits("player-1");
 
+      expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledTimes(1);
+      expect(playersService.getPlayerSeasonStatsBatch).toHaveBeenCalledWith(["player-1"]);
       expect(splits.REGULAR.pointsPerGame).toBe(20);
       expect(splits.PLAY_IN.pointsPerGame).toBe(12);
       expect(splits.PLAYOFFS.pointsPerGame).toBe(26);
@@ -234,9 +227,9 @@ describe("StatsService", () => {
     it("returns a zeroed line for a segment the player did not appear in", async () => {
       // The comparison view renders a fixed set of columns, so "didn't
       // play" has to come back as gamesPlayed: 0 rather than a missing key.
-      vi.mocked(playersService.getPlayerSeasonStats).mockImplementation((_playerId, seasonType) =>
-        Promise.resolve((seasonType === "REGULAR" ? [makeStat({ points: 20 })] : []) as never)
-      );
+      vi.mocked(playersService.getPlayerSeasonStatsBatch).mockResolvedValue([
+        makeStatInSegment("REGULAR", 20),
+      ] as never);
 
       const splits = await statsService.getPlayerSeasonSplits("player-1");
 
@@ -408,6 +401,44 @@ describe("StatsService", () => {
 
       expect(leaders.ppg).toBeNull();
       expect(leaders.tsPct).toBeNull();
+    });
+  });
+
+  describe("ranking base caching", () => {
+    let cachedStatsService: StatsService;
+
+    beforeEach(() => {
+      cachedStatsService = new StatsService(playersService, gamesService, new ResponseCacheService({ enabled: true }));
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue([
+        { id: "player-a", lastName: "A", firstName: "Test", team: null },
+      ] as never);
+      vi.mocked(playersService.getSeasonStatTotalsBatch).mockResolvedValue([
+        { playerId: "player-a", _count: { _all: 20 }, _sum: { points: 400, rebounds: 100, assists: 60, fieldGoalsAttempted: 300, freeThrowsAttempted: 50 } },
+      ] as never);
+    });
+
+    it("reuses one pair of queries across sort, order, page and minGames changes", async () => {
+      await cachedStatsService.getPlayersRanked({ sort: "ppg" });
+      await cachedStatsService.getPlayersRanked({ sort: "rpg", order: "asc", page: "2" });
+      await cachedStatsService.getPlayersRanked({ sort: "ts", minGames: "10" });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(1);
+      expect(playersService.getSeasonStatTotalsBatch).toHaveBeenCalledTimes(1);
+    });
+
+    it("shares the unfiltered ranking's base with the season leaders in the same segment", async () => {
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", seasonType: "REGULAR" });
+      await cachedStatsService.getSeasonLeaders("REGULAR", 15);
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a filtered ranking and a different segment in their own cache entries", async () => {
+      await cachedStatsService.getPlayersRanked({ sort: "ppg" });
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", teamId: "team-lal" });
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", seasonType: "PLAYOFFS" });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(3);
     });
   });
 

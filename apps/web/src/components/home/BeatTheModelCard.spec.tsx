@@ -121,6 +121,60 @@ describe("BeatTheModelCard", () => {
     await waitFor(() => expect(vi.mocked(fetchNextChallenge).mock.calls.length).toBeGreaterThan(1));
   });
 
+  // The follow-up bug: "Next call" cleared the result before the next game
+  // arrived, so the game just called briefly came back as a fresh question.
+  it("never shows the called game again while the next one is still loading", async () => {
+    const user = userEvent.setup();
+    let resolveNextGame: (game: ChallengeGame) => void = () => {};
+    vi.mocked(fetchNextChallenge)
+      .mockResolvedValueOnce(createChallenge())
+      .mockImplementation(() => new Promise((resolve) => (resolveNextGame = resolve)));
+
+    renderWithProviders(<BeatTheModelCard />);
+    await user.click(await screen.findByRole("button", { name: "Denver" }));
+    await screen.findByText("Correct");
+
+    await user.click(screen.getByRole("button", { name: /next call/i }));
+
+    expect(await screen.findByRole("status", { name: /finding a game to call/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Denver" })).not.toBeInTheDocument();
+
+    resolveNextGame(createChallenge({ gameId: "game-2", homeTeam: MIAMI, awayTeam: OKC }));
+    expect(await screen.findByRole("button", { name: "Miami" })).toBeInTheDocument();
+  });
+
+  it("starts loading the next game as soon as the call is graded", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchNextChallenge)
+      .mockResolvedValueOnce(createChallenge())
+      .mockResolvedValue(createChallenge({ gameId: "game-2", homeTeam: MIAMI, awayTeam: OKC }));
+
+    renderWithProviders(<BeatTheModelCard />);
+    await user.click(await screen.findByRole("button", { name: "Denver" }));
+    await screen.findByText("Correct");
+
+    // Fetched behind the graded result, which stays on screen untouched.
+    await waitFor(() => expect(vi.mocked(fetchNextChallenge).mock.calls.length).toBeGreaterThan(1));
+    expect(screen.getByText(/121\s*—\s*118/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /next call/i }));
+    expect(await screen.findByRole("button", { name: "Miami" })).toBeInTheDocument();
+  });
+
+  it("moves on to a new game when the one on screen was already called elsewhere", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchNextChallenge)
+      .mockResolvedValueOnce(createChallenge())
+      .mockResolvedValue(createChallenge({ gameId: "game-2", homeTeam: MIAMI, awayTeam: OKC }));
+    vi.mocked(submitPick).mockRejectedValue(new ApiError("You have already called this game", 409));
+
+    renderWithProviders(<BeatTheModelCard />);
+    await user.click(await screen.findByRole("button", { name: "Denver" }));
+
+    expect(await screen.findByRole("button", { name: "Miami" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("asks a signed-out visitor to sign in rather than showing an error", async () => {
     vi.mocked(fetchNextChallenge).mockRejectedValue(new ApiError("Sign in required", 401));
 
@@ -141,13 +195,13 @@ describe("BeatTheModelCard", () => {
   it("surfaces the server's message when a call is rejected", async () => {
     const user = userEvent.setup();
     vi.mocked(submitPick).mockRejectedValue(
-      new ApiError("You have already called this game", 409)
+      new ApiError("This game has no model prediction, so there is nothing to call it against", 400)
     );
 
     renderWithProviders(<BeatTheModelCard />);
     await user.click(await screen.findByRole("button", { name: "Denver" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/already called this game/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no model prediction/i);
   });
 
   it("shows the head-to-head record once the user has one", async () => {

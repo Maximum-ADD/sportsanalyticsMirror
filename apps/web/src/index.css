@@ -254,8 +254,13 @@
 
 body {
   margin: 0;
-  background-color: var(--color-surface-base);
-  color: var(--color-text-primary);
+  /* Every route has moved to the light "locker" palette except the landing
+     page (which paints its own dark bg-landing-ink) — this is what shows
+     during the gap before either mounts (initial HTML paint, a route
+     transition with nothing rendered yet), so it should match the app
+     shell's background (AppLayout), not the old dark app-shell palette. */
+  background-color: var(--color-landing-hero);
+  color: var(--color-landing-ink);
   font-family: var(--font-sans);
 }
 

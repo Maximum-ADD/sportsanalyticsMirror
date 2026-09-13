@@ -20,7 +20,13 @@ game outcomes:
 3. **`predict_games.py`** — the orchestrator. Runs both models and writes
    one `GamePrediction` row per game (both completed and upcoming), into
    the same Postgres database Prisma/NestJS manages. NestJS only ever
-   *reads* this table, via `GET /v1/games/:id/prediction`.
+   *reads* this table, via `GET /v1/games/:id/prediction`. Every row is
+   tagged with `MODEL_VERSION` and also written to `GamePredictionRun`
+   (never overwritten across a version change, unlike `GamePrediction`
+   itself), so a prediction made under an old model definition stays
+   reproducible after this script's constants or methodology move on — see
+   `GET /v1/games/:id/prediction/history` and `predict_games.py`'s
+   `MODEL_VERSION` docstring for the versioning convention.
 4. **`check_accuracy.py`** — read-only accuracy monitor. Backtests both
    models against whatever completed games are currently in the database
    (Brier score / accuracy for Elo, MAE for Four Factors, each compared
