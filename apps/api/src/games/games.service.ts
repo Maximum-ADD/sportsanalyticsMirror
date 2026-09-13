@@ -208,4 +208,18 @@ export class GamesService {
       orderBy: [{ gameDate: "asc" }, { id: "asc" }],
     });
   }
+
+  // Every model version's prediction for one game, oldest first. Model
+  // versioning's whole point is that GamePrediction (the "current" row
+  // above) moves on when MODEL_VERSION changes without erasing what came
+  // before — this is how a caller actually sees that history rather than
+  // it only existing as an inert DB table. Empty array (not 404) when the
+  // game exists but predict_games.py hasn't run yet, same collection
+  // convention as getGames.
+  getPredictionHistoryForGame(gameId: string) {
+    return this.prisma.gamePredictionRun.findMany({
+      where: { gameId },
+      orderBy: { createdAt: "asc" },
+    });
+  }
 }

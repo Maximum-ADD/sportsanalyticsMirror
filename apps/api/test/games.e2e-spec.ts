@@ -293,6 +293,135 @@ describe("Games API", () => {
       expect(response.body.homeWinProbability).toBe(0.62);
       expect(response.body.predictedMarginHome).toBe(3.68);
       expect(response.body.marginMethod).toBe("heuristic");
+      // Not supplied above — defaults so pre-versioning rows stay valid.
+      expect(response.body.modelVersion).toBe("unversioned");
+    });
+
+    it("reflects a real model version when predict_games.py supplies one", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "VERSIONED-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      await testPrisma.gamePrediction.create({
+        data: {
+          gameId: game.id,
+          homeWinProbability: 0.62,
+          homeTeamEloPre: 1512.5,
+          awayTeamEloPre: 1487.5,
+          predictedMarginHome: 3.68,
+          marginMethod: "heuristic",
+          modelVersion: "elo-v1+ff-v1",
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.modelVersion).toBe("elo-v1+ff-v1");
+    });
+  });
+
+  describe("GET /v1/games/:id/prediction/history", () => {
+    it("returns a 404 with the standard error envelope for a game that doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/games/does-not-exist/prediction/history");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+      expect(response.body.error.message).toBe("Game not found");
+    });
+
+    it("returns an empty array (not 404) for a game that exists but has no prediction runs yet", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "NO-HISTORY-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction/history`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it("returns every model version's run, oldest first, surviving a newer version superseding GamePrediction", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "HISTORY-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      await testPrisma.gamePredictionRun.create({
+        data: {
+          gameId: game.id,
+          modelVersion: "elo-v1+ff-v1",
+          homeWinProbability: 0.55,
+          homeTeamEloPre: 1500,
+          awayTeamEloPre: 1500,
+          predictedMarginHome: 1.2,
+          marginMethod: "heuristic",
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+        },
+      });
+      await testPrisma.gamePredictionRun.create({
+        data: {
+          gameId: game.id,
+          modelVersion: "elo-v2+ff-v1",
+          homeWinProbability: 0.61,
+          homeTeamEloPre: 1510,
+          awayTeamEloPre: 1495,
+          predictedMarginHome: 2.4,
+          marginMethod: "heuristic",
+          createdAt: new Date("2026-02-01T00:00:00Z"),
+        },
+      });
+      // The "current" row has since moved on to a third version — the
+      // history endpoint's job is to still show the two superseded runs
+      // above exactly as they were computed, not just whatever's current.
+      await testPrisma.gamePrediction.create({
+        data: {
+          gameId: game.id,
+          homeWinProbability: 0.7,
+          homeTeamEloPre: 1525,
+          awayTeamEloPre: 1480,
+          predictedMarginHome: 3.1,
+          marginMethod: "heuristic",
+          modelVersion: "elo-v3+ff-v1",
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction/history`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.map((run: { modelVersion: string }) => run.modelVersion)).toEqual([
+        "elo-v1+ff-v1",
+        "elo-v2+ff-v1",
+      ]);
+      expect(response.body[0].homeWinProbability).toBe(0.55);
+      expect(response.body[1].homeWinProbability).toBe(0.61);
     });
   });
 

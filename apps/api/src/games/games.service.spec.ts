@@ -22,11 +22,14 @@ function makeGame(overrides: Partial<Game> = {}): Game {
 }
 
 describe("GamesService", () => {
-  let prisma: { game: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> } };
+  let prisma: {
+    game: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
+    gamePredictionRun: { findMany: ReturnType<typeof vi.fn> };
+  };
   let gamesService: GamesService;
 
   beforeEach(() => {
-    prisma = { game: { findMany: vi.fn(), count: vi.fn() } };
+    prisma = { game: { findMany: vi.fn(), count: vi.fn() }, gamePredictionRun: { findMany: vi.fn() } };
     // A disabled cache, so every call below reaches the mocked Prisma client.
     gamesService = new GamesService(prisma as unknown as PrismaService, new ResponseCacheService({ enabled: false }));
   });
@@ -176,5 +179,20 @@ describe("GamesService", () => {
     expect(prisma.game.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ distinct: ["season"], orderBy: { season: "desc" } })
     );
+  });
+
+  it("getPredictionHistoryForGame returns every model version's run, oldest first", async () => {
+    const runs = [
+      { id: "run-1", gameId: "game-1", modelVersion: "elo-v1+ff-v1", createdAt: new Date("2026-01-01") },
+    ];
+    prisma.gamePredictionRun.findMany.mockResolvedValue(runs);
+
+    const result = await gamesService.getPredictionHistoryForGame("game-1");
+
+    expect(result).toEqual(runs);
+    expect(prisma.gamePredictionRun.findMany).toHaveBeenCalledWith({
+      where: { gameId: "game-1" },
+      orderBy: { createdAt: "asc" },
+    });
   });
 });
