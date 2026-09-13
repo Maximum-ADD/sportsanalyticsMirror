@@ -14,7 +14,7 @@ afterEach(() => vi.clearAllMocks());
 it("refreshes the profile and invalidates fresh watchlist data after following, preserving state on failed unfollow", async () => {
   const profile: MeProfile = {
     id: "user-1", email: "user@example.com", name: "User", username: "user",
-    avatarUrl: null, favoriteTeam: null, followedPlayers: [],
+    avatarUrl: null, favoriteTeam: null, followedPlayers: [], role: "USER",
   };
   vi.mocked(useSession).mockReturnValue({ data: { user: { id: profile.id } }, isPending: false } as never);
   const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 300_000, retry: false } } });
