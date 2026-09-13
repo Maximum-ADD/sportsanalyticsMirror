@@ -23,6 +23,7 @@ const ONBOARDED_ME: MeProfile = {
   avatarUrl: null,
   favoriteTeam: null,
   followedPlayers: [],
+  role: "USER",
 };
 
 function renderGate(initialPath = "/home") {

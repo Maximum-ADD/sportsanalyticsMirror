@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AuthStatus } from "@/components/AuthStatus";
+import { useMe } from "@/lib/useMe";
 import { FlameBallLogo } from "./FlameBallLogo";
 
 const APP_LINKS = [
@@ -31,6 +32,12 @@ interface LandingHeaderProps {
 // above, so "the header" otherwise always means the same look and the same
 // links everywhere.
 export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHeaderProps) {
+  // Admin is the one link that isn't always in the row — it only appears
+  // for a signed-in admin, appended rather than spliced in anywhere else so
+  // it doesn't shift every other link's position for everyone else.
+  const { data: me } = useMe();
+  const links = me?.role === "ADMIN" ? [...APP_LINKS, { label: "Admin", to: "/admin" }] : APP_LINKS;
+
   return (
     <header className="relative inset-x-0 top-0 z-20 shrink-0">
       <a
@@ -56,7 +63,7 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
             size. */}
         <nav aria-label="Primary" className="flex min-w-0 flex-1 items-center gap-x-6 lg:gap-x-10">
           <ul className="flex flex-1 items-center gap-x-6 overflow-x-auto scrollbar-none lg:gap-x-10">
-            {APP_LINKS.map((link) => (
+            {links.map((link) => (
               <li key={link.label} className="shrink-0">
                 <Link to={link.to} className={LINK_CLASS}>
                   {link.label}

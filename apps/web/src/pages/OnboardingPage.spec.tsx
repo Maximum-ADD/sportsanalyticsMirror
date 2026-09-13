@@ -43,6 +43,7 @@ const NOT_ONBOARDED_ME: MeProfile = {
   avatarUrl: null,
   favoriteTeam: null,
   followedPlayers: [],
+  role: "USER",
 };
 
 function makePlayer(overrides: Partial<Player> = {}): Player {

@@ -489,6 +489,7 @@ describe("PlayersListPage", () => {
       avatarUrl: null,
       favoriteTeam: null,
       followedPlayers: [],
+      role: "USER",
     };
 
     it("hides the Follow column for a signed-out visitor", async () => {
@@ -541,6 +542,7 @@ describe("PlayersListPage", () => {
       avatarUrl: null,
       favoriteTeam: null,
       followedPlayers: [],
+      role: "USER",
     };
 
     it("hides the Following toggle for a signed-out visitor", async () => {

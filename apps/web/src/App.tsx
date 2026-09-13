@@ -12,8 +12,10 @@ import { PredictionsPage } from "./pages/PredictionsPage";
 import { GameDetailPage } from "./pages/GameDetailPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { AdminPage } from "./pages/AdminPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProfileGate } from "./components/ProfileGate";
+import { AdminGate } from "./components/AdminGate";
 
 function App() {
   return (
@@ -52,6 +54,10 @@ function App() {
           <Route
             path="/games/:gameId"
             element={<ProtectedRoute><ProfileGate><GameDetailPage /></ProfileGate></ProtectedRoute>}
+          />
+          <Route
+            path="/admin"
+            element={<ProtectedRoute><AdminGate><AdminPage /></AdminGate></ProtectedRoute>}
           />
         </Route>
       </Routes>

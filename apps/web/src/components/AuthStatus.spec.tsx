@@ -36,6 +36,7 @@ const ME: MeProfile = {
   avatarUrl: null,
   favoriteTeam: null,
   followedPlayers: [],
+  role: "USER",
 };
 
 describe("AuthStatus", () => {

@@ -459,12 +459,20 @@ export interface TeamEloRating {
   asOfGameDate: string;
 }
 
+// Mirrors the Prisma Role enum (apps/api/prisma/schema.prisma) — kept as a
+// plain union rather than imported, the same way SeasonType's values are
+// hand-mirrored elsewhere in this file, since the frontend has no direct
+// dependency on the Prisma client.
+export type UserRole = "PUBLIC" | "USER" | "ANALYST" | "ADMIN";
+
 // GET /v1/me's full response — the current user's personalization state.
 // avatarUrl is already a signed, directly-renderable URL (the API never
 // exposes the underlying private Supabase Storage object path) — see
 // MeService.getProfile. username: null is the onboarding gate signal (see
 // useMe/ProfileGate): a signed-in user with no username hasn't completed
-// onboarding yet.
+// onboarding yet. role gates the admin page (see AdminGate) — re-read fresh
+// from Postgres on every GET /v1/me, not trusted from the BetterAuth session
+// object directly.
 export interface MeProfile {
   id: string;
   email: string;
@@ -473,6 +481,19 @@ export interface MeProfile {
   avatarUrl: string | null;
   favoriteTeam: Team | null;
   followedPlayers: Player[];
+  role: UserRole;
+}
+
+// GET /v1/admin/users' per-row shape — deliberately narrower than the full
+// User model (no session tokens, no favoriteTeamId, etc.), matching exactly
+// what AdminUsersService selects.
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  name: string;
+  username: string | null;
+  role: UserRole;
+  createdAt: string;
 }
 
 // GET /v1/teams/:id/suggested-players' per-player entry — a team's roster

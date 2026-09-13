@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { AdminModule } from "./admin/admin.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
 import { GamesModule } from "./games/games.module.js";
@@ -27,6 +28,7 @@ import { TeamsModule } from "./teams/teams.module.js";
     FollowsModule,
     SavedModule,
     NotFoundModule,
+    AdminModule,
   ],
   controllers: [HealthController],
   providers: [
