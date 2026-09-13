@@ -22,6 +22,7 @@ export async function resetDatabase() {
   await testPrisma.lineup.deleteMany();
   await testPrisma.playerPrediction.deleteMany();
   await testPrisma.gamePrediction.deleteMany();
+  await testPrisma.gamePredictionRun.deleteMany();
   await testPrisma.playerGameStat.deleteMany();
   await testPrisma.gameEvent.deleteMany();
   await testPrisma.game.deleteMany();

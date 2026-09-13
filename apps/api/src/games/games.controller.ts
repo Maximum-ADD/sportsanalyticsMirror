@@ -75,4 +75,24 @@ export class GamesController {
     }
     return prediction;
   }
+
+  // GET /v1/games/:id/prediction/history — every model version's
+  // prediction ever produced for this game, oldest first. The
+  // reproducibility half of model versioning: :id/prediction above always
+  // reflects the latest model run, so this is how a caller sees what the
+  // game was predicted to be under a version that's since been superseded.
+  // Empty array, not 404, when the game exists but has no prediction runs
+  // yet — a collection endpoint, same convention as GET /v1/games.
+  @Get(":id/prediction/history")
+  @ApiOperation({ summary: "Get every model version's prediction for this game" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Prediction history, oldest first" })
+  @ApiResponse({ status: 404, description: "Game not found" })
+  async getGamePredictionHistory(@Param("id") id: string) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    }
+    return this.gamesService.getPredictionHistoryForGame(id);
+  }
 }
