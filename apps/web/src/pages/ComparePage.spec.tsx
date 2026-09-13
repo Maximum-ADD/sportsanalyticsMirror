@@ -244,8 +244,8 @@ describe("ComparePage", () => {
     expect(screen.getByRole("heading", { name: "Points (per game)" })).toBeInTheDocument();
     expect(screen.getByText("Total")).toBeInTheDocument();
 
-    expect(screen.getByText("30")).toHaveClass("text-brand-accent");
-    expect(screen.getByText("22")).not.toHaveClass("text-brand-accent");
+    expect(screen.getByText("30")).toHaveClass("text-locker-leather");
+    expect(screen.getByText("22")).not.toHaveClass("text-locker-leather");
   });
 
   it("renders shooting rows as made / attempted (accuracy) in a single cell", async () => {
@@ -265,7 +265,7 @@ describe("ComparePage", () => {
     expect(await screen.findByText("5 / 6 (83%)")).toBeInTheDocument();
     expect(screen.getByText("2 / 6 (90%)")).toBeInTheDocument();
     // Leader is the higher volume of makes, not the better percentage.
-    expect(screen.getByText("5 / 6 (83%)")).toHaveClass("text-brand-accent");
+    expect(screen.getByText("5 / 6 (83%)")).toHaveClass("text-locker-leather");
   });
 
   it("adds a player picked from the search results to the comparison", async () => {

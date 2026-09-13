@@ -11,7 +11,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { cn } from "@/lib/utils";
 import { NO_VALUE, formatAge, formatHeight } from "@/lib/playerBio";
 import { formatNumber, formatPercentage, formatPlusMinus, formatRatio } from "@/lib/advancedStats";
-import { SeasonSegmentControl } from "@/components/SeasonSegmentControl";
+import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import type { Player, PlayerComparisonEntry, SeasonAverages, SeasonType } from "@/types/nba";
 
@@ -319,22 +319,22 @@ function PlaceholderHeadshot() {
 
 function PlayerTile({ player, onRemove }: { player: Player; onRemove: () => void }) {
   return (
-    <div className="relative flex flex-col items-center gap-2 rounded-xl border border-border-subtle bg-surface-card px-4 py-5 text-center">
+    <div className="relative flex flex-col items-center gap-2 border border-landing-light bg-locker-surface px-4 py-5 text-center">
       <button
         type="button"
         aria-label={`Remove ${player.firstName} ${player.lastName} from the comparison`}
-        className="absolute top-2 left-2 rounded-md px-1.5 text-base leading-none text-text-muted transition-colors hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
+        className="absolute top-2 left-2 px-1.5 text-base leading-none text-locker-ink-muted transition-colors hover:text-landing-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
         onClick={onRemove}
       >
         ✕
       </button>
       <PlayerHeadshot player={player} size="lg" />
-      <div className="text-base font-semibold tracking-tight text-text-primary">
+      <div className="font-display text-base tracking-[0.01em] text-landing-ink uppercase">
         {player.firstName} {player.lastName}
       </div>
       {/* Position lives here and nowhere else; the team is the General
           group's job, so the two aren't shown twice. */}
-      <div className="text-xs font-medium text-text-secondary">
+      <div className="font-mono text-[10px] tracking-[0.1em] text-locker-ink-muted uppercase">
         {formatPosition(player.position)}
       </div>
     </div>
@@ -358,12 +358,12 @@ function EmptySlotTile({
   excludedPlayerIds: string[];
 }) {
   return (
-    <div className="relative flex flex-col items-center gap-3 rounded-xl border border-dashed border-border-subtle bg-surface-card/40 px-4 py-5">
+    <div className="relative flex flex-col items-center gap-3 border border-dashed border-landing-light bg-locker-surface px-4 py-5">
       {onCancel && (
         <button
           type="button"
           aria-label={`Cancel adding player ${slotNumber}`}
-          className="absolute top-2 left-2 rounded-md px-1.5 text-base leading-none text-text-muted transition-colors hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
+          className="absolute top-2 left-2 px-1.5 text-base leading-none text-locker-ink-muted transition-colors hover:text-landing-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
           onClick={onCancel}
         >
           ✕
@@ -375,6 +375,7 @@ function EmptySlotTile({
         excludedPlayerIds={excludedPlayerIds}
         placeholder="Select player"
         label={`Select player ${slotNumber}`}
+        variant="locker"
       />
     </div>
   );
@@ -382,7 +383,7 @@ function EmptySlotTile({
 
 function LoadingSlotTile() {
   return (
-    <div className="flex h-[186px] items-center justify-center rounded-xl border border-border-subtle bg-surface-card">
+    <div className="flex h-[186px] items-center justify-center border border-landing-light bg-locker-surface">
       <BasketballSpinner label="Loading player" />
     </div>
   );
@@ -452,129 +453,132 @@ export function ComparePage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      {/* Laid out on the same column grid as the tiles below, so the title
-          centres over the player columns like every group heading does. */}
-      <div className="grid gap-x-3" style={columns}>
-        <div style={PLAYER_COLUMNS_SPAN} className="mb-6 text-center">
-          <h1 className="text-lg font-semibold tracking-tight text-text-primary">
-            Player comparison
-          </h1>
-          <p className="mt-1 text-xs text-text-muted">
-            Compare up to {MAX_PLAYERS} players side by side on their {formatSeasonType(seasonType).toLowerCase()}{" "}
-            averages.
-          </p>
-          <div className="mt-3 flex justify-center">
-            <SeasonSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
+    <div className="min-h-full bg-landing-hero">
+      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+        {/* Laid out on the same column grid as the tiles below, so the title
+            centres over the player columns like every group heading does. */}
+        <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+          <div className="grid gap-x-3" style={columns}>
+            <div style={PLAYER_COLUMNS_SPAN} className="text-center">
+              <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">
+                Player comparison
+              </h1>
+              <p className="mt-2 text-[12.5px] text-locker-ink-muted">
+                Compare up to {MAX_PLAYERS} players side by side on their {formatSeasonType(seasonType).toLowerCase()}{" "}
+                averages.
+              </p>
+              <div className="mt-4 flex justify-center">
+                <LockerSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid items-center gap-x-3" style={columns}>
-        <div className="pr-3">
-          {canAddSlot && (
-            <button
-              type="button"
-              className="flex w-full flex-col items-center gap-2 rounded-lg px-2 py-4 text-center transition-colors hover:bg-surface-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
-              onClick={() => setExtraSlots((slots) => slots + 1)}
-            >
-              {/* An SVG plus rather than a text "+": a glyph is placed off the
-                  font's baseline, so it centres low inside the circle. */}
-              <span className="flex size-9 items-center justify-center rounded-full border border-brand-accent text-brand-accent">
-                <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
-              </span>
-              <span className="text-xs font-medium text-brand-accent">Add another player</span>
-            </button>
+        <div className="grid items-center gap-x-3" style={columns}>
+          <div className="pr-3">
+            {canAddSlot && (
+              <button
+                type="button"
+                className="flex w-full flex-col items-center gap-2 px-2 py-4 text-center transition-colors hover:bg-locker-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
+                onClick={() => setExtraSlots((slots) => slots + 1)}
+              >
+                {/* An SVG plus rather than a text "+": a glyph is placed off the
+                    font's baseline, so it centres low inside the circle. */}
+                <span className="flex size-9 items-center justify-center rounded-full border border-locker-leather text-locker-leather">
+                  <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
+                </span>
+                <span className="font-mono text-[10px] tracking-[0.1em] text-locker-leather uppercase">
+                  Add another player
+                </span>
+              </button>
+            )}
+          </div>
+
+          {slots.map((entry, index) =>
+            entry ? (
+              <PlayerTile
+                key={entry.player.id}
+                player={entry.player}
+                onRemove={() => removePlayer(entry.player.id)}
+              />
+            ) : index < playerIds.length && activeQuery.isPending ? (
+              <LoadingSlotTile key={`loading-${index}`} />
+            ) : (
+              <EmptySlotTile
+                key={`empty-${index}`}
+                slotNumber={index + 1}
+                onSelect={addPlayer}
+                onCancel={
+                  index >= requiredColumns
+                    ? () => setExtraSlots((slots) => Math.max(0, slots - 1))
+                    : undefined
+                }
+                excludedPlayerIds={playerIds}
+              />
+            )
           )}
         </div>
 
-        {slots.map((entry, index) =>
-          entry ? (
-            <PlayerTile
-              key={entry.player.id}
-              player={entry.player}
-              onRemove={() => removePlayer(entry.player.id)}
-            />
-          ) : index < playerIds.length && activeQuery.isPending ? (
-            <LoadingSlotTile key={`loading-${index}`} />
-          ) : (
-            <EmptySlotTile
-              key={`empty-${index}`}
-              slotNumber={index + 1}
-              onSelect={addPlayer}
-              onCancel={
-                index >= requiredColumns
-                  ? () => setExtraSlots((slots) => Math.max(0, slots - 1))
-                  : undefined
-              }
-              excludedPlayerIds={playerIds}
-            />
-          )
+        {activeQuery.isError && (
+          <div className="mt-6">
+            <ErrorState message="Could not load the comparison." onRetry={() => activeQuery.refetch()} />
+          </div>
         )}
-      </div>
 
-      {activeQuery.isError && (
-        <div className="mt-6">
-          <ErrorState message="Could not load the comparison." onRetry={() => activeQuery.refetch()} />
-        </div>
-      )}
+        {entries.length >= MIN_PLAYERS_FOR_COMPARISON &&
+          STAT_GROUPS.map((group) => (
+            <section
+              key={group.title}
+              className="mt-6 grid items-center gap-x-3 gap-y-1.5 border border-landing-light bg-locker-surface p-4"
+              style={columns}
+            >
+              <div style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
+                <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">
+                  {group.title}
+                </h2>
+                {group.caption && (
+                  <p className="mt-1 text-[11px] text-locker-ink-muted">{group.caption}</p>
+                )}
+              </div>
 
-      {entries.length >= MIN_PLAYERS_FOR_COMPARISON &&
-        STAT_GROUPS.map((group) => (
-          <section
-            key={group.title}
-            className="mt-8 grid items-center gap-x-3 gap-y-1.5"
-            style={columns}
-          >
-            <div style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
-              <h2 className="text-xs font-semibold tracking-[0.18em] text-text-secondary uppercase">
-                {group.title}
-              </h2>
-              {group.caption && (
-                <p className="mt-1 text-[11px] text-text-muted">{group.caption}</p>
-              )}
-            </div>
-
-            {group.rows.map((row) => {
-              const bestIndexes = bestEntryIndexes(entries, row);
-              return (
-                <div key={row.label} className="contents">
-                  <div className="pr-3 text-left text-xs font-medium text-text-secondary">
-                    {row.label}
-                  </div>
-                  {slots.map((entry, index) =>
-                    entry ? (
-                      <div
-                        key={entry.player.id}
-                        className="rounded-lg bg-surface-card px-3 py-2 text-center"
-                      >
-                        <span
-                          className={cn(
-                            "inline-block rounded-full px-2.5 py-0.5 text-sm text-text-primary tabular-nums",
-                            bestIndexes.has(index) &&
-                              "bg-brand-accent/15 font-semibold text-brand-accent"
-                          )}
+              {group.rows.map((row) => {
+                const bestIndexes = bestEntryIndexes(entries, row);
+                return (
+                  <div key={row.label} className="contents">
+                    <div className="pr-3 text-left font-mono text-[10px] tracking-[0.1em] text-locker-ink-muted uppercase">
+                      {row.label}
+                    </div>
+                    {slots.map((entry, index) =>
+                      entry ? (
+                        <div key={entry.player.id} className="bg-landing-hero px-3 py-2 text-center">
+                          <span
+                            className={cn(
+                              "inline-block px-2.5 py-0.5 text-[13px] text-landing-ink tabular-nums",
+                              bestIndexes.has(index) &&
+                                "bg-locker-leather/15 font-semibold text-locker-leather"
+                            )}
+                          >
+                            {row.render(entry.seasonAverages, entry.player)}
+                          </span>
+                        </div>
+                      ) : (
+                        // An unfilled slot still gets a real cell, so its column
+                        // reads as "waiting for a player" rather than as a hole
+                        // in the table.
+                        <div
+                          key={`empty-${index}`}
+                          className="bg-landing-hero px-3 py-2 text-center text-[13px] text-locker-ink-muted"
                         >
-                          {row.render(entry.seasonAverages, entry.player)}
-                        </span>
-                      </div>
-                    ) : (
-                      // An unfilled slot still gets a real cell, so its column
-                      // reads as "waiting for a player" rather than as a hole
-                      // in the table.
-                      <div
-                        key={`empty-${index}`}
-                        className="rounded-lg bg-surface-card/40 px-3 py-2 text-center text-sm text-text-muted"
-                      >
-                        {NO_VALUE}
-                      </div>
-                    )
-                  )}
-                </div>
-              );
-            })}
-          </section>
-        ))}
+                          {NO_VALUE}
+                        </div>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+      </div>
     </div>
   );
 }
