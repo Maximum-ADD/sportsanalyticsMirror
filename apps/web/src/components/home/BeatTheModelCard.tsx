@@ -14,6 +14,13 @@ import type { ChallengeGame, GradedPick } from "@/types/nba";
 const UNAUTHENTICATED_STATUS = 401;
 const NOTHING_LEFT_STATUS = 404;
 
+// The server's answer when this user has already called the game on screen,
+// e.g. from another tab. The card moves on to a new game rather than stopping
+// on an error the user can do nothing about.
+const ALREADY_CALLED_STATUS = 409;
+
+const CHALLENGE_QUERY_KEY = ["challenge", "next"];
+
 const PERCENT = (value: number) => `${Math.round(value * 100)}%`;
 
 function Shell({ kicker, badge, children }: { kicker: string; badge?: string; children: React.ReactNode }) {
@@ -36,17 +43,26 @@ function Shell({ kicker, badge, children }: { kicker: string; badge?: string; ch
  * The page's one focal action: call a completed game whose score the server is
  * withholding, and get graded against both the result and the Elo model.
  *
- * Previously this rendered a single hardcoded fixture, so "Next call" only
- * reset local state and served the same game forever. It now reads
- * GET /v1/me/challenge/next, which excludes every game this user has already
- * called, so advancing genuinely produces a different one.
+ * Every game comes from GET /v1/me/challenge/next: a real, completed,
+ * model-predicted game from the database that this user has not called,
+ * newest first. There is no local fixture.
+ *
+ * The one rule the state handling below exists to keep: a game the user has
+ * already called is never shown as a question again. The moment a call lands,
+ * the cached challenge is reset, so the next game starts loading while the
+ * graded result is on screen, and no stale copy of the called game is left in
+ * the cache for "Next call" or a later visit to show.
  */
 export function BeatTheModelCard() {
   const queryClient = useQueryClient();
 
   const challengeQuery = useQuery({
-    queryKey: ["challenge", "next"],
+    queryKey: CHALLENGE_QUERY_KEY,
     queryFn: fetchNextChallenge,
+    // Which game is next changes with every call, so this query opts out of
+    // the app-wide staleTime and always checks with the server on mount.
+    staleTime: 0,
+    refetchOnMount: "always",
     // A 401 and a 404 are both terminal answers, not transient faults —
     // retrying either just delays the state the user should already be seeing.
     retry: (failureCount, error) =>
@@ -54,13 +70,30 @@ export function BeatTheModelCard() {
       failureCount < 2,
   });
 
+  // Drops the cached challenge and fetches the next uncalled game. Resetting
+  // rather than invalidating clears the old data outright, so nothing can
+  // render the called game while the new one is in flight.
+  function loadNextChallenge() {
+    void queryClient.resetQueries({ queryKey: CHALLENGE_QUERY_KEY });
+  }
+
   const pickMutation = useMutation({
-    mutationFn: ({ gameId, teamId }: { gameId: string; teamId: string }) => submitPick(gameId, teamId),
+    // The game travels with the call, so the graded result renders from this
+    // snapshot rather than from the challenge query, which is already moving
+    // on to the next game.
+    mutationFn: ({ game, teamId }: { game: ChallengeGame; teamId: string }) => submitPick(game.gameId, teamId),
     onSuccess: () => {
+      loadNextChallenge();
       // The record feeds the leaderboard and the user's own head-to-head, so
       // both are stale the moment a call lands.
       queryClient.invalidateQueries({ queryKey: ["pickRecord"] });
       queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
+    },
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === ALREADY_CALLED_STATUS) {
+        pickMutation.reset();
+        loadNextChallenge();
+      }
     },
   });
 
@@ -71,16 +104,39 @@ export function BeatTheModelCard() {
   });
 
   /**
-   * Clears the graded result and pulls the next uncalled game.
+   * Clears the graded result to reveal the next game.
    *
-   * Invalidating rather than resetting local state is the actual fix for
-   * "next call gives me the same one": the previous pick now exists as a
-   * GamePick row, so the server's `picks: { none: { userId } }` filter can no
-   * longer return that game.
+   * The next game has been loading since the call landed (see onSuccess), so
+   * this usually swaps it in instantly. If it is still in flight the card
+   * shows its loading state, never the game just called. The server can't
+   * return that game again: the pick now exists as a GamePick row, and
+   * `picks: { none: { userId } }` excludes it.
    */
   function advanceToNextCall() {
     pickMutation.reset();
-    queryClient.invalidateQueries({ queryKey: ["challenge", "next"] });
+  }
+
+  // Checked before the challenge query's own states: the graded result is
+  // drawn from the call's snapshot, so it stays on screen while that query
+  // resets and loads the next game underneath it.
+  const graded = pickMutation.data;
+  const gradedGame = pickMutation.variables?.game;
+  if (graded && gradedGame) {
+    return (
+      <Shell kicker="Beat the model" badge="Graded">
+        <GradedResult game={gradedGame} graded={graded} />
+        <p className="mt-4">
+          <button
+            type="button"
+            onClick={advanceToNextCall}
+            className="text-[12.5px] text-locker-leather underline underline-offset-[3px] hover:text-landing-ink"
+          >
+            Next call &rarr;
+          </button>
+        </p>
+        {recordQuery.data && <RecordLine record={recordQuery.data} />}
+      </Shell>
+    );
   }
 
   if (challengeQuery.isPending) {
@@ -141,32 +197,14 @@ export function BeatTheModelCard() {
     );
   }
 
-  const graded = pickMutation.data;
-  if (graded) {
-    return (
-      <Shell kicker="Beat the model" badge="Graded">
-        <GradedResult game={challengeQuery.data} graded={graded} />
-        <p className="mt-4">
-          <button
-            type="button"
-            onClick={advanceToNextCall}
-            className="text-[12.5px] text-locker-leather underline underline-offset-[3px] hover:text-landing-ink"
-          >
-            Next call &rarr;
-          </button>
-        </p>
-        {recordQuery.data && <RecordLine record={recordQuery.data} />}
-      </Shell>
-    );
-  }
-
+  const challengeGame = challengeQuery.data;
   return (
     <Shell kicker="Beat the model" badge="Result hidden">
       <ChallengeQuestion
-        game={challengeQuery.data}
+        game={challengeGame}
         isSubmitting={pickMutation.isPending}
         errorMessage={pickMutation.error instanceof Error ? pickMutation.error.message : null}
-        onCall={(teamId) => pickMutation.mutate({ gameId: challengeQuery.data.gameId, teamId })}
+        onCall={(teamId) => pickMutation.mutate({ game: challengeGame, teamId })}
       />
       {recordQuery.data && <RecordLine record={recordQuery.data} />}
     </Shell>

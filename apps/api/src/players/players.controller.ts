@@ -111,6 +111,9 @@ export class PlayersController {
   // comparing two players from inside a postseason view has to compare
   // their postseason lines, or the comparison silently answers a different
   // question than the one on screen.
+  //
+  // Two queries whatever the player count: one for the players and one for
+  // every player's boxscore rows, rather than two per player.
   @Get("compare")
   @ApiOperation({ summary: "Compare 2-4 players side by side" })
   @ApiQuery({ name: "ids", required: true, description: "Comma-separated list of 2-4 player UUIDs" })
@@ -125,16 +128,21 @@ export class PlayersController {
     const playerIds = parseComparisonIds(ids);
     const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
 
-    const players = await Promise.all(
-      playerIds.map(async (id) => {
-        const player = await this.playersService.getPlayerById(id);
-        if (!player) {
-          throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", `Player ${id} not found`);
-        }
-        const seasonAverages = await this.statsService.getPlayerSeasonAverages(id, seasonType);
-        return { player, seasonAverages };
-      })
-    );
+    const [foundPlayers, statsEntries] = await Promise.all([
+      this.playersService.getPlayersByIds(playerIds),
+      this.statsService.getPlayerStatsBatch(playerIds, seasonType),
+    ]);
+    const playerById = new Map(foundPlayers.map((player) => [player.id, player]));
+
+    // getPlayerStatsBatch returns one entry per requested id in request
+    // order, so zipping by index keeps the response in the order asked for.
+    const players = playerIds.map((id, index) => {
+      const player = playerById.get(id);
+      if (!player) {
+        throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", `Player ${id} not found`);
+      }
+      return { player, seasonAverages: statsEntries[index].seasonAverages };
+    });
     return { seasonType, players };
   }
 
@@ -254,10 +262,7 @@ export class PlayersController {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
     }
 
-    const [seasonAverages, gameLog] = await Promise.all([
-      this.statsService.getPlayerSeasonAverages(id, seasonType),
-      this.statsService.getPlayerGameLog(id, seasonType),
-    ]);
+    const { seasonAverages, gameLog } = await this.statsService.getPlayerSeasonLine(id, seasonType);
     return { playerId: id, seasonType, seasonAverages, gameLog };
   }
 }

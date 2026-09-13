@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma, Team } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS, REFERENCE_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { PlayersService, type PlayerWithTeam } from "../players/players.service.js";
@@ -66,12 +68,24 @@ export class TeamsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly playersService: PlayersService,
-    private readonly statsService: StatsService
+    private readonly statsService: StatsService,
+    private readonly cache: ResponseCacheService
   ) {}
 
-  async getTeams(query: Record<string, unknown>): Promise<PagedResult<Team>> {
+  // Teams change a few times a year at most, so listings and single-team
+  // lookups are cached as reference data.
+  getTeams(query: Record<string, unknown>): Promise<PagedResult<Team>> {
     const { page, pageSize } = parsePageParams(query);
     const searchTerms = getSearchTerms(query.search);
+    return this.cache.getOrLoad(
+      buildCacheKey("teams:list", [searchTerms, page, pageSize]),
+      REFERENCE_DATA_TTL_MS,
+      () => this.readTeamsPage(searchTerms, page, pageSize)
+    );
+  }
+
+  // The uncached read behind getTeams.
+  private async readTeamsPage(searchTerms: string[], page: number, pageSize: number): Promise<PagedResult<Team>> {
     const where: Prisma.TeamWhereInput = {
       AND: searchTerms.map((searchTerm) => ({
         OR: [
@@ -96,7 +110,9 @@ export class TeamsService {
   }
 
   getTeamById(teamId: string): Promise<Team | null> {
-    return this.prisma.team.findUnique({ where: { id: teamId } });
+    return this.cache.getOrLoad(buildCacheKey("teams:id", [teamId]), REFERENCE_DATA_TTL_MS, () =>
+      this.prisma.team.findUnique({ where: { id: teamId } })
+    );
   }
 
   // Every team's current Elo rating, most recent first — "current" meaning
@@ -112,7 +128,15 @@ export class TeamsService {
   // (same as OptimizerService.getLatestLineup for PlayerPrediction) since a
   // team's most recent game could be on either side — merged and reduced
   // to one row per team in application code afterward.
-  async getEloRatings(): Promise<TeamEloRating[]> {
+  //
+  // Cached: both queries scan every predicted game, and ratings only move
+  // when predict_games.py runs.
+  getEloRatings(): Promise<TeamEloRating[]> {
+    return this.cache.getOrLoad(buildCacheKey("teams:elo"), DERIVED_DATA_TTL_MS, () => this.readEloRatings());
+  }
+
+  // The uncached read behind getEloRatings.
+  private async readEloRatings(): Promise<TeamEloRating[]> {
     const [asHome, asAway] = await Promise.all([
       this.prisma.game.findMany({
         where: { prediction: { isNot: null } },
@@ -208,7 +232,17 @@ export class TeamsService {
   // with a real rate — present rather than silently dropped, since
   // "no usage data yet" is itself useful information for who's a safe
   // pick to suggest.
-  async getSuggestedPlayers(teamId: string, count = DEFAULT_SUGGESTED_PLAYER_COUNT): Promise<SuggestedPlayer[]> {
+  //
+  // Cached per team and count: it reads the whole roster's full boxscore
+  // history to rank one short list.
+  getSuggestedPlayers(teamId: string, count = DEFAULT_SUGGESTED_PLAYER_COUNT): Promise<SuggestedPlayer[]> {
+    return this.cache.getOrLoad(buildCacheKey("teams:suggested", [teamId, count]), DERIVED_DATA_TTL_MS, () =>
+      this.readSuggestedPlayers(teamId, count)
+    );
+  }
+
+  // The uncached read behind getSuggestedPlayers.
+  private async readSuggestedPlayers(teamId: string, count: number): Promise<SuggestedPlayer[]> {
     const roster = await this.playersService.getTeamRoster(teamId);
     if (roster.length === 0) return [];
 

@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Player, Prisma, SeasonType, Team } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -12,7 +14,10 @@ function getSearchTerms(search: unknown): string[] {
 
 @Injectable()
 export class PlayersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
+  ) {}
 
   // The filter set behind getPlayers, extracted so the ranked listing in
   // StatsService can apply exactly the same team/position/search/participation
@@ -79,8 +84,21 @@ export class PlayersService {
     return { data, page, pageSize, total };
   }
 
+  // Cached because nearly every player route (profile, stats, splits,
+  // matchups) starts with this lookup to 404 an unknown id. An unknown id
+  // resolves to null, which is never cached.
   getPlayerById(playerId: string): Promise<PlayerWithTeam | null> {
-    return this.prisma.player.findUnique({ where: { id: playerId }, include: { team: true } });
+    return this.cache.getOrLoad(buildCacheKey("players:id", [playerId]), DERIVED_DATA_TTL_MS, () =>
+      this.prisma.player.findUnique({ where: { id: playerId }, include: { team: true } })
+    );
+  }
+
+  // Several players by id in one query, for the compare endpoint, which
+  // otherwise looked each one up separately. Returned in database order;
+  // ids that match no row are simply absent, so callers that need
+  // "all or 404" check the result against their own id list.
+  getPlayersByIds(playerIds: string[]): Promise<PlayerWithTeam[]> {
+    return this.prisma.player.findMany({ where: { id: { in: playerIds } }, include: { team: true } });
   }
 
   // Every player currently on a team's roster — no pagination, since a
@@ -96,12 +114,17 @@ export class PlayersService {
   // guarantee for the postseason views: a playoffs request cannot return a
   // regular-season row because it never selects one, so no downstream
   // aggregation has to be careful about it.
+  //
+  // Cached per player and segment: a profile visit reads it for both the
+  // stat tiles and the trend chart.
   getPlayerSeasonStats(playerId: string, seasonType: SeasonType = DEFAULT_SEASON_TYPE) {
-    return this.prisma.playerGameStat.findMany({
-      where: { playerId, game: { seasonType } },
-      include: { game: true },
-      orderBy: { game: { gameDate: "desc" } },
-    });
+    return this.cache.getOrLoad(buildCacheKey("players:stats", [playerId, seasonType]), DERIVED_DATA_TTL_MS, () =>
+      this.prisma.playerGameStat.findMany({
+        where: { playerId, game: { seasonType } },
+        include: { game: true },
+        orderBy: { game: { gameDate: "desc" } },
+      })
+    );
   }
 
   // One query for every requested player's game stats, not one query per

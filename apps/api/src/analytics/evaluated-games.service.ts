@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { EvaluatedGame } from "./evaluated-game.js";
+import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 // The Game row shape this service selects: just the columns the accuracy
@@ -41,7 +43,10 @@ function isEvaluatedGame(game: EvaluatedGame | null): game is EvaluatedGame {
 // this class has no arithmetic: one reason to change each.
 @Injectable()
 export class EvaluatedGamesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
+  ) {}
 
   // Every finished game that also carries a GamePrediction.
   //
@@ -52,7 +57,17 @@ export class EvaluatedGamesService {
   //
   // @returns the evaluable games, empty when the predictor has not run or no
   //   predicted game has finished yet.
-  async getEvaluatedGames(): Promise<EvaluatedGame[]> {
+  //
+  // Cached: it scans every completed game, both analytics routes read it, and
+  // it only changes when a batch job runs. Both routes share one cached list.
+  getEvaluatedGames(): Promise<EvaluatedGame[]> {
+    return this.cache.getOrLoad(buildCacheKey("analytics:evaluated-games"), DERIVED_DATA_TTL_MS, () =>
+      this.readEvaluatedGames()
+    );
+  }
+
+  // The uncached read behind getEvaluatedGames.
+  private async readEvaluatedGames(): Promise<EvaluatedGame[]> {
     const scoredGameRows = await this.prisma.game.findMany({
       where: {
         homeScore: { not: null },

@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { SeasonType, type Game, type PlayerGameStat } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { GamesService } from "../games/games.service.js";
@@ -67,6 +69,13 @@ export interface DerivedSeasonAverages {
   usagePercentage: number | null;
   offensiveRating: number | null;
   defensiveRating: number | null;
+}
+
+// One player's season averages and game log for one segment — what
+// GET /v1/players/:id/stats returns, both derived from a single read.
+export interface PlayerSeasonLine {
+  seasonAverages: DerivedSeasonAverages;
+  gameLog: GameLogEntry[];
 }
 
 // One derived season line per season segment, keyed by SeasonType. Keyed
@@ -348,11 +357,21 @@ interface OpponentSplitTotals {
   totalPoints: number;
 }
 
+// The two league-scale reads every ranking and leaders request needs: the
+// players matching a filter set, and their season totals in one segment.
+// Cached as one unit so that changing sort, order, page or minGames, all of
+// which are applied in memory, never goes back to the database.
+interface RankingBase {
+  players: PlayerWithTeam[];
+  totalsByPlayerId: Map<string, SeasonStatTotals>;
+}
+
 @Injectable()
 export class StatsService {
   constructor(
     private readonly playersService: PlayersService,
-    private readonly gamesService: GamesService
+    private readonly gamesService: GamesService,
+    private readonly cache: ResponseCacheService
   ) {}
 
   // Every figure here is derived from the raw per-game boxscore rows, which are
@@ -422,17 +441,18 @@ export class StatsService {
       }));
   }
 
-  async getPlayerSeasonAverages(
+  // Season averages and game log for one player in one segment, both derived
+  // from the same boxscore rows. Reading the rows once and deriving twice is
+  // the point: the stats route used to fetch them separately for each half.
+  async getPlayerSeasonLine(
     playerId: string,
     seasonType: SeasonType = DEFAULT_SEASON_TYPE
-  ): Promise<DerivedSeasonAverages> {
+  ): Promise<PlayerSeasonLine> {
     const gameStats = await this.playersService.getPlayerSeasonStats(playerId, seasonType);
-    return this.deriveSeasonAverages(gameStats);
-  }
-
-  async getPlayerGameLog(playerId: string, seasonType: SeasonType = DEFAULT_SEASON_TYPE): Promise<GameLogEntry[]> {
-    const gameStats = await this.playersService.getPlayerSeasonStats(playerId, seasonType);
-    return this.deriveGameLog(gameStats);
+    return {
+      seasonAverages: this.deriveSeasonAverages(gameStats),
+      gameLog: this.deriveGameLog(gameStats),
+    };
   }
 
   // Season averages + game log for many players in one request — see
@@ -511,11 +531,7 @@ export class StatsService {
     const minGames = parseMinGames(query.minGames);
     const seasonType = parseSeasonType(query.seasonType) ?? DEFAULT_SEASON_TYPE;
 
-    const players = await this.playersService.getMatchingPlayers(query);
-    const totalsByPlayerId = await this.getSeasonStatTotalsByPlayerId(
-      players.map((player) => player.id),
-      seasonType
-    );
+    const { players, totalsByPlayerId } = await this.readRankingBase(query, seasonType);
 
     // Stat rankings read as leaderboards (most first), so they default to
     // descending; the alphabetical default stays ascending. An explicit
@@ -565,15 +581,28 @@ export class StatsService {
   // seasons, so every game against a team counts toward its split. A player
   // with no team (or a team with nothing left on the schedule) simply gets
   // an empty upcomingGames list, and the splits half still stands alone.
-  async getMatchupProjection(
-    playerId: string,
-    rawSeasonType?: unknown
-  ): Promise<PlayerMatchupProjection | null> {
+  //
+  // Cached per player and segment. An unknown player (null) is never cached.
+  getMatchupProjection(playerId: string, rawSeasonType?: unknown): Promise<PlayerMatchupProjection | null> {
     const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    return this.cache.getOrLoad(buildCacheKey("players:matchup", [playerId, seasonType]), DERIVED_DATA_TTL_MS, () =>
+      this.readMatchupProjection(playerId, seasonType)
+    );
+  }
+
+  // The uncached read behind getMatchupProjection. The player's history and
+  // their team's upcoming schedule are independent, so they run in parallel.
+  private async readMatchupProjection(
+    playerId: string,
+    seasonType: SeasonType
+  ): Promise<PlayerMatchupProjection | null> {
     const player = await this.playersService.getPlayerById(playerId);
     if (!player) return null;
 
-    const gameStats = await this.playersService.getPlayerGameStatsWithOpponents(playerId, seasonType);
+    const [gameStats, upcomingGames] = await Promise.all([
+      this.playersService.getPlayerGameStatsWithOpponents(playerId, seasonType),
+      player.teamId ? this.gamesService.getUpcomingGamesForTeam(player.teamId, seasonType) : Promise.resolve([]),
+    ]);
     const splitTotalsByOpponentId = new Map<string, OpponentSplitTotals>();
     let attributedGames = 0;
     let attributedPoints = 0;
@@ -618,9 +647,6 @@ export class StatsService {
       );
 
     const overallRate = attributedGames > 0 ? attributedPoints / attributedGames : 0;
-    const upcomingGames = player.teamId
-      ? await this.gamesService.getUpcomingGamesForTeam(player.teamId, seasonType)
-      : [];
 
     return {
       playerId: player.id,
@@ -656,12 +682,11 @@ export class StatsService {
   // participation floor; a category with no qualified player comes back
   // null rather than padded with a zero.
   async getSeasonLeaders(seasonType: SeasonType, minGames: number): Promise<SeasonLeaders> {
-    // League-wide by definition — no team/position/search narrowing.
-    const players = await this.playersService.getMatchingPlayers({});
-    const totalsByPlayerId = await this.getSeasonStatTotalsByPlayerId(
-      players.map((player) => player.id),
-      seasonType
-    );
+    // League-wide by definition — no team/position/search narrowing. That
+    // makes this the same cached base as an unfiltered ranked listing in the
+    // same segment, so the players page's leaders band and its default
+    // leaderboard share one pair of queries.
+    const { players, totalsByPlayerId } = await this.readRankingBase({}, seasonType);
 
     const pickLeader = (selectValue: (totals: SeasonStatTotals) => number): SeasonLeader | null => {
       let leader: SeasonLeader | null = null;
@@ -695,14 +720,46 @@ export class StatsService {
   // consistent set of columns and decides for itself how to present "didn't
   // play" — see deriveSeasonAverages, which returns zeros for an empty
   // input rather than throwing.
+  //
+  // One query for every segment's rows (the batch read without a segment
+  // filter), split by each row's game.seasonType in memory, rather than one
+  // query per segment. Filtering on the row's own seasonType keeps the same
+  // isolation guarantee the per-segment query gave.
   async getPlayerSeasonSplits(playerId: string): Promise<PlayerSeasonSplits> {
-    const segments = Object.values(SeasonType);
-    const averagesPerSegment = await Promise.all(
-      segments.map((seasonType) => this.getPlayerSeasonAverages(playerId, seasonType))
-    );
+    const allGameStats = await this.playersService.getPlayerSeasonStatsBatch([playerId]);
 
     return Object.fromEntries(
-      segments.map((seasonType, index) => [seasonType, averagesPerSegment[index]])
+      Object.values(SeasonType).map((seasonType) => [
+        seasonType,
+        this.deriveSeasonAverages(allGameStats.filter((stat) => stat.game.seasonType === seasonType)),
+      ])
     ) as PlayerSeasonSplits;
+  }
+
+  /**
+   * The players matching `query`'s filters plus their season totals in one
+   * segment, cached as one unit (see RankingBase).
+   *
+   * @param query - the raw list query. Only the filters PlayersService.
+   *   buildPlayerWhere reads affect the result, and the key is built from
+   *   that where clause, so sort/order/page/minGames never split the cache.
+   * @param seasonType - the segment the totals are summed over.
+   * @returns the players (alphabetical) and a playerId -> totals map. Players
+   *   with no games in the segment are absent from the map.
+   */
+  private readRankingBase(query: Record<string, unknown>, seasonType: SeasonType): Promise<RankingBase> {
+    const playerWhere = this.playersService.buildPlayerWhere(query);
+    return this.cache.getOrLoad(
+      buildCacheKey("players:ranking-base", [playerWhere, seasonType]),
+      DERIVED_DATA_TTL_MS,
+      async () => {
+        const players = await this.playersService.getMatchingPlayers(query);
+        const totalsByPlayerId = await this.getSeasonStatTotalsByPlayerId(
+          players.map((player) => player.id),
+          seasonType
+        );
+        return { players, totalsByPlayerId };
+      }
+    );
   }
 }

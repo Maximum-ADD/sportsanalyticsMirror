@@ -123,6 +123,20 @@ export const auth = betterAuth({
     // against e.g. a stolen long-lived session cookie deleting the account.
     // Kept short and explicit rather than relying on the library default.
     freshAge: 60 * 10, // 10 minutes
+    // Without this, every guarded request (SessionAuthGuard) and every
+    // /auth/get-session call from the web app's useSession reads the Session
+    // and User tables. With it, BetterAuth signs the session into a
+    // short-lived cookie and verifies that instead, going back to Postgres
+    // only once the cookie is older than maxAge.
+    //
+    // The trade-off: a session revoked from another device, or a role changed
+    // directly in the database, can take up to maxAge to take effect on a
+    // request carrying a still-valid cache cookie. Signing out and deleting
+    // the account clear the cookie at once, so neither is delayed.
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 5, // 5 minutes, the same window as the API's response cache
+    },
   },
   advanced: {
     cookies: {
