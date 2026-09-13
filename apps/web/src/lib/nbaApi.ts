@@ -10,7 +10,6 @@ import type {
   ModelAccuracyReport,
   PickRecord,
   SavedComparison,
-  SavedLineup,
   TeamResultsFeed,
   WatchlistEntry,
   Player,
@@ -269,14 +268,11 @@ export function fetchTeamResults(): Promise<TeamResultsFeed> {
 }
 
 // ── Saved shelf ───────────────────────────────────────────────────────────
+// Comparisons only. Saved LINEUPS live in lib/meApi.ts against
+// GET /v1/me/lineups — the /v1/me/saved/lineups route this once called was
+// superseded and no longer exists.
 export function fetchSavedComparisons(
   params: { page?: number; pageSize?: number } = {}
 ): Promise<PagedResult<SavedComparison>> {
   return fetchJson<PagedResult<SavedComparison>>(`/v1/me/saved/comparisons${toQueryString(params)}`);
-}
-
-export function fetchSavedLineups(
-  params: { page?: number; pageSize?: number } = {}
-): Promise<PagedResult<SavedLineup>> {
-  return fetchJson<PagedResult<SavedLineup>>(`/v1/me/saved/lineups${toQueryString(params)}`);
 }

@@ -577,3 +577,8 @@ export interface SavedComparison {
   players: SavedComparisonPlayer[];
 }
 
+// Saved LINEUPS are declared further up this file, against GET /v1/me/lineups.
+// There is deliberately no second declaration here: an earlier version of the
+// shelf had one, pointing at a /v1/me/saved/lineups route that no longer
+// exists, and TypeScript merged the two interfaces into a shape neither the
+// API nor the profile page could satisfy.

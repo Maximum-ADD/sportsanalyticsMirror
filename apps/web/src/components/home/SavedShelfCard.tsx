@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiError } from "@/lib/apiClient";
-import { fetchSavedComparisons, fetchSavedLineups } from "@/lib/nbaApi";
+import { fetchSavedComparisons } from "@/lib/nbaApi";
+import { fetchSavedLineups } from "@/lib/meApi";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { Card } from "@/components/ui/card";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
@@ -55,9 +56,11 @@ export function SavedShelfCard() {
     retry: (failureCount, error) => !isUnauthenticated(error) && failureCount < 2,
   });
 
+  // GET /v1/me/lineups answers with a bare array, not a pagination envelope,
+  // and takes no page parameters — so the shelf trims it here instead.
   const lineupsQuery = useQuery({
     queryKey: ["savedLineups"],
-    queryFn: () => fetchSavedLineups({ pageSize: SHELF_PAGE_SIZE }),
+    queryFn: fetchSavedLineups,
     retry: (failureCount, error) => !isUnauthenticated(error) && failureCount < 2,
   });
 
@@ -100,7 +103,7 @@ export function SavedShelfCard() {
   }
 
   const comparisons = comparisonsQuery.data?.data ?? [];
-  const lineups = lineupsQuery.data?.data ?? [];
+  const lineups = (lineupsQuery.data ?? []).slice(0, SHELF_PAGE_SIZE);
 
   return (
     <Shell>
@@ -189,7 +192,7 @@ function LineupRow({ lineup }: { lineup: SavedLineup }) {
       </span>
       <span className="text-right text-[11px] text-locker-ink-muted tabular-nums">
         {lineup.totalPredictedPointsAtSave.toFixed(1)} pts
-        <br />${CURRENCY.format(lineup.budget)}
+        <br />${CURRENCY.format(lineup.totalSalaryAtSave)} of ${CURRENCY.format(lineup.budget)}
       </span>
     </li>
   );
@@ -204,12 +207,13 @@ function LineupRow({ lineup }: { lineup: SavedLineup }) {
  */
 function DriftLine({ drift, savedOn }: { drift: SavedLineupDrift | null; savedOn: string }) {
   const savedOnLabel = new Date(savedOn).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  // Drift is null until the saved players have fresh predictions to compare
-  // against — fall back to the save date alone.
+  // Null drift is not zero drift: it means no player in the lineup has a
+  // current prediction to compare against, so there is nothing to say. A "0.0"
+  // here would claim the lineup had been re-checked and found unmoved — and a
+  // bare save date would leave the reader to guess why no movement is shown.
   if (drift === null) {
-    return <>saved {savedOnLabel}</>;
+    return <>saved {savedOnLabel} · no current prediction to compare against</>;
   }
-
 
   if (drift.pointsDelta === 0 && drift.salaryDelta === 0) {
     return <>unchanged since you saved it, {savedOnLabel}</>;

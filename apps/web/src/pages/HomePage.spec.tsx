@@ -7,7 +7,6 @@ import {
   fetchNextChallenge,
   fetchPickRecord,
   fetchSavedComparisons,
-  fetchSavedLineups,
   fetchTeamResults,
   fetchWatchlist,
 } from "@/lib/nbaApi";
@@ -28,10 +27,9 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchWatchlist: vi.fn(),
   fetchTeamResults: vi.fn(),
   fetchSavedComparisons: vi.fn(),
-  fetchSavedLineups: vi.fn(),
 }));
 
-vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn() }));
+vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn(), fetchSavedLineups: vi.fn() }));
 
 // YourTeamsList reads the profile through useMe(), which gates its own query
 // on BetterAuth's useSession — so a signed-out session is what makes the
@@ -65,7 +63,6 @@ beforeEach(() => {
   vi.mocked(fetchWatchlist).mockRejectedValue(new ApiError("Sign in required", 401));
   vi.mocked(fetchTeamResults).mockRejectedValue(new ApiError("Sign in required", 401));
   vi.mocked(fetchSavedComparisons).mockRejectedValue(new ApiError("Sign in required", 401));
-  vi.mocked(fetchSavedLineups).mockRejectedValue(new ApiError("Sign in required", 401));
 });
 
 describe("HomePage", () => {
