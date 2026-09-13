@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { AdminModule } from "./admin/admin.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
@@ -28,6 +29,10 @@ import { TeamsModule } from "./teams/teams.module.js";
     PicksModule,
     FollowsModule,
     SavedModule,
+    AdminModule,
+    // Registers a catch-all {/*splat, ALL} route (see NotFoundController) —
+    // must stay last, or it would intercept every request meant for a
+    // module imported after it before that module's own routes ever match.
     NotFoundModule,
   ],
   controllers: [HealthController],

@@ -44,6 +44,7 @@ const ME: MeProfile = {
   avatarUrl: null,
   favoriteTeam: THUNDER,
   followedPlayers: [],
+  role: "USER",
 };
 
 function createResult(overrides: Partial<TeamResult> = {}): TeamResult {

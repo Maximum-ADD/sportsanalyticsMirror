@@ -86,6 +86,7 @@ const ME: MeProfile = {
   avatarUrl: null,
   favoriteTeam: LAKERS,
   followedPlayers: [makePlayer()],
+  role: "USER",
 };
 
 function makeSavedLineup(overrides: Partial<SavedLineup> = {}): SavedLineup {

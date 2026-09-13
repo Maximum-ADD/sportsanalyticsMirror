@@ -29,7 +29,7 @@ import type {
   TeamRecord,
 } from "@/types/nba";
 
-function toQueryString(params: object): string {
+export function toQueryString(params: object): string {
   const entries = Object.entries(params).filter(
     (entry): entry is [string, string | number] => entry[1] !== undefined
   );

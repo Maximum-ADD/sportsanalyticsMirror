@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Team, User } from "@prisma/client";
+import type { Role, Team, User } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { PlayerWithTeam } from "../players/players.service.js";
 import { AvatarStorageService } from "./avatar-storage.service.js";
@@ -23,6 +23,10 @@ export interface MeProfile {
   avatarUrl: string | null;
   favoriteTeam: Team | null;
   followedPlayers: PlayerWithTeam[];
+  // Re-read fresh from Postgres alongside everything else here, rather than
+  // trusted from the BetterAuth session object directly — see AdminGate on
+  // the frontend, the one thing this field gates.
+  role: Role;
 }
 
 @Injectable()
@@ -56,6 +60,7 @@ export class MeService {
       avatarUrl,
       favoriteTeam: user.favoriteTeam,
       followedPlayers: user.followedPlayers.map((follow) => follow.player),
+      role: user.role,
     };
   }
 

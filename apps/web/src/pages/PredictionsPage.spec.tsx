@@ -399,6 +399,7 @@ describe("PredictionsPage", () => {
     avatarUrl: null,
     favoriteTeam: null,
     followedPlayers: [],
+    role: "USER",
   };
 
   it("shows the favorite team's next game and the model's pick in Your matchups", async () => {
