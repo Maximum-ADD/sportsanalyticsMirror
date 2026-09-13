@@ -1,4 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProfilePage } from "./ProfilePage";
@@ -168,6 +170,43 @@ describe("ProfilePage", () => {
     await user.click(screen.getByRole("button", { name: "Unfollow LeBron James" }));
 
     expect(unfollowPlayer).toHaveBeenCalledWith("player-1");
+  });
+
+  it("invalidates a fresh locker watchlist after unfollowing from the profile", async () => {
+    setUp();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 300_000, retry: false } } });
+    queryClient.setQueryData(["me"], ME);
+    queryClient.setQueryData(["watchlist"], { data: ["player-1"] });
+    vi.mocked(unfollowPlayer).mockResolvedValue({ following: false });
+    vi.mocked(fetchMe).mockResolvedValue({ ...ME, followedPlayers: [] });
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={queryClient}><MemoryRouter><ProfilePage /></MemoryRouter></QueryClientProvider>);
+    await user.click(await screen.findByRole("button", { name: "Unfollow LeBron James" }));
+    await waitFor(() => expect(queryClient.getQueryState(["watchlist"])?.isInvalidated).toBe(true));
+    expect(await screen.findByText("You're not following any players yet.")).toBeInTheDocument();
+    queryClient.clear();
+  });
+
+  it("keeps the team editor open and reports a failed save", async () => {
+    setUp();
+    vi.mocked(updateMe).mockRejectedValueOnce(new Error("offline"));
+    const user = userEvent.setup();
+    renderWithProviders(<ProfilePage />);
+    await user.click(await screen.findByRole("button", { name: "Change team" }));
+    await user.click(await screen.findByRole("radio", { name: /Boston/ }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save your favorite team");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("keeps a followed player visible when removal fails", async () => {
+    setUp();
+    vi.mocked(unfollowPlayer).mockRejectedValueOnce(new Error("offline"));
+    const user = userEvent.setup();
+    renderWithProviders(<ProfilePage />);
+    await user.click(await screen.findByRole("button", { name: "Unfollow LeBron James" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not unfollow");
+    expect(screen.getByRole("button", { name: "Unfollow LeBron James" })).toBeEnabled();
   });
 
   it("edits the username", async () => {

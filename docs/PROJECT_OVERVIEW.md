@@ -447,3 +447,27 @@ checks and review required before merging.
 - Responsiveness/accessibility pass (beyond the one contrast fix already
   made) — not done.
 - Production deployment — not done.
+
+## Personalization preferences
+
+Users can choose one favorite team and follow multiple players. These choices
+persist through `User.favoriteTeamId` and `UserFollowedPlayer`; there is no
+separate `UserPreference` model or duplicate preferences API.
+
+- `GET /v1/me` returns the profile, favorite team and followed players.
+- `PATCH /v1/me` updates the username or favorite team; a null `favoriteTeamId`
+  clears the team choice.
+- `PUT /v1/me/followed-players/:playerId` follows a player; `DELETE` on the
+  same route unfollows them. Both operations are idempotent and session-scoped.
+
+Onboarding, profile editors and inline follow buttons use these endpoints.
+The locker shows the favorite team's results and followed-player watchlist.
+Successful preference writes invalidate those locker queries as well as the
+profile, preserving the shared cache lifetime while showing updated choices.
+Onboarding defers the profile refresh until Finish to preserve its existing
+username-based completion flow. Player selections reflect successful writes;
+pending writes disable Finish and failed writes show a retryable error.
+
+This implements issue #67's narrow scope of one favorite team and multiple
+followed players. Multiple favorite teams, dashboard layout preferences and
+display settings are not implemented by this feature.
