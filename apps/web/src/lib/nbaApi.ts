@@ -27,6 +27,7 @@ import type {
   SeasonType,
   Team,
   TeamEloRating,
+  TeamRecord,
 } from "@/types/nba";
 
 function toQueryString(params: object): string {
@@ -171,6 +172,12 @@ export function fetchTeam(teamId: string): Promise<Team> {
 // one, since that IS the live rating; otherwise its last completed game's).
 export function fetchEloRatings(): Promise<TeamEloRating[]> {
   return fetchJson<TeamEloRating[]>("/v1/teams/elo-ratings");
+}
+
+// Every team's win/loss record and recent form, derived from completed
+// games — see TeamsService.getTeamRecords.
+export function fetchTeamRecords(): Promise<TeamRecord[]> {
+  return fetchJson<TeamRecord[]>("/v1/teams/records");
 }
 
 export interface FetchGamesParams {

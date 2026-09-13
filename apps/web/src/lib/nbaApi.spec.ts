@@ -6,6 +6,7 @@ import {
   fetchPlayers,
   fetchPlayerStats,
   fetchTeam,
+  fetchTeamRecords,
   fetchTeams,
 } from "./nbaApi";
 
@@ -79,6 +80,11 @@ describe("nbaApi", () => {
   it("fetchTeam requests the single-team endpoint", async () => {
     await fetchTeam("team-1");
     expect(fetch).toHaveBeenCalledWith("/api/v1/teams/team-1", { credentials: "include" });
+  });
+
+  it("fetchTeamRecords requests the records endpoint", async () => {
+    await fetchTeamRecords();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/teams/records", { credentials: "include" });
   });
 
   it("fetchPlayerStatsBatchInChunks splits oversized id lists across sequential requests and merges the rows", async () => {

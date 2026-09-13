@@ -459,6 +459,18 @@ export interface TeamEloRating {
   asOfGameDate: string;
 }
 
+// GET /v1/teams/records' per-team entry — win/loss record and recent form
+// derived from completed games. winPercentage is null for a team with no
+// completed games yet. recentForm is oldest-to-newest left-to-right, capped
+// at 5 games — see TeamsService.getTeamRecords.
+export interface TeamRecord {
+  teamId: string;
+  wins: number;
+  losses: number;
+  winPercentage: number | null;
+  recentForm: ("W" | "L")[];
+}
+
 // GET /v1/me's full response — the current user's personalization state.
 // avatarUrl is already a signed, directly-renderable URL (the API never
 // exposes the underlying private Supabase Storage object path) — see

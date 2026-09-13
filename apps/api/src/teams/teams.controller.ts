@@ -32,6 +32,16 @@ export class TeamsController {
     return this.teamsService.getEloRatings();
   }
 
+  // GET /v1/teams/records — every team's win/loss record and recent form,
+  // derived from completed games. Declared before the :id route below for
+  // the same reason elo-ratings is.
+  @Get("records")
+  @ApiOperation({ summary: "Get every team's win/loss record and recent form" })
+  @ApiResponse({ status: 200, description: "Team records" })
+  listTeamRecords() {
+    return this.teamsService.getTeamRecords();
+  }
+
   // GET /v1/teams/:id/suggested-players?count= — a team's current roster
   // ranked by usage percentage, highest first. Backs the onboarding step's
   // "suggested players to follow" prompt (see TeamsService.getSuggestedPlayers).
