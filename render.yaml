@@ -10,9 +10,14 @@ services:
     branch: main
     rootDir: apps/api
     buildCommand: npm ci --include=dev && npx prisma generate && npm run build
-    startCommand: npm start
-    # Note: preDeployCommand is not supported on Render's free tier.
-    # Run `npx prisma migrate deploy` manually (or from CI) before deploying.
+    # preDeployCommand is not supported on Render's free tier, so pending
+    # migrations are applied here on start instead. `prisma migrate deploy`
+    # only runs migrations already committed under prisma/migrations (never
+    # generates new ones) and is a no-op when the DB is up to date, so it is
+    # safe to run on every boot. If it fails the service won't start — which
+    # is the intended outcome, rather than serving code against a schema that
+    # is missing columns it queries.
+    startCommand: npx prisma migrate deploy && npm start
     envVars:
       - key: PORT
         value: 4000
@@ -20,7 +25,17 @@ services:
         value: production
       # Set the secret values in the Render Dashboard (sync: false keeps the
       # YAML from overwriting them). Never commit real values here.
+      # Supavisor pooler in transaction mode (port 6543, pgbouncer=true) — the
+      # app holds many short-lived logical connections multiplexed over a
+      # handful of real ones, unlike session mode (port 5432 on the pooler
+      # host) which pins one real connection per client for its whole
+      # lifetime and hits the project's pool_size cap almost immediately.
       - key: DATABASE_URL
+        sync: false
+      # Direct connection (port 5432 on the db.<ref>.supabase.co host, not
+      # the pooler host) — `prisma migrate deploy` needs the session-level
+      # advisory locks that transaction-mode pooling doesn't support.
+      - key: DIRECT_URL
         sync: false
       - key: BETTER_AUTH_SECRET
         sync: false
@@ -31,4 +46,13 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: WEB_ORIGIN
+        sync: false
+      # Supabase Storage — server-side only, used for avatar uploads
+      # (see apps/api/src/me/avatar-storage.service.ts). SUPABASE_SECRET_KEY
+      # bypasses Row Level Security; never expose it to the frontend.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_AVATARS_BUCKET
         sync: false

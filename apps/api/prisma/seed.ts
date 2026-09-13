@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type SeasonType } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -25,11 +25,11 @@ const MOCK_PLAYERS = [
 
   { nbaPlayerId: 1628369, firstName: "Jayson", lastName: "Tatum", position: "F", heightInches: 80, weightLbs: 210, jerseyNumber: "0", teamAbbreviation: "BOS" },
   { nbaPlayerId: 1627759, firstName: "Jaylen", lastName: "Brown", position: "G-F", heightInches: 78, weightLbs: 223, jerseyNumber: "7", teamAbbreviation: "BOS" },
-  { nbaPlayerId: 1629632, firstName: "Derrick", lastName: "White", position: "G", heightInches: 76, weightLbs: 190, jerseyNumber: "9", teamAbbreviation: "BOS" },
+  { nbaPlayerId: 1628401, firstName: "Derrick", lastName: "White", position: "G", heightInches: 76, weightLbs: 190, jerseyNumber: "9", teamAbbreviation: "BOS" },
 
   { nbaPlayerId: 201939, firstName: "Stephen", lastName: "Curry", position: "G", heightInches: 74, weightLbs: 185, jerseyNumber: "30", teamAbbreviation: "GSW" },
   { nbaPlayerId: 203110, firstName: "Draymond", lastName: "Green", position: "F", heightInches: 79, weightLbs: 230, jerseyNumber: "23", teamAbbreviation: "GSW" },
-  { nbaPlayerId: 1626172, firstName: "Buddy", lastName: "Hield", position: "G", heightInches: 76, weightLbs: 214, jerseyNumber: "7", teamAbbreviation: "GSW" },
+  { nbaPlayerId: 1627741, firstName: "Buddy", lastName: "Hield", position: "G", heightInches: 76, weightLbs: 214, jerseyNumber: "7", teamAbbreviation: "GSW" },
 
   { nbaPlayerId: 203507, firstName: "Giannis", lastName: "Antetokounmpo", position: "F", heightInches: 83, weightLbs: 243, jerseyNumber: "34", teamAbbreviation: "MIL" },
   { nbaPlayerId: 203081, firstName: "Damian", lastName: "Lillard", position: "G", heightInches: 74, weightLbs: 195, jerseyNumber: "0", teamAbbreviation: "MIL" },
@@ -47,10 +47,16 @@ function generateBoxScore() {
   const twoPointersMade = fieldGoalsMade - threesMade;
   const points = twoPointersMade * 2 + threesMade * 3 + freeThrowsMade;
 
+  // Split so offensive + defensive always equals the total — a seeded row
+  // that contradicted itself would make any rebound-rate work built on this
+  // data quietly wrong.
+  const rebounds = 3 + Math.floor(Math.random() * 9);
+  const offensiveRebounds = Math.floor(rebounds * (0.15 + Math.random() * 0.25));
+
   return {
     minutes: 30 + Math.floor(Math.random() * 10),
     points,
-    rebounds: 3 + Math.floor(Math.random() * 9),
+    rebounds,
     assists: 2 + Math.floor(Math.random() * 8),
     steals: Math.floor(Math.random() * 3),
     blocks: Math.floor(Math.random() * 3),
@@ -61,6 +67,19 @@ function generateBoxScore() {
     threesAttempted,
     freeThrowsMade,
     freeThrowsAttempted,
+    offensiveRebounds,
+    defensiveRebounds: rebounds - offensiveRebounds,
+
+    // Generated rather than left null so local dev and the e2e suite
+    // actually exercise the advanced tiles and the compare page's "Other"
+    // section. Ranges are plausible NBA values (usage 10-35%, ratings
+    // 95-125, plus/minus roughly -15 to +15), not derived from the
+    // boxscore above — this is demo data, and the real figures come from
+    // BoxScoreAdvancedV3 during ingestion.
+    plusMinus: Math.floor(Math.random() * 31) - 15,
+    usagePercentage: Math.round((10 + Math.random() * 25) * 10) / 10,
+    offensiveRating: Math.round((95 + Math.random() * 30) * 10) / 10,
+    defensiveRating: Math.round((95 + Math.random() * 30) * 10) / 10,
   };
 }
 
@@ -103,11 +122,64 @@ function roundRobinPairs<T>(items: T[]): [T, T][] {
   return pairs;
 }
 
+type SeededPlayersByTeam = Map<string, Awaited<ReturnType<typeof prisma.player.upsert>>[]>;
+
+// Creates one game plus its period bookend events and a boxscore row for
+// every player on both rosters. Shared by the regular-season and postseason
+// seeding below, which differ only in their fixture list and the season
+// segment they tag games with.
+async function createGameWithStats(
+  nbaGameId: string,
+  gameDate: Date,
+  homeAbbreviation: string,
+  awayAbbreviation: string,
+  seasonType: SeasonType,
+  playoffRound: number | null,
+  playersByTeamAbbreviation: SeededPlayersByTeam,
+  teamIdsByAbbreviation: Map<string, string>
+) {
+  const game = await prisma.game.upsert({
+    where: { nbaGameId },
+    update: {},
+    create: {
+      nbaGameId,
+      gameDate,
+      season: SEASON,
+      seasonType,
+      playoffRound,
+      homeTeamId: teamIdsByAbbreviation.get(homeAbbreviation)!,
+      awayTeamId: teamIdsByAbbreviation.get(awayAbbreviation)!,
+      homeScore: 100 + Math.floor(Math.random() * 20),
+      awayScore: 100 + Math.floor(Math.random() * 20),
+    },
+  });
+
+  await prisma.gameEvent.createMany({
+    data: [
+      { gameId: game.id, sequence: 1, period: 1, clock: "12:00", eventType: "PERIOD_START", description: "Period 1 start" },
+      { gameId: game.id, sequence: 2, period: 4, clock: "0:00", eventType: "PERIOD_END", description: "Game end" },
+    ],
+    skipDuplicates: true,
+  });
+
+  const gameRoster = [
+    ...(playersByTeamAbbreviation.get(homeAbbreviation) ?? []),
+    ...(playersByTeamAbbreviation.get(awayAbbreviation) ?? []),
+  ];
+  for (const player of gameRoster) {
+    await prisma.playerGameStat.upsert({
+      where: { playerId_gameId: { playerId: player.id, gameId: game.id } },
+      update: {},
+      create: { playerId: player.id, gameId: game.id, ...generateBoxScore() },
+    });
+  }
+}
+
 // Every pair of seeded teams plays each other twice (home and away), so
 // every team — not just one — ends up with a full slate of games and every
 // player on every roster has real per-game boxscores to derive stats from.
 async function seedGamesAndStats(
-  playersByTeamAbbreviation: Map<string, Awaited<ReturnType<typeof prisma.player.upsert>>[]>,
+  playersByTeamAbbreviation: SeededPlayersByTeam,
   teamIdsByAbbreviation: Map<string, string>
 ) {
   const teamAbbreviations = [...teamIdsByAbbreviation.keys()];
@@ -118,38 +190,61 @@ async function seedGamesAndStats(
 
   for (const [gameIndex, [homeAbbreviation, awayAbbreviation]] of fixtures.entries()) {
     const gameDate = new Date(2025, SEASON_START_MONTH_INDEX, SEASON_START_DAY + gameIndex * DAYS_BETWEEN_GAMES);
-    const game = await prisma.game.upsert({
-      where: { nbaGameId: `MOCK-GAME-${gameIndex}` },
-      update: {},
-      create: {
-        nbaGameId: `MOCK-GAME-${gameIndex}`,
+    await createGameWithStats(
+      `MOCK-GAME-${gameIndex}`,
+      gameDate,
+      homeAbbreviation,
+      awayAbbreviation,
+      "REGULAR",
+      null,
+      playersByTeamAbbreviation,
+      teamIdsByAbbreviation
+    );
+  }
+}
+
+// A miniature postseason among the four seeded teams, so local dev and the
+// e2e suite exercise the segment views without needing a real ingestion run.
+//
+// Deliberately not a bracket every team survives: GSW and MIL appear in the
+// play-in and first round but never the Finals, which is what makes the
+// "this player didn't appear in this segment" empty state and the
+// `participated=true` player filter testable at all. A postseason where
+// everyone plays everywhere would let both of those ship broken.
+const POSTSEASON_SERIES: { seasonType: SeasonType; playoffRound: number | null; home: string; away: string; games: number }[] = [
+  { seasonType: "PLAY_IN", playoffRound: null, home: "GSW", away: "MIL", games: 2 },
+  { seasonType: "PLAYOFFS", playoffRound: 1, home: "LAL", away: "GSW", games: 5 },
+  { seasonType: "PLAYOFFS", playoffRound: 1, home: "BOS", away: "MIL", games: 5 },
+  { seasonType: "FINALS", playoffRound: 4, home: "LAL", away: "BOS", games: 4 },
+];
+
+const POSTSEASON_START_MONTH_INDEX = 3; // April
+const POSTSEASON_START_DAY = 12;
+const DAYS_BETWEEN_POSTSEASON_GAMES = 2;
+
+async function seedPostseasonGamesAndStats(
+  playersByTeamAbbreviation: SeededPlayersByTeam,
+  teamIdsByAbbreviation: Map<string, string>
+) {
+  let gameIndex = 0;
+  for (const series of POSTSEASON_SERIES) {
+    for (let gameInSeries = 0; gameInSeries < series.games; gameInSeries++) {
+      const gameDate = new Date(
+        2026,
+        POSTSEASON_START_MONTH_INDEX,
+        POSTSEASON_START_DAY + gameIndex * DAYS_BETWEEN_POSTSEASON_GAMES
+      );
+      await createGameWithStats(
+        `MOCK-POSTSEASON-GAME-${gameIndex}`,
         gameDate,
-        season: SEASON,
-        homeTeamId: teamIdsByAbbreviation.get(homeAbbreviation)!,
-        awayTeamId: teamIdsByAbbreviation.get(awayAbbreviation)!,
-        homeScore: 100 + Math.floor(Math.random() * 20),
-        awayScore: 100 + Math.floor(Math.random() * 20),
-      },
-    });
-
-    await prisma.gameEvent.createMany({
-      data: [
-        { gameId: game.id, sequence: 1, period: 1, clock: "12:00", eventType: "PERIOD_START", description: "Period 1 start" },
-        { gameId: game.id, sequence: 2, period: 4, clock: "0:00", eventType: "PERIOD_END", description: "Game end" },
-      ],
-      skipDuplicates: true,
-    });
-
-    const gameRoster = [
-      ...(playersByTeamAbbreviation.get(homeAbbreviation) ?? []),
-      ...(playersByTeamAbbreviation.get(awayAbbreviation) ?? []),
-    ];
-    for (const player of gameRoster) {
-      await prisma.playerGameStat.upsert({
-        where: { playerId_gameId: { playerId: player.id, gameId: game.id } },
-        update: {},
-        create: { playerId: player.id, gameId: game.id, ...generateBoxScore() },
-      });
+        series.home,
+        series.away,
+        series.seasonType,
+        series.playoffRound,
+        playersByTeamAbbreviation,
+        teamIdsByAbbreviation
+      );
+      gameIndex++;
     }
   }
 }
@@ -171,6 +266,7 @@ async function main() {
   const teamIdsByAbbreviation = await seedTeams();
   const playersByTeamAbbreviation = await seedPlayers(teamIdsByAbbreviation);
   await seedGamesAndStats(playersByTeamAbbreviation, teamIdsByAbbreviation);
+  await seedPostseasonGamesAndStats(playersByTeamAbbreviation, teamIdsByAbbreviation);
   console.log("Seed complete.");
 }
 

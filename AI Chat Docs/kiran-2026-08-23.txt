@@ -1,0 +1,224 @@
+================================================================
+CHAT EXPORT
+Landing page reels, image sizing, and page layout
+Date: 23 August 2026
+================================================================
+
+
+----------------------------------------------------------------
+[1] USER
+----------------------------------------------------------------
+create a custom reel to go inbetween the sections of my landing
+page. I want the colours for the first one to be a black symbiote
+colour like from spiderman this one should show team member names.,
+and another one with blue cyan and green crystalline olours, this
+one should show tech stack
+
+
+----------------------------------------------------------------
+[1] ASSISTANT
+----------------------------------------------------------------
+Created: SectionReels.jsx  (first version)
+
+Two components, one file, no dependencies beyond React.
+
+SYMBIOTE - team names in Anton, bone-white on an oily black
+bruise-purple base with a wet latex highlight along the top lip.
+The signature is the ooze: a row of blobs under an SVG goo filter
+that hangs about 25px BELOW the strip and drips over the seam into
+the next section, tendrils pinching off and pulling back at
+staggered intervals. Hovering a name hollows it out to a white
+outline, like the suit swallowed it. Separators are torn claw marks
+rather than bullets.
+
+CRYSTALLINE - tech names in Chakra Petch inside irregular shard
+clip-paths with a 1px cyan-green-blue facet edge, each shard cut at
+a different angle. The strip's top and bottom edges are jagged
+rather than straight, so it reads as a vein of crystal splitting
+the page, with faint internal fracture lines and a refraction pass
+sweeping across every 7.5s. Text has a light prismatic split (cyan
+left, mint right). It scrolls the opposite direction to the
+symbiote one so the two don't feel like the same object twice.
+
+Both pause on hover and on keyboard focus, and stop entirely under
+prefers-reduced-motion.
+
+    import { SymbioteReel, CrystalReel } from "./SectionReels";
+
+    <HeroSection />
+    <SymbioteReel />
+    <AboutSection />
+    <CrystalReel />
+
+Swap the TEAM and STACK arrays at the top - filled with Sam, Thendo
+and Abdur plus a generic React stack as placeholders, and the roles
+are invented, so overwrite those. Speeds are props (speed={42}) if
+you want them lazier. One thing to watch: the drips need the section
+after it not to sit on a higher stacking context, so if they get
+clipped, drop a z-index: 0 on the following section.
+
+
+----------------------------------------------------------------
+[2] USER
+----------------------------------------------------------------
+make it simpler
+
+
+----------------------------------------------------------------
+[2] ASSISTANT
+----------------------------------------------------------------
+Rewrote: SectionReels.jsx  (simplified)
+
+Cut down to one component and about 80 lines. Gone: the SVG goo
+filter and drips, the jagged clip-paths, the light sweep, the
+fracture lines, the hover states, and the Google Fonts import.
+
+What's left is a scrolling strip with two colour skins. Symbiote is
+near-black with white names and a faint violet glow behind them,
+violet dots between. Crystal is deep teal with the tech names filled
+by a cyan-green-blue gradient, mint diamonds between. Both pause on
+hover and stop under reduced motion.
+
+    import Reel from "./SectionReels";
+
+    <HeroSection />
+    <Reel variant="symbiote" />
+    <AboutSection />
+    <Reel variant="crystal" />
+
+Names and stack are the two arrays at the top, or pass items={[...]}
+per instance. It uses your page's font at weight 900 now rather than
+loading one - if the names look flat, a condensed face like Anton is
+the one thing worth adding back.
+
+
+----------------------------------------------------------------
+[3] USER
+----------------------------------------------------------------
+what are the different sizes i need for the background images for my
+landing page including responiveness sizes?
+
+
+----------------------------------------------------------------
+[3] ASSISTANT
+----------------------------------------------------------------
+Depends on the job the image is doing - a full-bleed hero has very
+different requirements from a section texture.
+
+THE WIDTH LADDER
+
+Export each background at these widths and let the browser choose:
+640, 960, 1280, 1600, 1920, 2560. That covers phones through to most
+desktops. Add 3840 only if you have a photographic hero that fills a
+4K screen; otherwise it's wasted bytes.
+
+Don't multiply by device pixel ratio yourself. A 390px-wide phone at
+3x wants 1170px, which the 1280 step already covers. Cap effective
+density at 2x for large photos - compression hides the difference and
+3x hero images are brutal on data.
+
+  Use                        | Aspect      | Widths            | Weight
+  ---------------------------|-------------|-------------------|----------
+  Full-viewport hero desktop | 16:9, 21:9  | 1280/1920/2560    | 120-200KB
+  Full-viewport hero mobile  | 4:5, 9:16   | 640/960/1280      | 60-120KB
+  Section band behind text   | 3:1 to 5:1  | 960/1440/1920     | 60-100KB
+  Card / feature thumbnail   | 4:3, 1:1    | 400/640/960       | 20-50KB
+  Tiling texture or noise    | square      | 256 or 512, one   | <15KB
+  Gradient / blur mesh       | any         | 1280 single       | <30KB
+
+MOBILE NEEDS A SEPARATE CROP, NOT JUST A SMALLER FILE.
+A 21:9 desktop hero scaled down to a portrait phone screen with
+"cover" will crop to the middle 40% and lose whatever the composition
+was about. Shoot or crop a portrait version - 1080x1920 works - and
+swap it with a media query.
+
+SERVING IT
+If it's decorative and behind content, use image-set() on the CSS
+background:
+
+    .hero {
+      background-image: image-set(
+        url("hero-1280.avif") type("image/avif") 1x,
+        url("hero-2560.avif") type("image/avif") 2x,
+        url("hero-1280.jpg") type("image/jpeg") 1x
+      );
+      background-size: cover;
+      background-position: 60% 40%; /* your focal point */
+    }
+    @media (max-width: 700px) {
+      .hero {
+        background-image: image-set(
+          url("hero-mobile-1080.avif") type("image/avif") 1x);
+      }
+    }
+
+If the image is meaningful rather than decorative, use an <img> with
+srcset/sizes and object-fit: cover instead - you get lazy loading,
+better browser heuristics, and alt text. Put fetchpriority="high" on
+the hero one and never lazy-load it.
+
+FORMATS: AVIF first, WebP as the fallback, JPEG only if you need very
+old browsers. AVIF typically lands 40-50% under JPEG at the same
+visual quality. Quality 55-65 is plenty for a photo sitting behind a
+dark overlay.
+
+One thing worth knowing given the two reel strips: those need no
+images at all, and the same is true of most "textured" backgrounds.
+A CSS gradient plus a repeating-linear-gradient costs zero network
+bytes and scales perfectly. Reach for an image file only when there's
+actual photographic content.
+
+
+----------------------------------------------------------------
+[4] USER
+----------------------------------------------------------------
+can create a general layout for a landing page with 3 sections
+seperated by the 2 reels and then those 3 sections to be filled by
+images
+
+
+----------------------------------------------------------------
+[4] ASSISTANT
+----------------------------------------------------------------
+Created: LandingPage.jsx
+
+Hero -> symbiote reel -> middle -> crystal reel -> closing. It
+imports Reel from the file you already have, so drop both in the
+same folder.
+
+One decision worth flagging: the scrims shift from near-black at the
+top to deep teal at the bottom, so the page travels from the
+symbiote palette into the crystalline one. That makes the two reels
+read as seams in a transition rather than two unrelated stripes. If
+you'd rather they stay independent, set all three sections'
+--scrim-top and --scrim-bottom to the same value.
+
+The sections also alternate their content position - hero
+bottom-left, middle right-aligned, last centred - so three stacked
+image blocks don't feel like the same slide three times. On mobile
+they all collapse to bottom-left.
+
+For the images: SECTIONS at the top holds the paths, plus a focus
+value per image. That's the background-position - set it to whatever
+part of the photo must survive cropping, since cover will cut the
+rest. Only the hero has a separate mobile crop wired up (--img-m);
+add a mobile: key to the other two if their compositions don't
+survive a portrait screen.
+
+
+----------------------------------------------------------------
+[5] USER
+----------------------------------------------------------------
+export this chat toa txt file
+
+
+================================================================
+FILES PRODUCED IN THIS CHAT
+================================================================
+  SectionReels.jsx   - Reel component, two colour variants
+                       (symbiote = team names, crystal = tech stack)
+  LandingPage.jsx    - Three image sections split by the two reels
+
+================================================================
+END OF EXPORT
+================================================================

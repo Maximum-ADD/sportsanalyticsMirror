@@ -117,6 +117,8 @@ same pattern as every other endpoint.
 - `SessionAuthGuard` calls `auth.api.getSession(...)`; if there's no
   session it throws `401 UNAUTHENTICATED`, otherwise it sets
   `request.user` for downstream guards/controllers.
+- Games and optimizer controllers require `SessionAuthGuard`; player and
+  team endpoints remain public.
 - `RolesGuard` reads `@Roles(...)` metadata off the handler/class via
   `Reflector` and throws `403 FORBIDDEN` unless `request.user.role` is in
   that list. A handler with no `@Roles(...)` is unrestricted.
@@ -147,13 +149,19 @@ Closing that gap (real event → boxscore derivation) is still open; see
   `division`, `logoUrl` (always `null` currently — no logo assets)
 - **Player** — `nbaPlayerId`, name, `position`, physical attributes,
   `jerseyNumber`, belongs to a `Team`
-- **Game** — home/away `Team`, `gameDate`, `season`, scores
+- **Game** — home/away `Team`, `gameDate`, `season`, scores, plus
+  `seasonType` (`REGULAR` / `PLAY_IN` / `PLAYOFFS` / `FINALS`) and
+  `playoffRound` (1–4, null outside the playoffs). `seasonType` is the
+  single discriminator every segment view filters on — see "Season
+  segments" below
 - **GameEvent** — raw play-by-play row belonging to a `Game` (sequence,
   period, clock, eventType, description) — the intended derivation source,
   see above
 - **PlayerGameStat** — one row per player per game (points, rebounds,
   assists, shooting splits, etc.) — what `statsService.ts` actually
-  aggregates into season averages today
+  aggregates into season averages today. Also carries the offensive/
+  defensive rebound split, plus/minus, and NBA's own usage rate and
+  offensive/defensive ratings, all nullable — see "Advanced stats" below
 - **User / Session / Account / Verification** — BetterAuth's required core
   schema (see [better-auth.com/docs/concepts/database](https://better-auth.com/docs/concepts/database)).
   `User.role` is the one project-specific addition (see RBAC above).
@@ -165,6 +173,91 @@ real derived stats — not just whichever team happened to be seeded first.
 Real NBA-wide data (all 30 teams) is intentionally not hand-seeded; that's
 what the planned `nba_api` ingestion pipeline is for (see "Known gaps").
 
+The seed also generates a miniature postseason: a play-in series, two
+first-round series and a Finals. Deliberately not a bracket every team
+survives — GSW and MIL appear in the play-in and first round but never the
+Finals, which is what makes the "didn't appear in this segment" empty state
+and the `participated=true` player filter exercisable locally.
+
+## Season segments
+
+Games belong to one of four segments via `Game.seasonType`. The guarantee
+the feature rests on is that **figures never cross segments**: a playoffs
+view can't show regular-season numbers, and vice versa.
+
+That's enforced by the query, not by careful UI code. Every derived
+statistic is computed at request time from `PlayerGameStat` joined to
+`Game`, so a single `where: { game: { seasonType } }` decides what a view
+can even see. On the frontend each segment is a separate request with its
+own cache key, so a segment view never holds another segment's data at all.
+
+**Models are regular-season only.** `elo.py`, `four_factors.py`,
+`optimizer/predict.py` and `game-detail.service.ts` all filter to
+`seasonType = REGULAR`. This is a deliberate choice, not an oversight:
+playoff basketball is a different distribution, and postseason games are a
+player's *most recent* games, so under recency weighting they would
+dominate every projection. Postseason data is ingested and viewable, just
+never modelled from. Revisit only alongside a model that actually
+represents postseason context.
+
+Which segment a game belongs to is derived from its NBA game id at
+ingestion time (`classify_game` in `apps/ingestion/games.py`), never from
+whichever endpoint it arrived on, so re-runs always classify the same way.
+
+## Advanced stats
+
+Seven figures beyond the counting stats, split by where they come from.
+
+**Derived at request time** in `StatsService`, from the boxscore columns
+already stored — no schema involvement, and they work on every row ever
+ingested:
+
+| Stat | Formula |
+|---|---|
+| True shooting % | `PTS / (2 · (FGA + 0.44 · FTA))` |
+| Effective FG% | `(FGM + 0.5 · 3PM) / FGA` |
+| Assist:turnover | `AST / TOV` |
+
+All three were checked against `BoxScoreAdvancedV3`'s own figures during
+development and matched to three decimal places, which is why they are
+computed rather than stored — storing them would create a second source of
+truth for a number the boxscore already determines. `stats.service.spec.ts`
+pins them to a real Finals boxscore so the arithmetic can't drift from the
+official definitions.
+
+**Stored on `PlayerGameStat`**, because they can't be derived:
+
+| Stat | Source | Why not derived |
+|---|---|---|
+| Plus/minus | `PlayerGameLogs` (Base) | An observation, not a calculation |
+| Usage % | `PlayerGameLogs` (Advanced) | Needs team possessions while on court |
+| Offensive/defensive rating | `PlayerGameLogs` (Advanced) | Need possession estimates and opponent context this schema doesn't hold |
+
+`PlayerGameLogs` is leaguewide and season-scoped: one call returns every
+player-game row for a whole segment (26,651 for the 2025-26 regular
+season). Two measure types per segment covers the lot, so the whole season
+including postseason costs 6 calls rather than the ~900 a per-game
+boxscore endpoint would need. `apps/ingestion/backfill_advanced_stats.py`
+uses the same feed to fill these columns on a database populated before
+they existed.
+
+Computing individual ratings from the columns here would be inventing a
+statistic rather than deriving one — the same call `four_factors.py` makes
+when it leaves Oliver's offensive-rebound factor out.
+
+**Nulls are meaningful.** Every stored figure is nullable and every
+aggregate returns `null` rather than `0` when no game carries it. A zero
+plus/minus is an even game and a 0% usage rate is a player who never
+touched the ball; both are real measurements, so "not recorded" has to stay
+distinguishable. The UI renders null as "—" throughout. Rows ingested
+before these columns existed keep those nulls until a re-ingestion.
+
+**Aggregation.** Usage and the two ratings are minutes-weighted, not simple
+means — they're rates over playing time, so a four-minute garbage-time
+cameo shouldn't count as much as a 38-minute start. Plus/minus is a plain
+per-game average, and the derived percentages come from season totals, the
+same way `fieldGoalPercentage` already does.
+
 ## API reference
 
 Base: `http://localhost:4000` in dev. All error responses share the
@@ -174,29 +267,58 @@ envelope `{ error: { code, message } }`.
 |---|---|---|
 | GET | `/health` | `{ status: "ok" }` |
 | ALL | `/auth/*` | BetterAuth — sign-in/callback/session/sign-out etc. |
-| GET | `/v1/players` | Query: `page`, `pageSize`, `teamId`, `position` |
+| GET | `/v1/players` | Query: `page`, `pageSize`, `teamId`, `position`, `seasonType`, `participated` |
 | GET | `/v1/players/:id` | |
-| GET | `/v1/players/:id/stats` | Derived season averages + game log |
+| GET | `/v1/players/:id/stats` | Query: `seasonType` (default `REGULAR`). Derived season averages + game log for that segment |
+| GET | `/v1/players/:id/stats/splits` | Every segment's season line in one response, for the postseason comparison view |
+| GET | `/v1/players/compare` | Query: `ids` (comma-separated, 2–4), `seasonType`. Each player + derived season averages |
 | GET | `/v1/teams` | Query: `page`, `pageSize` |
 | GET | `/v1/teams/:id` | |
+| GET | `/v1/games` | Auth required; paginated games and predictions. Query: `seasonType` (omitted = every segment) |
+| GET | `/v1/games/:id` | Auth required; game and prediction detail |
+| GET | `/v1/games/:id/prediction` | Auth required |
+| GET | `/v1/optimizer/lineup` | Auth required; latest optimized lineup |
 | ALL | `*` | Catch-all → `404 NOT_FOUND` |
 
 Pagination shape: `{ data: T[], page, pageSize, total }`.
 
-No route currently requires authentication — `SessionAuthGuard`/
-`RolesGuard` exist and are unit-tested but aren't applied anywhere yet.
+`seasonType` accepts `REGULAR`, `PLAY_IN`, `PLAYOFFS` or `FINALS`. An
+unrecognised value is a `400`, not a silent fall back to the default — a
+typo like `?seasonType=playoffs` (lowercase) serving regular-season figures
+under a postseason heading is exactly the cross-segment bleed the parameter
+exists to prevent. The player endpoints default to `REGULAR`; the games
+list defaults to *no* filter, since a schedule running chronologically
+through the postseason is useful there and nothing is averaged across
+segments.
+
+Games and optimizer routes require a BetterAuth session. Player and team
+routes remain public. No route currently requires a role above `USER`.
 
 ## Frontend architecture (`apps/web`)
 
 ### Routing & pages (`src/App.tsx`, `src/pages/`)
 
-| Route | Page | Purpose |
-|---|---|---|
-| `/` | `HomePage` | Hero + links into Players/Teams |
-| `/players` | `PlayersListPage` | Filter (team/position) + sort (name/PPG) + paginated table |
-| `/players/:playerId` | `PlayerProfilePage` | Stat tiles, traits radar, points trend chart, shooting splits |
-| `/teams` | `TeamsListPage` | Paginated team cards |
-| `/teams/:teamId` | `TeamProfilePage` | Team header + roster table |
+| Route | Access | Page | Purpose |
+|---|---|---|---|
+| `/` | Public | `HomePage` | Hero + links into Players/Teams |
+| `/players` | Public | `PlayersListPage` | Filter (team/position/segment) + sort (name/PPG) + paginated table |
+| `/players/:playerId` | Public | `PlayerProfilePage` | Stat tiles, traits radar, points trend chart, shooting splits, regular-season-vs-postseason comparison |
+| `/compare` | Public | `ComparePage` | Side-by-side season averages for 2–4 players (`?ids=` in the URL); player tiles with add-by-search / remove |
+| `/teams` | Public | `TeamsListPage` | Paginated team cards |
+| `/teams/:teamId` | Public | `TeamProfilePage` | Team header + roster table |
+| `/optimizer` | Signed in | `OptimizerPage` | Latest optimized fantasy lineup |
+| `/predictions` | Signed in | `PredictionsPage` | Paginated game predictions |
+| `/games/:gameId` | Signed in | `GameDetailPage` | Game and prediction detail |
+
+The selected season segment lives in the URL as `?segment=playoffs`
+(`regular` / `play-in` / `playoffs` / `finals`, plus `all` on the games
+list), so a postseason view is shareable and survives a reload. An
+unrecognised value falls back rather than blanking the page — safe here
+because this only picks which of four valid requests to make.
+
+`ProtectedRoute` displays the Google sign-in action for logged-out visitors
+and uses the attempted URL as the OAuth callback so they return to the same
+page after signing in.
 
 ### Data fetching
 
@@ -255,8 +377,9 @@ they exercise actual queries. `apps/api/test/global-setup.ts` runs
 
 **Frontend** (`apps/web`): component/page tests with React Testing Library
 — `lib/utils`, `lib/nbaApi`, key components (`Pagination`, `StatTile`,
-`TeamBadge`, `ErrorState`, `PlayersFilterBar`, `AuthStatus`), and a
-page-level test of `PlayersListPage` with mocked API calls.
+`TeamBadge`, `ErrorState`, `PlayersFilterBar`, `AuthStatus`,
+`SeasonSplitsTable`), `lib/seasonType`, and page-level tests of
+`PlayersListPage` / `PlayerProfilePage` with mocked API calls.
 
 Run locally:
 
@@ -299,11 +422,25 @@ checks and review required before merging.
 
 ## Known gaps
 
-- No route requires authentication yet (guards exist, unused in practice).
 - `PlayerGameStat` is seeded directly rather than derived from `GameEvent`
   rows — the event-sourcing story isn't fully real yet.
 - Real NBA data ingestion (`nba_api`, Python) into Postgres — not started.
 - A second external API integration (brief requirement) — not started.
+- **Multi-season postseason history** — `Game.season` is a single string
+  and nothing iterates seasons, so only the configured season's postseason
+  is available. Out of scope for the postseason views.
+- **Postseason predictions** — the Elo/Four Factors/optimizer models are
+  regular-season only by deliberate choice (see "Season segments"), so
+  postseason games carry no prediction.
+- **Offensive rebound rate in Four Factors** — `four_factors.py` still
+  omits Oliver's fourth factor, but the blocker is now gone:
+  `PlayerGameStat` carries the offensive/defensive rebound split. Wiring it
+  in is a follow-up, not a data problem.
+- **Postseason-only players** — a player appearing in a postseason boxscore
+  but not on an ingested roster is skipped, matching existing regular-season
+  behaviour. Acceptable for now; revisit if it drops notable players.
+- **Round-by-round playoff views** — `Game.playoffRound` is stored but
+  nothing reads it yet; the UI treats rounds 1–3 as one "Playoffs" segment.
 - Public documentation site (Docusaurus/MkDocs, deployed via static
   hosting) — not started. This file lives in-repo; it isn't that site.
 - Lint/typecheck aren't enforced in CI yet, only run manually.

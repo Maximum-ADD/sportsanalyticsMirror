@@ -66,6 +66,42 @@ describe("Teams API", () => {
       expect(response.body.data).toHaveLength(1);
       expect(response.body.data[0].name).toBe("Warriors");
     });
+
+    it("searches team city, name, and abbreviation case-insensitively", async () => {
+      await createTeam({ nbaTeamId: 1, city: "Los Angeles", name: "Lakers", abbreviation: "LAL" });
+      await createTeam({ nbaTeamId: 2, city: "Boston", name: "Celtics", abbreviation: "BOS" });
+
+      const cityResponse = await request(app.getHttpServer()).get("/v1/teams?search=ANGE");
+      const nameResponse = await request(app.getHttpServer()).get("/v1/teams?search=aker");
+      const abbreviationResponse = await request(app.getHttpServer()).get("/v1/teams?search=lal");
+
+      expect(cityResponse.body.data.map((team: Team) => team.name)).toEqual(["Lakers"]);
+      expect(nameResponse.body.data.map((team: Team) => team.name)).toEqual(["Lakers"]);
+      expect(abbreviationResponse.body.data.map((team: Team) => team.name)).toEqual(["Lakers"]);
+    });
+
+    it("matches full team names across city and name fields", async () => {
+      await createTeam({ nbaTeamId: 1, city: "Los Angeles", name: "Lakers", abbreviation: "LAL" });
+      await createTeam({ nbaTeamId: 2, city: "Los Angeles", name: "Clippers", abbreviation: "LAC" });
+
+      const response = await request(app.getHttpServer()).get("/v1/teams?search=los%20ang%20lake");
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.data[0].name).toBe("Lakers");
+    });
+
+    it("paginates filtered team results and ignores blank search", async () => {
+      await createTeam({ nbaTeamId: 1, city: "Los Angeles", name: "Lakers" });
+      await createTeam({ nbaTeamId: 2, city: "Los Angeles", name: "Clippers" });
+      await createTeam({ nbaTeamId: 3, city: "Los Angeles", name: "Stars" });
+
+      const filteredResponse = await request(app.getHttpServer()).get("/v1/teams?search=los&page=2&pageSize=2");
+      const blankResponse = await request(app.getHttpServer()).get("/v1/teams?search=%20%20");
+
+      expect(filteredResponse.body).toMatchObject({ page: 2, pageSize: 2, total: 3 });
+      expect(filteredResponse.body.data).toHaveLength(1);
+      expect(blankResponse.body.total).toBe(3);
+    });
   });
 
   describe("GET /v1/teams/:id", () => {

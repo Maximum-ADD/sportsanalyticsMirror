@@ -1,0 +1,217 @@
+@startuml database-erd
+title NBA Analytics Platform — Database Schema (Prisma / Supabase Postgres)
+
+hide circle
+skinparam shadowing false
+skinparam linetype ortho
+skinparam class {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+package "Auth (BetterAuth core schema)" {
+  entity "User" as User {
+    * id : uuid <<PK>>
+    --
+    * name : string
+    * email : string <<unique>>
+    * emailVerified : boolean = false
+    image : string?
+    * role : Role = USER
+    * createdAt : datetime
+    * updatedAt : datetime
+  }
+
+  entity "Session" as Session {
+    * id : uuid <<PK>>
+    --
+    * userId : uuid <<FK>>
+    * token : string <<unique>>
+    * expiresAt : datetime
+    ipAddress : string?
+    userAgent : string?
+    * createdAt : datetime
+    * updatedAt : datetime
+  }
+
+  entity "Account" as Account {
+    * id : uuid <<PK>>
+    --
+    * userId : uuid <<FK>>
+    * accountId : string
+    * providerId : string
+    accessToken : string?
+    refreshToken : string?
+    accessTokenExpiresAt : datetime?
+    refreshTokenExpiresAt : datetime?
+    scope : string?
+    idToken : string?
+    password : string?
+    * createdAt : datetime
+    * updatedAt : datetime
+  }
+
+  entity "Verification" as Verification {
+    * id : uuid <<PK>>
+    --
+    * identifier : string
+    * value : string
+    * expiresAt : datetime
+    * createdAt : datetime
+    * updatedAt : datetime
+  }
+
+  enum "Role" as Role {
+    PUBLIC
+    USER
+    ANALYST
+    ADMIN
+  }
+}
+
+package "Domain (teams, players, games)" {
+  entity "Team" as Team {
+    * id : uuid <<PK>>
+    --
+    * nbaTeamId : int <<unique>>
+    * name : string
+    * abbreviation : string
+    * city : string
+    * conference : string
+    * division : string
+    logoUrl : string?
+  }
+
+  entity "Player" as Player {
+    * id : uuid <<PK>>
+    --
+    * nbaPlayerId : int <<unique>>
+    * firstName : string
+    * lastName : string
+    * position : string
+    heightInches : int?
+    weightLbs : int?
+    jerseyNumber : string?
+    headshotUrl : string?
+    teamId : uuid? <<FK>>
+  }
+
+  entity "Game" as Game {
+    * id : uuid <<PK>>
+    --
+    * nbaGameId : string <<unique>>
+    * gameDate : datetime
+    * season : string
+    * homeTeamId : uuid <<FK>>
+    * awayTeamId : uuid <<FK>>
+    homeScore : int?
+    awayScore : int?
+  }
+
+  entity "GameEvent" as GameEvent {
+    * id : uuid <<PK>>
+    --
+    * gameId : uuid <<FK>>
+    * sequence : int
+    * period : int
+    * clock : string
+    * eventType : string
+    playerId : uuid?
+    * description : string
+    * createdAt : datetime
+    ..
+    index (gameId, sequence)
+  }
+
+  entity "PlayerGameStat" as PlayerGameStat {
+    * id : uuid <<PK>>
+    --
+    * playerId : uuid <<FK>>
+    * gameId : uuid <<FK>>
+    * minutes : int
+    * points : int
+    * rebounds : int
+    * assists : int
+    * steals : int
+    * blocks : int
+    * turnovers : int
+    * fieldGoalsMade : int
+    * fieldGoalsAttempted : int
+    * threesMade : int
+    * threesAttempted : int
+    * freeThrowsMade : int
+    * freeThrowsAttempted : int
+    ..
+    unique (playerId, gameId)
+  }
+}
+
+package "Fantasy optimizer (apps/optimizer writes, API reads-only)" {
+  entity "PlayerPrediction" as PlayerPrediction {
+    * id : uuid <<PK>>
+    --
+    * playerId : uuid <<FK>>
+    * predictedFantasyPoints : float
+    * salary : int
+    * asOf : datetime
+    ..
+    index (playerId, asOf)
+  }
+
+  entity "Lineup" as Lineup {
+    * id : uuid <<PK>>
+    --
+    * totalPredictedPoints : float
+    * totalSalary : int
+    * budget : int
+    * createdAt : datetime
+  }
+
+  entity "LineupSlot" as LineupSlot {
+    * id : uuid <<PK>>
+    --
+    * lineupId : uuid <<FK>>
+    * playerId : uuid <<FK>>
+    ..
+    unique (lineupId, playerId)
+  }
+}
+
+package "Game prediction (apps/predictor writes, API reads-only)" {
+  entity "GamePrediction" as GamePrediction {
+    * id : uuid <<PK>>
+    --
+    * gameId : uuid <<FK, unique>>
+    * homeWinProbability : float
+    * homeTeamEloPre : float
+    * awayTeamEloPre : float
+    predictedMarginHome : float?
+    marginMethod : string?
+    * createdAt : datetime
+    ..
+    index (gameId)
+  }
+}
+
+' --- Auth relationships ---
+User ||--o{ Session : "has"
+User ||--o{ Account : "has (per sign-in provider)"
+
+' --- Domain relationships ---
+Team ||--o{ Player : "rosters"
+Team ||--o{ Game : "homeTeam"
+Team ||--o{ Game : "awayTeam"
+Game ||--o{ GameEvent : "raw play-by-play"
+Game ||--o{ PlayerGameStat : "boxscore rows"
+Player ||--o{ PlayerGameStat : "per-game stats"
+Game ||--o| GamePrediction : "0..1 prediction"
+
+' --- Optimizer relationships ---
+Player ||--o{ PlayerPrediction : "fantasy point predictions"
+Player ||--o{ LineupSlot : "appears in"
+Lineup ||--o{ LineupSlot : "5 slots per run"
+
+User .. Role : "role : Role"
+
+@enduml

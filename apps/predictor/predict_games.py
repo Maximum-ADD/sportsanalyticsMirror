@@ -33,8 +33,8 @@ def build_predictions(cursor) -> tuple[list[dict], str]:
     """Runs both models and returns (prediction rows, margin method used)."""
     completed_games = fetch_completed_games_chronological(cursor)
     upcoming_games = fetch_upcoming_games(cursor)
-    final_ratings, pre_game_state = compute_elo_ratings(completed_games)
-    upcoming_state = predict_upcoming_games(upcoming_games, final_ratings)
+    final_ratings, pre_game_state, final_completed_season = compute_elo_ratings(completed_games)
+    upcoming_state = predict_upcoming_games(upcoming_games, final_ratings, final_completed_season)
 
     boxscores = fetch_team_game_boxscores(cursor)
     team_game_factors = [compute_team_game_four_factors(row) for row in boxscores]

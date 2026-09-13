@@ -1,9 +1,15 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { PredictionsService } from "../predictions/predictions.service.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
+// Public, like TeamsController/PlayersController — games/schedules/scores
+// are the same kind of read-only, non-personal data those already expose
+// with no guard. Also lets the landing page's live-match widget (rendered
+// for signed-out visitors) call this endpoint at all.
+@ApiTags("games")
 @Controller("v1/games")
 export class GamesController {
   constructor(
@@ -13,14 +19,29 @@ export class GamesController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: "List games (paginated, most recent first)" })
+  @ApiResponse({ status: 200, description: "Paginated game list with predictions" })
   listGames(@Query() query: Record<string, unknown>) {
     return this.gamesService.getGames(query);
+  }
+
+  // GET /v1/games/seasons — every season with at least one ingested game,
+  // most recent first. Declared before the :id route below so "seasons"
+  // isn't swallowed as a game id — Nest matches routes in declaration
+  // order. Backs the Predictions page's season filter with real options.
+  @Get("seasons")
+  listSeasons() {
+    return this.gamesService.getSeasons();
   }
 
   // GET /v1/games/:id — a single game with its win probability/predicted
   // margin (if generated) and predicted top scorers from both rosters —
   // everything the game detail page needs in one request.
   @Get(":id")
+  @ApiOperation({ summary: "Get game detail with prediction and predicted scorers" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Full game detail" })
+  @ApiResponse({ status: 404, description: "Game not found" })
   async getGame(@Param("id") id: string) {
     const detail = await this.gameDetailService.getGameDetail(id);
     if (!detail) {
@@ -35,6 +56,10 @@ export class GamesController {
   // yet predicted are different problems, same pattern as
   // PlayersController's :id/stats route.
   @Get(":id/prediction")
+  @ApiOperation({ summary: "Get Elo win probability and Four Factors prediction" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Game prediction" })
+  @ApiResponse({ status: 404, description: "Game not found or no prediction yet" })
   async getGamePrediction(@Param("id") id: string) {
     const game = await this.gamesService.getGameById(id);
     if (!game) {

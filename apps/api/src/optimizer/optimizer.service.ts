@@ -38,4 +38,40 @@ export class OptimizerService {
       })),
     };
   }
+
+  // Lets the web app look up a specific player's latest prediction outside
+  // the context of an existing lineup — e.g. to price up a hypothetical
+  // swap into the client's local (never-persisted) lineup edit, the same
+  // way getLatestLineup() already prices players already in a lineup.
+  async getPlayerPrediction(playerId: string) {
+    const prediction = await this.prisma.playerPrediction.findFirst({
+      where: { playerId },
+      orderBy: { asOf: "desc" },
+    });
+    return {
+      predictedFantasyPoints: prediction?.predictedFantasyPoints ?? null,
+      salary: prediction?.salary ?? null,
+    };
+  }
+
+  // Every player's latest prediction in one round trip — the optimizer
+  // page's edit mode uses this to suggest value picks (best dollars-per-
+  // point that still fit the board's remaining budget) without firing one
+  // request per candidate. Same newest-first-then-distinct pattern as
+  // getLatestLineup()'s prediction lookup, with the player embedded so the
+  // client never has to join.
+  async getLatestPlayerPredictions() {
+    const predictions = await this.prisma.playerPrediction.findMany({
+      orderBy: { asOf: "desc" },
+      distinct: ["playerId"],
+      include: { player: { include: { team: true } } },
+    });
+    return predictions.map((prediction) => ({
+      playerId: prediction.playerId,
+      predictedFantasyPoints: prediction.predictedFantasyPoints,
+      salary: prediction.salary,
+      asOf: prediction.asOf,
+      player: prediction.player,
+    }));
+  }
 }

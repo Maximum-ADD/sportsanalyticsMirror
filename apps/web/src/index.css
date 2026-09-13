@@ -55,6 +55,194 @@
   --color-text-secondary: #baa88f;
   --color-text-muted: #8a7862;
 
+  --color-landing-hero: #cfcbc6;
+  --color-landing-dark: #412a22;
+  --color-landing-light: #a9a8a4;
+
+  --color-landing-placeholder: #9b9b9b;
+  --color-landing-placeholder-edge: #7c7c7c;
+
+  --color-landing-accent: #e04e34;
+  --color-landing-ink: #14100c;
+
+  /* Signed-in /home ("the locker") is built on the landing palette above
+     rather than the dark app shell, so signing in reads as walking further
+     into the same building instead of into a different product. These are
+     the few steps that palette needs and doesn't already have — nothing
+     here changes an existing token.
+
+     Note that --color-landing-accent is display-only: it measures 2.45:1 on
+     landing-hero, which is fine for hero-scale type (all the landing page
+     uses it for) but below AA for UI text. Small text and controls on
+     /home use locker-leather instead, which measures 4.66:1 on
+     locker-surface. */
+  --color-locker-surface: #e3e0dc;
+  --color-locker-ink-muted: #4a423b;
+  --color-locker-leather: #a4441c;
+
+  /* Warm is the human call, cool is the Elo model — the split carries the
+     page's whole argument. Validated as a categorical pair against
+     locker-surface: CVD ΔE 19.0 (protan), normal-vision ΔE 27.5, both
+     above 3:1 contrast. */
+  --color-locker-you: #c2410c;
+  --color-locker-model: #1f6f9c;
+
+  /* Outcome colors. Always rendered with a glyph and a word beside them,
+     never as the only channel — a red/green pair is the one CVD case that
+     cannot be fixed by re-stepping the hues. */
+  --color-locker-good: #15733f;
+  --color-locker-bad: #a8202c;
+
+  --animate-marquee: marquee 32s linear infinite;
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* BasketballSpinner: a real dribble, not a hover-wobble. The three pieces
+     below share one 0.7s cycle so they read as a single physical ball —
+     apex at 0%/100%, ground contact at 50% (mirrors Tailwind's own
+     animate-bounce phasing, just with real amplitude and squash/stretch
+     added). --basketball-bounce-height is set per size by the component. */
+  --animate-basketball-bounce: basketball-bounce 0.7s infinite;
+  @keyframes basketball-bounce {
+    0%,
+    100% {
+      transform: translateY(calc(var(--basketball-bounce-height, 1.75rem) * -1)) scale(0.96, 1.06);
+      animation-timing-function: cubic-bezier(0.8, 0, 1, 1); /* falling: accelerate under gravity */
+    }
+    50% {
+      transform: translateY(0) scale(1.1, 0.88); /* ground contact: squash */
+      animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* rebound: decelerate back to apex */
+    }
+  }
+
+  /* One full turn per bounce, like a dribbled ball actually rolling off the
+     hand — not spinning independently of the bounce. */
+  --animate-basketball-spin: basketball-spin 0.7s linear infinite;
+  @keyframes basketball-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  --animate-basketball-shadow: basketball-shadow 0.7s ease-in-out infinite;
+  @keyframes basketball-shadow {
+    0%,
+    100% {
+      transform: scaleX(0.5);
+      opacity: 0.15;
+    }
+    50% {
+      transform: scaleX(1);
+      opacity: 0.38;
+    }
+  }
+
+  /* A thin ring that pops out right as the ball touches down, same 50%
+     beat as the shadow, then expands and fades before the next bounce. */
+  --animate-basketball-impact: basketball-impact 0.7s ease-out infinite;
+  @keyframes basketball-impact {
+    0%,
+    44% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(0.6);
+      opacity: 0.6;
+    }
+    80%,
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+
+  /* A soft light band sweeping across a blurred loading section — the
+     blur alone reads as "loading" but is indistinguishable from a frozen
+     page at a glance, so this sweep is the difference between "waiting"
+     and "stuck". Deliberately not tied to the basketball's 0.7s cycle:
+     this can sit on screen far longer (a slow fetch), so a slower, calmer
+     loop reads as patient rather than anxious. */
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  --animate-landing-rise: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  @keyframes landing-rise {
+    from {
+      opacity: 0;
+      transform: translateY(1.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  --animate-landing-scan: landing-scan 3.8s ease-in-out infinite;
+  @keyframes landing-scan {
+    0%,
+    100% {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    18%,
+    72% {
+      opacity: 1;
+    }
+    90% {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+  }
+
+  /* The hero court's comet: one lap of the boundary outline per cycle.
+     dashoffset advances by exactly one dash period — 1940 units, the
+     outline's perimeter (see HeroCourtLines) — so laps join seamlessly.
+     The intermediate stops sit on the court's four corners and every
+     segment runs ease-in-out, so the comet decelerates into each corner
+     and surges down the sidelines instead of grinding along at constant
+     speed. A second, faster opacity pass (hero-court-breathe) shimmers
+     the streak between laps so it never reads as a mechanical loop. */
+  --animate-hero-court-pulse: hero-court-pulse 16s ease-in-out infinite;
+  @keyframes hero-court-pulse {
+    0% {
+      stroke-dashoffset: 0;
+    }
+    24.23% {
+      stroke-dashoffset: -470; /* top-left corner */
+    }
+    50% {
+      stroke-dashoffset: -970; /* top-right corner */
+    }
+    74.23% {
+      stroke-dashoffset: -1440; /* bottom-right corner */
+    }
+    100% {
+      stroke-dashoffset: -1940; /* back to the start */
+    }
+  }
+
+  --animate-hero-court-breathe: hero-court-breathe 4.2s ease-in-out infinite;
+  @keyframes hero-court-breathe {
+    0%,
+    100% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
   /* Condensed display face for hero-scale headlines — regular system fonts
      read as generic at this size; a real display face is what makes a hero
      look designed rather than just "big text". Falls through to a
@@ -66,13 +254,43 @@
 
 body {
   margin: 0;
-  background-color: var(--color-surface-base);
-  color: var(--color-text-primary);
+  /* Every route has moved to the light "locker" palette except the landing
+     page (which paints its own dark bg-landing-ink) — this is what shows
+     during the gap before either mounts (initial HTML paint, a route
+     transition with nothing rendered yet), so it should match the app
+     shell's background (AppLayout), not the old dark app-shell palette. */
+  background-color: var(--color-landing-hero);
+  color: var(--color-landing-ink);
   font-family: var(--font-sans);
 }
 
 #root {
   min-height: 100vh;
+}
+
+@utility leather-texture {
+  background-color: #a4441c;
+  background-image: url("/brand/ball-texture.webp");
+  background-size: cover;
+  background-position: center;
+}
+
+/* Leather fill for the headline's first line: the macro ball texture
+   (public/textures/basketball-leather.webp) is clipped into the glyphs via
+   background-clip: text, so "NBA" is set in basketball skin. Where clipping
+   is unsupported the letters fall back to the plain landing-accent fill. */
+@utility hero-leather-text {
+  color: transparent;
+  background-image: url("/textures/basketball-leather.webp");
+  background-size: cover;
+  background-position: center;
+  background-clip: text;
+  -webkit-background-clip: text;
+
+  @supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+    color: var(--color-landing-accent);
+    background-image: none;
+  }
 }
 
 /* Outlined treatment for the headline's third line. A solid near-black
@@ -87,4 +305,72 @@ body {
   @supports not (-webkit-text-stroke: 1px black) {
     color: var(--color-text-muted);
   }
+}
+
+@utility landing-rise {
+  animation: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-rise-delay-1 {
+  animation: landing-rise 0.8s 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-rise-delay-2 {
+  animation: landing-rise 0.8s 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-rise-delay-3 {
+  animation: landing-rise 0.8s 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility landing-scan {
+  animation: landing-scan 3.8s ease-in-out infinite;
+}
+
+@utility hero-court-pulse {
+  animation:
+    hero-court-pulse 16s ease-in-out infinite,
+    hero-court-breathe 4.2s ease-in-out infinite;
+}
+
+/* Hides the scrollbar on the header's horizontally scrollable link row
+   (mobile) — the row is short and the swipe gesture is discoverable from
+   the partially visible next link, so a visible scrollbar would only add
+   a stripe across the 56px header. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-rise,
+  .landing-rise-delay-1,
+  .landing-rise-delay-2,
+  .landing-rise-delay-3,
+  .landing-scan,
+  .hero-court-pulse {
+    animation: none;
+  }
+
+  /* A frozen comet would read as a stray dash stuck on the court outline —
+     with motion off, the faint static diagram alone is the decoration. */
+  .hero-court-pulse {
+    opacity: 0;
+  }
+}
+
+/* Both reels blacked out: the former layered-gradient "symbiote"/"crystal"
+   materials fought the photography around them. Flat black reads as a quiet
+   divider band. The two classes stay separate so the bands can diverge
+   again later without touching the component. */
+@utility reel-symbiote {
+  background-color: #000;
+  color: var(--color-text-primary);
+}
+
+@utility reel-crystal {
+  background-color: #000;
+  color: var(--color-text-primary);
 }
