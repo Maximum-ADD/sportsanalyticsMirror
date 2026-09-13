@@ -53,6 +53,11 @@ export class ChallengeService {
   // serves the same game again, forever. The user is deadlocked on a card they
   // cannot answer. Real NBA games go to overtime rather than draw, so this is
   // about the two sides agreeing regardless of what the data contains.
+  //
+  // `id` breaks ties on gameDate. Every game on one calendar day shares a
+  // timestamp (see GamesService.getGames), and without a tiebreaker Postgres
+  // may return a different same-day game on each call, so the game a user
+  // was shown could change under them between requests.
   private findNextUncalledGame(userId: string) {
     return this.prisma.game.findFirst({
       where: {
@@ -63,7 +68,7 @@ export class ChallengeService {
         picks: { none: { userId } },
       },
       include: { homeTeam: true, awayTeam: true, prediction: true },
-      orderBy: { gameDate: "desc" },
+      orderBy: [{ gameDate: "desc" }, { id: "asc" }],
     });
   }
 }

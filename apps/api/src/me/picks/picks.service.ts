@@ -1,5 +1,7 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { Prisma, type Game, type GamePick, type GamePrediction, type PickOutcome } from "@prisma/client";
+import { LEADERBOARD_CACHE_NAMESPACE } from "../../analytics/leaderboard.service.js";
+import { ResponseCacheService } from "../../cache/response-cache.service.js";
 import { ApiException } from "../../common/api-exception.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { determineWinningTeamId, gradePickAgainstWinner } from "./pick-grading.js";
@@ -27,10 +29,16 @@ export interface CreatePickInput {
 
 @Injectable()
 export class PicksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
+  ) {}
 
   /**
    * Records one user's call on one game and grades it immediately.
+   *
+   * A successful call clears the cached leaderboard counts, so the caller's
+   * new standing shows on their next read instead of after the cache TTL.
    *
    * @param userId - the signed-in user, from request.user.id.
    * @param input - the validated { gameId, pickedTeamId } body.
@@ -48,6 +56,7 @@ export class PicksService {
     const { decidedGame, winningTeamId } = requireDecidedResult(game);
     const outcome = gradePickAgainstWinner(input.pickedTeamId, winningTeamId);
     const pick = await this.insertPick(userId, input, prediction, outcome);
+    this.cache.invalidate(LEADERBOARD_CACHE_NAMESPACE);
     return toGradedPickResult(pick, decidedGame, winningTeamId);
   }
 

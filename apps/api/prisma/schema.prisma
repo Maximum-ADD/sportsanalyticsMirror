@@ -212,6 +212,9 @@ model Player {
 
   savedComparisonSlots SavedComparisonPlayer[]
   savedLineupSlots     SavedLineupSlot[]
+
+  // Roster lookups (team profile, game detail, suggested players) filter on it.
+  @@index([teamId])
 }
 
 model Game {
@@ -244,6 +247,14 @@ model Game {
   picks        GamePick[]
 
   @@index([seasonType])
+  // Nearly every Game read orders by gameDate (upcoming/completed lists,
+  // recent results, evaluated games), and every per-player stats read orders
+  // its rows by the joined game's date.
+  @@index([gameDate])
+  // A team's schedule and results filter on one side and order by date;
+  // Postgres combines the two indexes for the OR across home and away.
+  @@index([homeTeamId, gameDate])
+  @@index([awayTeamId, gameDate])
 }
 
 // Raw play-by-play events — the source of truth every derived stat traces back to.
@@ -332,6 +343,10 @@ model PlayerGameStat {
   defensiveRating  Float?
 
   @@unique([playerId, gameId])
+  // The unique index above leads with playerId, so it can't serve lookups
+  // from the game side: a game's boxscore, or joins filtered on Game columns
+  // (seasonType, gameDate) that start from the matching games.
+  @@index([gameId])
 }
 
 // Below models support the fantasy-lineup optimizer: a small Python service

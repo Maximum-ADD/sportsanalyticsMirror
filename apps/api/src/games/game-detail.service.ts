@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Player, PlayerGameStat, Team } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { GameWithTeamsAndPrediction } from "./games.service.js";
 import { GamesService } from "./games.service.js";
@@ -96,10 +98,22 @@ function predictPointsFromRecentGames(gameStats: PlayerGameStat[]): number {
 export class GameDetailService {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
   ) {}
 
-  async getGameDetail(gameId: string): Promise<GameDetail | null> {
+  // Cached per game: PlayerCards and the Predictions page request one detail
+  // per upcoming game on every visit, each costing three queries uncached. A
+  // missing game (null) is never cached, so a newly ingested one isn't stuck
+  // behind a 404.
+  getGameDetail(gameId: string): Promise<GameDetail | null> {
+    return this.cache.getOrLoad(buildCacheKey("games:detail", [gameId]), DERIVED_DATA_TTL_MS, () =>
+      this.readGameDetail(gameId)
+    );
+  }
+
+  // The uncached read behind getGameDetail.
+  private async readGameDetail(gameId: string): Promise<GameDetail | null> {
     // GamesService.getGameById already joins the game's prediction in one
     // query (see GamesService.getGames' comment on why) — fetching it
     // again via PredictionsService here would be the exact N+1-flavored

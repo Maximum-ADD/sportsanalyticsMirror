@@ -1,6 +1,7 @@
 import type { Game, GamePrediction, Player, Team } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamsService } from "./teams.service.js";
+import { ResponseCacheService } from "../cache/response-cache.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import type { PlayersService } from "../players/players.service.js";
 import type { StatsService } from "../players/stats.service.js";
@@ -48,7 +49,8 @@ describe("TeamsService.getEloRatings", () => {
     teamsService = new TeamsService(
       prisma as unknown as PrismaService,
       {} as unknown as PlayersService,
-      {} as unknown as StatsService
+      {} as unknown as StatsService,
+      new ResponseCacheService({ enabled: false })
     );
   });
 
@@ -142,7 +144,8 @@ describe("TeamsService.getSuggestedPlayers", () => {
     teamsService = new TeamsService(
       {} as unknown as PrismaService,
       playersService as unknown as PlayersService,
-      statsService as unknown as StatsService
+      statsService as unknown as StatsService,
+      new ResponseCacheService({ enabled: false })
     );
   });
 

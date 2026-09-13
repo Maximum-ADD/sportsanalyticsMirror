@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
+import { ResponseCacheModule } from "./cache/response-cache.module.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
 import { GamesModule } from "./games/games.module.js";
 import { HealthController } from "./health/health.controller.js";
@@ -17,6 +18,7 @@ import { TeamsModule } from "./teams/teams.module.js";
 @Module({
   imports: [
     PrismaModule,
+    ResponseCacheModule,
     PlayersModule,
     TeamsModule,
     GamesModule,

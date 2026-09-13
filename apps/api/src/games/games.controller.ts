@@ -1,7 +1,6 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
-import { PredictionsService } from "../predictions/predictions.service.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
@@ -14,7 +13,6 @@ import { GamesService } from "./games.service.js";
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly predictionsService: PredictionsService,
     private readonly gameDetailService: GameDetailService
   ) {}
 
@@ -54,7 +52,8 @@ export class GamesController {
   // Factors predicted margin for this game, written by apps/predictor's
   // predict_games.py. Two-step 404: game not found vs. game found but not
   // yet predicted are different problems, same pattern as
-  // PlayersController's :id/stats route.
+  // PlayersController's :id/stats route. getGameById already joins the
+  // prediction, so both checks come from one query.
   @Get(":id/prediction")
   @ApiOperation({ summary: "Get Elo win probability and Four Factors prediction" })
   @ApiParam({ name: "id", description: "Game UUID" })
@@ -66,7 +65,7 @@ export class GamesController {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
     }
 
-    const prediction = await this.predictionsService.getPredictionForGame(id);
+    const { prediction } = game;
     if (!prediction) {
       throw new ApiException(
         HttpStatus.NOT_FOUND,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EvaluatedGamesService } from "./evaluated-games.service.js";
+import { ResponseCacheService } from "../cache/response-cache.service.js";
 
 const GAME_DATE = new Date("2026-01-10T00:00:00.000Z");
 const PREDICTION_DATE = new Date("2026-01-09T00:00:00.000Z");
@@ -11,7 +12,7 @@ describe("EvaluatedGamesService", () => {
   beforeEach(() => {
     findMany = vi.fn().mockResolvedValue([]);
     const prisma = { game: { findMany } } as never;
-    evaluatedGamesService = new EvaluatedGamesService(prisma);
+    evaluatedGamesService = new EvaluatedGamesService(prisma, new ResponseCacheService({ enabled: false }));
   });
 
   it("asks the database only for finished games that also carry a prediction", async () => {

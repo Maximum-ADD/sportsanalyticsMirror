@@ -1,5 +1,7 @@
 import type { PlayerGameStat } from "@prisma/client";
 import { describe, expect, it } from "vitest";
+import { ResponseCacheService } from "../../cache/response-cache.service.js";
+import type { GamesService } from "../../games/games.service.js";
 import type { PlayersService } from "../../players/players.service.js";
 import { StatsService } from "../../players/stats.service.js";
 import {
@@ -92,7 +94,11 @@ describe("deriveAveragesFromTotals", () => {
       { points: 24, rebounds: 11, assists: 4 },
       { points: 18, rebounds: 6, assists: 7 },
     ];
-    const statsService = new StatsService({} as unknown as PlayersService);
+    const statsService = new StatsService(
+      {} as unknown as PlayersService,
+      {} as unknown as GamesService,
+      new ResponseCacheService({ enabled: false })
+    );
     const profileAverages = statsService.deriveSeasonAverages(
       gameStats.map((gameStat, index) => createBoxscoreRow(index, gameStat))
     );
