@@ -165,7 +165,7 @@ export function deriveLineupDrift(
 
 function summarizeSavedLineup(
   savedLineup: SavedLineupWithSlots,
-  latestPredictionByPlayerId: ReadonlyMap<string, PlayerPrediction>
+  latestPredictionByPlayerId: ReadonlyMap<string, Pick<PlayerPrediction, "playerId" | "predictedFantasyPoints" | "salary">>
 ): SavedLineupSummary {
   return {
     id: savedLineup.id,
@@ -262,12 +262,14 @@ export class SavedLineupsService {
   }
 
   // Latest-by-asOf prediction per player, the same take-latest rule as
-  // /v1/optimizer/lineup. Ordered desc so the first row seen per player is
-  // the newest; predictions are few enough that fetching all and deduping in
-  // memory is cheaper than one query per player.
+  // /v1/optimizer/lineup — and the same `distinct` trick
+  // OptimizerService.readLatestLineup uses to get Postgres to return one row
+  // per player instead of a table's whole prediction history over the wire.
+  // Also select-narrowed to just the three fields summarizeSavedLineup and
+  // deriveLineupDrift actually read.
   private async findLatestPredictions(
     savedLineups: SavedLineupWithSlots[]
-  ): Promise<Map<string, PlayerPrediction>> {
+  ): Promise<Map<string, Pick<PlayerPrediction, "playerId" | "predictedFantasyPoints" | "salary">>> {
     const playerIds = [...new Set(savedLineups.flatMap((savedLineup) => savedLineup.slots.map((slot) => slot.playerId)))];
     if (playerIds.length === 0) {
       return new Map();
@@ -275,9 +277,11 @@ export class SavedLineupsService {
 
     const predictions = await this.prisma.playerPrediction.findMany({
       where: { playerId: { in: playerIds } },
+      select: { playerId: true, predictedFantasyPoints: true, salary: true },
       orderBy: { asOf: "desc" },
+      distinct: ["playerId"],
     });
-    const latestByPlayerId = new Map<string, PlayerPrediction>();
+    const latestByPlayerId = new Map<string, Pick<PlayerPrediction, "playerId" | "predictedFantasyPoints" | "salary">>();
     for (const prediction of predictions) {
       if (!latestByPlayerId.has(prediction.playerId)) {
         latestByPlayerId.set(prediction.playerId, prediction);

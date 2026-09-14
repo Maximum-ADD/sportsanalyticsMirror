@@ -130,7 +130,8 @@ describe("TeamsService.getTeamRecords", () => {
     teamsService = new TeamsService(
       prisma as unknown as PrismaService,
       {} as unknown as PlayersService,
-      {} as unknown as StatsService
+      {} as unknown as StatsService,
+      new ResponseCacheService({ enabled: false })
     );
     prisma.team.findMany.mockResolvedValue([{ id: LAKERS.id }, { id: CELTICS.id }]);
   });
