@@ -2,12 +2,17 @@ import { Injectable, Logger } from "@nestjs/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 
-// How long a signed avatar URL stays valid. Generated fresh on every
-// GET /v1/me (and after a successful upload), so this only bounds how long
-// a client-cached response's <img src> keeps working before the next
-// refetch — it does not need to be long-lived.
+// How long a signed avatar URL stays valid. Reused (see createSignedAvatarUrl
+// below) rather than signed fresh on every GET /v1/me, so this bounds both
+// how long a client-cached <img src> keeps working before the next refetch,
+// and how long this class's own cache may serve the same signed URL.
 const SIGNED_URL_EXPIRY_SECONDS = 60 * 60;
+
+// Comfortably under SIGNED_URL_EXPIRY_SECONDS so a cached entry is never
+// handed out past the point Supabase itself would reject it.
+const SIGNED_URL_CACHE_TTL_MS = 55 * 60 * 1000;
 
 const MIME_TYPE_TO_EXTENSION: Record<string, string> = {
   "image/png": "png",
@@ -33,7 +38,7 @@ export class AvatarStorageService {
   private readonly client: SupabaseClient;
   private readonly bucket: string;
 
-  constructor() {
+  constructor(private readonly cache: ResponseCacheService) {
     // Constructed eagerly (like auth.config.ts's own top-level `auth`
     // singleton) rather than lazily on first use — a missing/malformed
     // SUPABASE_URL should fail loudly at boot, not on a user's first avatar
@@ -84,7 +89,20 @@ export class AvatarStorageService {
     }
   }
 
-  async createSignedAvatarUrl(objectPath: string): Promise<string | null> {
+  // Cached per object path — GET /v1/me hits this on essentially every
+  // authenticated request, and a fresh signed URL is otherwise a Supabase
+  // Storage API call every single time even though the URL it returns stays
+  // valid for a full hour. A re-upload changes the object path (see
+  // objectPathFor's uuid), so the old path's cache entry is simply never
+  // read again rather than needing explicit invalidation.
+  createSignedAvatarUrl(objectPath: string): Promise<string | null> {
+    return this.cache.getOrLoad(buildCacheKey("avatar:signed-url", [objectPath]), SIGNED_URL_CACHE_TTL_MS, () =>
+      this.readSignedAvatarUrl(objectPath)
+    );
+  }
+
+  // The uncached read behind createSignedAvatarUrl.
+  private async readSignedAvatarUrl(objectPath: string): Promise<string | null> {
     const { data, error } = await this.client.storage
       .from(this.bucket)
       .createSignedUrl(objectPath, SIGNED_URL_EXPIRY_SECONDS);
