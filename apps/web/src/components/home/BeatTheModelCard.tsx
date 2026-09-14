@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
 import { ApiError } from "@/lib/apiClient";
@@ -52,9 +53,22 @@ function Shell({ kicker, badge, children }: { kicker: string; badge?: string; ch
  * the cached challenge is reset, so the next game starts loading while the
  * graded result is on screen, and no stale copy of the called game is left in
  * the cache for "Next call" or a later visit to show.
+ *
+ * The server's filter is the real guarantee, but the card no longer trusts a
+ * single response for it: every game graded here is remembered, and one that
+ * comes back anyway is treated as "nothing new" rather than re-asked. When
+ * there is nothing left, the card waits for new games and can check again.
  */
 export function BeatTheModelCard() {
   const queryClient = useQueryClient();
+
+  // Every game this card has graded, whether called here or (a 409) already
+  // called elsewhere. Held for the life of the card.
+  const [calledGameIds, setCalledGameIds] = useState<ReadonlySet<string>>(() => new Set());
+
+  function rememberCalled(gameId: string) {
+    setCalledGameIds((previous) => new Set(previous).add(gameId));
+  }
 
   const challengeQuery = useQuery({
     queryKey: CHALLENGE_QUERY_KEY,
@@ -63,6 +77,9 @@ export function BeatTheModelCard() {
     // the app-wide staleTime and always checks with the server on mount.
     staleTime: 0,
     refetchOnMount: "always",
+    // Overrides the app-wide off switch: a user waiting for new games who
+    // comes back to the tab should see them without reloading.
+    refetchOnWindowFocus: true,
     // A 401 and a 404 are both terminal answers, not transient faults —
     // retrying either just delays the state the user should already be seeing.
     retry: (failureCount, error) =>
@@ -82,15 +99,17 @@ export function BeatTheModelCard() {
     // snapshot rather than from the challenge query, which is already moving
     // on to the next game.
     mutationFn: ({ game, teamId }: { game: ChallengeGame; teamId: string }) => submitPick(game.gameId, teamId),
-    onSuccess: () => {
+    onSuccess: (_graded, { game }) => {
+      rememberCalled(game.gameId);
       loadNextChallenge();
       // The record feeds the leaderboard and the user's own head-to-head, so
       // both are stale the moment a call lands.
       queryClient.invalidateQueries({ queryKey: ["pickRecord"] });
       queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
     },
-    onError: (error) => {
+    onError: (error, { game }) => {
       if (error instanceof ApiError && error.status === ALREADY_CALLED_STATUS) {
+        rememberCalled(game.gameId);
         pickMutation.reset();
         loadNextChallenge();
       }
@@ -108,12 +127,16 @@ export function BeatTheModelCard() {
    *
    * The next game has been loading since the call landed (see onSuccess), so
    * this usually swaps it in instantly. If it is still in flight the card
-   * shows its loading state, never the game just called. The server can't
-   * return that game again: the pick now exists as a GamePick row, and
-   * `picks: { none: { userId } }` excludes it.
+   * shows its loading state, never the game just called.
+   *
+   * It also asks the server again, joining that load rather than restarting
+   * it if it hasn't finished. Before, this only reset local state, so the one
+   * post-call response was final: if it handed back the game just called,
+   * every press of "Next call" showed that game again with no request sent.
    */
   function advanceToNextCall() {
     pickMutation.reset();
+    void queryClient.refetchQueries({ queryKey: CHALLENGE_QUERY_KEY }, { cancelRefetch: false });
   }
 
   // Checked before the challenge query's own states: the graded result is
@@ -170,13 +193,32 @@ export function BeatTheModelCard() {
     );
   }
 
-  if (error instanceof ApiError && error.status === NOTHING_LEFT_STATUS) {
+  // A game already graded here is never a question again. If a response
+  // hands one back, it means nothing new is available yet: show the spinner
+  // while the card is still asking, and the waiting state once it has asked.
+  const servedCalledGame = challengeQuery.data !== undefined && calledGameIds.has(challengeQuery.data.gameId);
+  if (servedCalledGame && challengeQuery.isFetching) {
     return (
-      <Shell kicker="Beat the model" badge="All called">
-        <p className="max-w-[62ch] text-[12.5px] text-locker-ink-muted">
-          You have called every game we hold a prediction for. Ingest a newer slate, or run the predictor over
-          more games, and this fills back up.
-        </p>
+      <Shell kicker="Beat the model">
+        <div className="flex min-h-48 items-center justify-center">
+          <BasketballSpinner label="Finding a game to call" />
+        </div>
+      </Shell>
+    );
+  }
+
+  if ((error instanceof ApiError && error.status === NOTHING_LEFT_STATUS) || servedCalledGame) {
+    return (
+      <Shell kicker="Beat the model" badge="Waiting">
+        <p className="font-display text-xl text-landing-ink uppercase">Waiting For New Games</p>
+        <button
+          type="button"
+          onClick={() => challengeQuery.refetch()}
+          disabled={challengeQuery.isFetching}
+          className="mt-3 text-[12.5px] text-locker-leather underline underline-offset-[3px] disabled:opacity-60"
+        >
+          {challengeQuery.isFetching ? "Checking…" : "Check again"}
+        </button>
         {recordQuery.data && <RecordLine record={recordQuery.data} />}
       </Shell>
     );

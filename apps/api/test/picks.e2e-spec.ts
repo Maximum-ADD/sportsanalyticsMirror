@@ -182,6 +182,39 @@ describe("Picks API", () => {
       expect(response.body.error.code).toBe("NOT_FOUND");
     });
 
+    // The one-game test above only proves the called game is excluded; this is
+    // the "Next call" path itself — the following request serves a different game.
+    it("serves the next uncalled game once the newest one is called", async () => {
+      const { game: newestGame, homeTeam, awayTeam } = await seedChallengeableGame();
+      const olderGame = await createGame(awayTeam.id, homeTeam.id, { gameDate: new Date("2026-01-14") });
+      await createPrediction(olderGame.id);
+      await request(app.getHttpServer())
+        .post("/v1/me/picks")
+        .send({ gameId: newestGame.id, pickedTeamId: homeTeam.id })
+        .expect(201);
+
+      const response = await request(app.getHttpServer()).get("/v1/me/challenge/next");
+
+      expect(response.status).toBe(200);
+      expect(response.body.gameId).toBe(olderGame.id);
+    });
+
+    it.each([
+      ["a game to call", true],
+      ["nothing left to call", false],
+    ])("forbids caching the response when there is %s", async (_case, hasGame) => {
+      if (hasGame) {
+        await seedChallengeableGame();
+      } else {
+        await createSignedInUser();
+      }
+
+      const response = await request(app.getHttpServer()).get("/v1/me/challenge/next");
+
+      expect(response.status).toBe(hasGame ? 200 : 404);
+      expect(response.headers["cache-control"]).toBe("no-store");
+    });
+
     it("skips a completed game the predictor has no opinion on", async () => {
       await createSignedInUser();
       const homeTeam = await createTeam({ nbaTeamId: 1 });
