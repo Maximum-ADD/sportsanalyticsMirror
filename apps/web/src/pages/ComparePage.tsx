@@ -25,8 +25,11 @@ const MIN_PLAYERS_FOR_COMPARISON = 2;
 // Width of the left-hand column holding the row names and the "add player"
 // button. Shared by the tile header and every stat group so all of them sit
 // on one column grid; clamped rather than fixed so narrow screens give the
-// player columns their space back without a media query.
-const LABEL_COLUMN_WIDTH = "clamp(5.5rem, 16vw, 11rem)";
+// player columns their space back without a media query. The floor is
+// deliberately low: at four players on a 360px screen every rem this column
+// keeps is a rem the player columns do not get, and the row labels are
+// short enough to wrap to two lines without losing their sense.
+const LABEL_COLUMN_WIDTH = "clamp(4.25rem, 16vw, 11rem)";
 
 const POSITION_NAMES: Record<string, string> = {
   G: "Guard",
@@ -366,7 +369,7 @@ function PlaceholderHeadshot() {
 
 function PlayerTile({ player, onRemove }: { player: Player; onRemove: () => void }) {
   return (
-    <div className="relative flex flex-col items-center gap-2 border border-landing-light bg-locker-surface px-4 py-5 text-center">
+    <div className="relative flex flex-col items-center gap-2 border border-landing-light bg-locker-surface px-1.5 py-5 text-center sm:px-4">
       <button
         type="button"
         aria-label={`Remove ${player.firstName} ${player.lastName} from the comparison`}
@@ -376,7 +379,7 @@ function PlayerTile({ player, onRemove }: { player: Player; onRemove: () => void
         ✕
       </button>
       <PlayerHeadshot player={player} size="lg" />
-      <div className="font-display text-base tracking-[0.01em] text-landing-ink uppercase">
+      <div className="font-display text-[13px] tracking-[0.01em] text-landing-ink uppercase sm:text-base">
         {player.firstName} {player.lastName}
       </div>
       {/* Position lives here and nowhere else; the team is the General
@@ -504,11 +507,11 @@ export function ComparePage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         {/* Left-aligned like every other page's header band (Teams,
             Predictions) rather than centred over the player columns. */}
         <Reveal>
-          <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+          <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
             <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">
               Player comparison
             </h1>
@@ -539,7 +542,7 @@ export function ComparePage() {
                 order), so the stacking context that actually matters here
                 — this Reveal wrapper — is the one that needs the z-index. */}
             <Reveal className="relative z-20">
-              <div className="grid items-center gap-x-3" style={columns}>
+              <div className="grid items-center gap-x-1.5 sm:gap-x-3" style={columns}>
                 <div className="pr-3">
                   {canAddSlot && (
                     <button
@@ -598,7 +601,7 @@ export function ComparePage() {
                     {STAT_GROUPS.map((group) => (
                       <section
                         key={group.title}
-                        className="mt-6 grid items-center gap-x-3 gap-y-1.5 border border-landing-light bg-locker-surface p-4 first:mt-0"
+                        className="mt-6 grid items-center gap-x-1.5 gap-y-1.5 border border-landing-light bg-locker-surface p-2.5 first:mt-0 sm:gap-x-3 sm:p-4"
                         style={columns}
                       >
                         <div style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
@@ -615,13 +618,16 @@ export function ComparePage() {
                           const barWidths = barWidthPercentages(entries, row);
                           return (
                             <div key={row.label} className="contents">
-                              <div className="pr-3 text-left font-mono text-[10px] tracking-[0.1em] text-locker-ink-muted uppercase">
+                              <div className="pr-1.5 text-left font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase sm:pr-3 sm:text-[10px] sm:tracking-[0.1em]">
                                 {row.label}
                               </div>
                               {slots.map((entry, index) => {
                                 const barWidth = index < barWidths.length ? barWidths[index] : null;
                                 return entry ? (
-                                  <div key={entry.player.id} className="relative bg-landing-hero px-3 py-2 text-center">
+                                  <div
+                                    key={entry.player.id}
+                                    className="relative bg-landing-hero px-1 py-2 text-center sm:px-3"
+                                  >
                                     {barWidth !== null && (
                                       <span
                                         aria-hidden
@@ -631,7 +637,7 @@ export function ComparePage() {
                                     )}
                                     <span
                                       className={cn(
-                                        "relative inline-block px-2.5 py-0.5 text-[13px] text-landing-ink tabular-nums",
+                                        "relative inline-block px-1 py-0.5 text-[11.5px] text-landing-ink tabular-nums sm:px-2.5 sm:text-[13px]",
                                         bestIndexes.has(index) &&
                                           "bg-locker-leather/15 font-semibold text-locker-leather"
                                       )}
@@ -645,7 +651,7 @@ export function ComparePage() {
                                   // in the table.
                                   <div
                                     key={`empty-${index}`}
-                                    className="bg-landing-hero px-3 py-2 text-center text-[13px] text-locker-ink-muted"
+                                    className="bg-landing-hero px-1 py-2 text-center text-[11.5px] text-locker-ink-muted sm:px-3 sm:text-[13px]"
                                   >
                                     {NO_VALUE}
                                   </div>
@@ -676,7 +682,7 @@ export function ComparePage() {
 
         {entries.length > 0 && (
           <Reveal>
-            <div className="mt-6 border border-landing-light bg-locker-surface p-6">
+            <div className="mt-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
               <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">Glossary</h2>
               <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
                 {GLOSSARY_TERMS.map(({ term, explain }) => (

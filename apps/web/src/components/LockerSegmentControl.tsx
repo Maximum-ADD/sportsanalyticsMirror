@@ -37,7 +37,7 @@ export function LockerSegmentControl<TSelection extends SeasonSegmentSelection>(
             role="radio"
             aria-checked={isSelected}
             onClick={() => onChange(option)}
-            className={`px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent/50 ${
+            className={`min-h-9 px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent/50 sm:min-h-0 sm:px-2.5 ${
               isSelected
                 ? "bg-locker-leather text-white"
                 : "text-locker-ink-muted hover:text-landing-ink"

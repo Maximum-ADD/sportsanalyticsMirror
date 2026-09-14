@@ -25,7 +25,7 @@ const PERCENT = (value: number) => `${Math.round(value * 100)}%`;
 
 function Shell({ kicker, badge, children }: { kicker: string; badge?: string; children: React.ReactNode }) {
   return (
-    <Card className="rounded-none border-landing-light bg-locker-surface p-6 shadow-[0_10px_26px_rgba(0,0,0,0.16)]">
+    <Card className="rounded-none border-landing-light bg-locker-surface p-4 sm:p-6 shadow-[0_10px_26px_rgba(0,0,0,0.16)]">
       <div className="mb-2 flex items-center gap-3">
         <p className="font-mono text-[10px] tracking-[0.2em] text-locker-ink-muted uppercase">{kicker}</p>
         {badge && (

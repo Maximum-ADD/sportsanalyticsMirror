@@ -23,7 +23,7 @@ export function Pagination({ page, pageSize, total, onPageChange, tone = "dark" 
   }
 
   return (
-    <div className="mt-4 flex items-center justify-between text-sm text-text-secondary">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-text-secondary">
       <span>
         Page {page} of {totalPages} ({total} total)
       </span>
@@ -74,8 +74,11 @@ function buildPageItems(currentPage: number, totalPages: number): (number | "ell
   return items;
 }
 
+// The min-w/min-h pair below sm is what makes a page number tappable: at
+// the desktop density a single-digit button is about 28px square, under
+// every touch-target guideline and easy to miss between its neighbours.
 const PAGER_BUTTON_CLASS =
-  "border border-landing-light bg-locker-surface px-3 py-1.5 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-40";
+  "min-h-10 min-w-10 border border-landing-light bg-locker-surface px-2.5 py-1.5 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:min-w-0 sm:px-3";
 
 function LockerPagination({ page, pageSize, total, totalPages, onPageChange }: LockerPaginationProps) {
   const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -86,7 +89,10 @@ function LockerPagination({ page, pageSize, total, totalPages, onPageChange }: L
       <span className="font-mono text-[10px] tracking-[0.12em] text-locker-ink-muted uppercase">
         Showing {rangeStart}–{rangeEnd} of {total}
       </span>
-      <nav className="flex items-center gap-1" aria-label="Pagination">
+      {/* Wraps: a full window (Prev, first, ellipsis, three pages, ellipsis,
+          last, Next) is wider than a phone, and without this the row pushes
+          the page into a horizontal scroll. */}
+      <nav className="flex flex-wrap items-center gap-1" aria-label="Pagination">
         <button
           type="button"
           disabled={page <= 1}

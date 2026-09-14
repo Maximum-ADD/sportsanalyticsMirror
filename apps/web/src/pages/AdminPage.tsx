@@ -26,7 +26,7 @@ const SEARCH_DEBOUNCE_IN_MILLISECONDS = 300;
 const INPUT_CLASS =
   "border border-landing-light bg-landing-hero px-3 py-2 text-[13px] text-landing-ink placeholder:text-locker-ink-muted focus:border-locker-leather focus:outline-none";
 const BUTTON_CLASS =
-  "border border-landing-light bg-locker-surface px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-40";
+  "min-h-10 border border-landing-light bg-locker-surface px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0";
 const PANEL_CLASS = "border border-landing-light bg-locker-surface p-4";
 const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
 
@@ -42,8 +42,8 @@ export function AdminPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
-        <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
           <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Admin</h1>
           <p className="mt-2 text-[12.5px] text-locker-ink-muted">
             Edit imported team and player data, and manage user accounts.
@@ -60,7 +60,7 @@ export function AdminPage() {
                 role="radio"
                 aria-checked={tab === section.value}
                 onClick={() => setTab(section.value)}
-                className={`px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase transition-colors ${
+                className={`min-h-9 px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase transition-colors sm:min-h-0 sm:px-2.5 ${
                   tab === section.value ? "bg-locker-leather text-white" : "text-locker-ink-muted hover:text-landing-ink"
                 }`}
               >
@@ -154,13 +154,23 @@ function AdminTeamsSection() {
           <BasketballSpinner size="lg" label="Loading teams" />
         </div>
       ) : (
-        <div className="overflow-hidden border border-landing-light bg-locker-surface">
+        <div className="overflow-x-auto border border-landing-light bg-locker-surface">
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-landing-light bg-landing-hero">
-                {["Team", "Abbr", "Conference", "Division", ""].map((header) => (
-                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
-                    {header}
+                {/* Conference and division are the columns an admin scans
+                    past on a phone — the edit control and the team's identity
+                    are what the row is for. Each column's visibility is
+                    declared once and applied to its body cell to match. */}
+                {[
+                  { label: "Team", className: "" },
+                  { label: "Abbr", className: "" },
+                  { label: "Conference", className: "hidden md:table-cell" },
+                  { label: "Division", className: "hidden lg:table-cell" },
+                  { label: "", className: "" },
+                ].map((column) => (
+                  <th key={column.label} className={`px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase ${column.className}`}>
+                    {column.label}
                   </th>
                 ))}
               </tr>
@@ -182,8 +192,12 @@ function AdminTeamsSection() {
                       </span>
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{team.abbreviation}</td>
-                    <td className="px-3 py-2.5 text-[12.5px] text-locker-ink-muted">{team.conference}</td>
-                    <td className="px-3 py-2.5 text-[12.5px] text-locker-ink-muted">{team.division}</td>
+                    <td className="hidden px-3 py-2.5 text-[12.5px] text-locker-ink-muted md:table-cell">
+                      {team.conference}
+                    </td>
+                    <td className="hidden px-3 py-2.5 text-[12.5px] text-locker-ink-muted lg:table-cell">
+                      {team.division}
+                    </td>
                     <td className="px-3 py-2.5 text-right">
                       <button type="button" className={BUTTON_CLASS} onClick={() => setEditingTeam(team)}>
                         Edit
@@ -343,13 +357,19 @@ function AdminPlayersSection() {
           <BasketballSpinner size="lg" label="Loading players" />
         </div>
       ) : (
-        <div className="overflow-hidden border border-landing-light bg-locker-surface">
+        <div className="overflow-x-auto border border-landing-light bg-locker-surface">
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-landing-light bg-landing-hero">
-                {["Player", "Team", "Pos", "#", ""].map((header) => (
-                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
-                    {header}
+                {[
+                  { label: "Player", className: "" },
+                  { label: "Team", className: "" },
+                  { label: "Pos", className: "hidden md:table-cell" },
+                  { label: "#", className: "hidden md:table-cell" },
+                  { label: "", className: "" },
+                ].map((column) => (
+                  <th key={column.label} className={`px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase ${column.className}`}>
+                    {column.label}
                   </th>
                 ))}
               </tr>
@@ -370,8 +390,12 @@ function AdminPlayersSection() {
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted uppercase">
                       {player.team?.abbreviation ?? "—"}
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{player.position}</td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{player.jerseyNumber ?? "—"}</td>
+                    <td className="hidden px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted md:table-cell">
+                      {player.position}
+                    </td>
+                    <td className="hidden px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted md:table-cell">
+                      {player.jerseyNumber ?? "—"}
+                    </td>
                     <td className="px-3 py-2.5 text-right">
                       <button type="button" className={BUTTON_CLASS} onClick={() => setEditingPlayer(player)}>
                         Edit
@@ -539,13 +563,18 @@ function AdminUsersSection() {
           <BasketballSpinner size="lg" label="Loading users" />
         </div>
       ) : (
-        <div className="overflow-hidden border border-landing-light bg-locker-surface">
+        <div className="overflow-x-auto border border-landing-light bg-locker-surface">
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-landing-light bg-landing-hero">
-                {["User", "Role", "Joined", ""].map((header) => (
-                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
-                    {header}
+                {[
+                  { label: "User", className: "" },
+                  { label: "Role", className: "" },
+                  { label: "Joined", className: "hidden md:table-cell" },
+                  { label: "", className: "" },
+                ].map((column) => (
+                  <th key={column.label} className={`px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase ${column.className}`}>
+                    {column.label}
                   </th>
                 ))}
               </tr>
@@ -637,7 +666,7 @@ function UserRow({
         <div className="text-[11px] text-locker-ink-muted">{user.email}</div>
       </td>
       <td className="px-3 py-2.5 font-mono text-[10.5px] tracking-[0.08em] text-locker-ink-muted uppercase">{user.role}</td>
-      <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
+      <td className="hidden px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted md:table-cell">
         {new Date(user.createdAt).toLocaleDateString()}
       </td>
       <td className="px-3 py-2.5 text-right">

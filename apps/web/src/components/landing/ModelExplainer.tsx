@@ -78,7 +78,7 @@ interface ModelCardProps {
 
 function EloCard({ isInView }: ModelCardProps) {
   return (
-    <div className="border border-white/15 bg-landing-ink/70 p-6 lg:p-8">
+    <div className="border border-white/15 bg-landing-ink/70 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-2.5">
         <span aria-hidden className="size-2.5 rounded-full bg-locker-model" />
         <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Win probability — Elo</h3>
@@ -140,7 +140,7 @@ function EloCard({ isInView }: ModelCardProps) {
 
 function FourFactorsCard({ isInView }: ModelCardProps) {
   return (
-    <div className="border border-white/15 bg-landing-ink/70 p-6 lg:p-8">
+    <div className="border border-white/15 bg-landing-ink/70 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-2.5">
         <span aria-hidden className="size-2.5 rounded-full bg-locker-leather" />
         <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Predicted margin — Four Factors</h3>
@@ -193,7 +193,7 @@ function WorkedExampleCard({ isInView }: ModelCardProps) {
   const underdogPercentage = useCountUp(EXAMPLE_AWAY_WIN_PERCENTAGE, isInView);
 
   return (
-    <div className="border border-white/15 bg-landing-ink/70 p-6 lg:p-10">
+    <div className="border border-white/15 bg-landing-ink/70 p-4 sm:p-6 lg:p-10">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">See it work</h3>
         <p className="font-mono text-[10px] tracking-[0.14em] text-white/60 uppercase">
@@ -201,8 +201,8 @@ function WorkedExampleCard({ isInView }: ModelCardProps) {
         </p>
       </div>
 
-      <div className="mt-7 flex items-center gap-5">
-        <p className="w-20 shrink-0 text-right font-display text-4xl leading-none text-landing-accent tabular-nums">
+      <div className="mt-7 flex items-center gap-2.5 sm:gap-5">
+        <p className="w-14 shrink-0 text-right font-display text-3xl leading-none text-landing-accent tabular-nums sm:w-20 sm:text-4xl">
           <span>{favouritePercentage}</span>
           <span className="text-xl">%</span>
         </p>
@@ -216,7 +216,7 @@ function WorkedExampleCard({ isInView }: ModelCardProps) {
             style={{ width: isInView ? `${EXAMPLE_HOME_WIN_PERCENTAGE}%` : "0%" }}
           />
         </div>
-        <p className="w-20 shrink-0 font-display text-4xl leading-none text-white tabular-nums">
+        <p className="w-14 shrink-0 font-display text-3xl leading-none text-white tabular-nums sm:w-20 sm:text-4xl">
           <span>{underdogPercentage}</span>
           <span className="text-xl">%</span>
         </p>
@@ -255,7 +255,7 @@ export function ModelExplainer() {
           keeps its flat-break relationship with the black reels above and
           below, while the middle shows the most photo. */}
       <div aria-hidden className="absolute inset-0 bg-linear-to-b from-landing-ink via-landing-ink/85 to-landing-ink" />
-      <div className="mx-auto w-full max-w-[1500px] px-6 py-20 lg:px-14 lg:py-28">
+      <div className="mx-auto w-full max-w-[1500px] px-4 py-20 sm:px-6 lg:px-14 lg:py-28">
         <div className={buildRiseClasses(isInView)}>
           <p className="font-mono text-xs tracking-[0.3em] text-white/60 uppercase">Inside the model</p>
           <h2

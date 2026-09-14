@@ -18,8 +18,12 @@ export type PlayerSortOrder = "asc" | "desc";
 // undefined in the change handler.
 const MIN_GAMES_OPTIONS = [5, 10, 15, 20];
 
+// min-h-10 below sm: at the bar's desktop density these chips stand about
+// 28px tall, which is a comfortable click and a coin-flip tap. The height
+// only grows on phones, so the dense bar is unchanged where a pointer is
+// doing the work.
 const FILTER_CHIP_CLASS =
-  "border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none";
+  "min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none sm:min-h-0";
 
 interface PlayersFilterBarProps {
   teams: Team[];
@@ -65,12 +69,15 @@ export function PlayersFilterBar({
 }: PlayersFilterBarProps) {
   return (
     <div className="mb-5 flex flex-wrap items-center gap-2.5">
-      <div className="flex items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5">
-        <Search aria-hidden className="size-3.5 text-locker-ink-muted" />
+      {/* Full width on phones: a fixed 176px field plus its chrome leaves
+          almost nothing beside it at 360px, so it would sit on its own row
+          anyway — this way it uses the row it takes. */}
+      <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 sm:min-h-0 sm:w-auto">
+        <Search aria-hidden className="size-3.5 shrink-0 text-locker-ink-muted" />
         <input
           type="search"
           aria-label="Search players"
-          className="w-44 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none"
+          className="w-full min-w-0 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-44"
           placeholder="Search players"
           value={searchTerm}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -152,7 +159,7 @@ export function PlayersFilterBar({
           aria-pressed={followedOnly}
           aria-label="Show followed players only"
           onClick={() => onFollowedOnlyChange?.(!followedOnly)}
-          className={`border px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase transition-colors focus:outline-none ${
+          className={`min-h-10 border px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] uppercase transition-colors focus:outline-none sm:min-h-0 ${
             followedOnly
               ? "border-locker-leather bg-locker-leather text-white"
               : "border-landing-light bg-landing-hero text-landing-ink hover:border-locker-leather"

@@ -28,8 +28,10 @@ type SortKey = "elo" | "winPct" | "name";
 const CONFERENCES = ["East", "West"];
 const DIVISIONS = ["Atlantic", "Central", "Southeast", "Northwest", "Pacific", "Southwest"];
 
+// min-h-10 below sm: at the desktop density these chips are about 28px
+// tall, a comfortable click and a coin-flip tap.
 const FILTER_CHIP_CLASS =
-  "border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none";
+  "min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none sm:min-h-0";
 
 function matchesSearch(team: Team, search: string): boolean {
   if (!search) return true;
@@ -203,9 +205,9 @@ export function TeamsListPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         <Reveal>
-          <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+          <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Teams</h1>
@@ -225,12 +227,15 @@ export function TeamsListPage() {
 
         <Reveal>
           <div className="mb-5 flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5">
-              <Search aria-hidden className="size-3.5 text-locker-ink-muted" />
+            {/* Full width on phones — a fixed field plus its chrome leaves
+                nothing beside it at 360px, so it would take its own row
+                regardless. */}
+            <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 sm:min-h-0 sm:w-auto">
+              <Search aria-hidden className="size-3.5 shrink-0 text-locker-ink-muted" />
               <input
                 type="search"
                 aria-label="Search teams"
-                className="w-44 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-44"
                 placeholder="Search teams"
                 value={searchTerm}
                 onChange={(event) => changeSearch(event.target.value)}

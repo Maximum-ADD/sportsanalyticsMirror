@@ -53,7 +53,7 @@ function LedgerFigure({ label, value }: { label: string; value: string }) {
 
 function LedgerShell({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="rounded-none border-landing-light bg-locker-surface p-6">
+    <Card className="rounded-none border-landing-light bg-locker-surface p-4 sm:p-6">
       <div className="mb-3 flex items-center gap-3.5">
         <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
           Model accuracy ledger

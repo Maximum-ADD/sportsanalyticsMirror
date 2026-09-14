@@ -149,7 +149,7 @@ export function PlayerSearchCombobox({
           onClick={() => selectPlayer(player)}
         >
           <PlayerHeadshot player={player} size="sm" />
-          <span className="flex-1">
+          <span className="min-w-0 flex-1 truncate">
             {player.firstName} {player.lastName}
           </span>
           {player.team && <TeamBadge team={player.team} size="sm" />}
