@@ -74,7 +74,7 @@ const MOST_RECENT_GAMES_CONSIDERED = 10;
 const TOP_SCORERS_PER_TEAM_COUNT = 5;
 const PREDICTED_POINTS_DECIMAL_PLACES = 1;
 
-function predictPointsFromRecentGames(gameStats: PlayerGameStat[]): number {
+function predictPointsFromRecentGames(gameStats: Pick<PlayerGameStat, "points">[]): number {
   // gameStats arrives newest-first (see fetchRosterGameStats); reverse so
   // the decay weighting below runs oldest-to-newest, matching predict.py's
   // own convention of weighting backward from the most recent game.
@@ -145,14 +145,20 @@ export class GameDetailService {
     // "<=", so neither can inform the other. Same principle
     // apps/predictor/elo.py and four_factors.py apply via their
     // chronological forward-pass/pre-game-snapshot construction.
+    // Only playerId (to group by) and points (all predictPointsFromRecentGames
+    // reads) travel over the wire — the other ~20 boxscore columns on this
+    // table would otherwise be pulled for every roster player's entire prior
+    // game history for nothing, which is real money against Supabase's
+    // egress-metered free tier.
     const allPriorGameStats = await this.prisma.playerGameStat.findMany({
       where: {
         playerId: { in: rosterPlayers.map((player) => player.id) },
         game: { gameDate: { lt: game.gameDate }, seasonType: MODELLED_SEASON_TYPE },
       },
+      select: { playerId: true, points: true },
       orderBy: { game: { gameDate: "desc" } },
     });
-    const priorGameStatsByPlayerId = new Map<string, PlayerGameStat[]>();
+    const priorGameStatsByPlayerId = new Map<string, Pick<PlayerGameStat, "points">[]>();
     for (const stat of allPriorGameStats) {
       const existing = priorGameStatsByPlayerId.get(stat.playerId);
       if (existing) existing.push(stat);

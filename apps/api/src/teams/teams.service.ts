@@ -172,15 +172,23 @@ export class TeamsService {
 
   // Every team's win/loss record and recent form, derived from completed
   // games (both scores present) the same way getEloRatings derives its
-  // ratings from Game rows rather than a stored column — nothing here is
-  // pre-computed or cached, so a newly ingested result is reflected
-  // immediately.
+  // ratings from Game rows rather than a stored column.
+  //
+  // Cached, like getEloRatings right above: this scans every completed game
+  // across the league on a miss, and a batch job is the only thing that ever
+  // changes the answer, so there is nothing to gain by re-scanning it on
+  // every request.
+  getTeamRecords(): Promise<TeamRecord[]> {
+    return this.cache.getOrLoad(buildCacheKey("teams:records"), DERIVED_DATA_TTL_MS, () => this.readTeamRecords());
+  }
+
+  // The uncached read behind getTeamRecords.
   //
   // One query for every completed game across the league, newest first, then
   // reduced to one record per team in application code — a team can appear
   // as either homeTeamId or awayTeamId, so there is no single WHERE clause
   // that fetches "this team's games" without fetching every team's.
-  async getTeamRecords(): Promise<TeamRecord[]> {
+  private async readTeamRecords(): Promise<TeamRecord[]> {
     const teams = await this.prisma.team.findMany({ select: { id: true } });
     const games = await this.prisma.game.findMany({
       where: { homeScore: { not: null }, awayScore: { not: null } },
