@@ -18,16 +18,19 @@ Two factors from the original four are deliberately left out:
     teams' offensive factors are being differenced (home minus away), the
     defensive side is redundant, not a fourth independent signal.
 
-Why a regression/heuristic split at all: with this project's seed data (12
-games total, 4 teams, ~6 games/team), fitting a multi-feature OLS regression
-against 12 point-margin observations is not honest statistics — every real
-Four Factors study assumes a full season per team. Below
-MINIMUM_GAMES_FOR_REGRESSION, this module falls back to fixed,
-literature-informed weights instead of presenting an overfit regression as
-if it were reliable. This is the same call predict.py makes for its own
-reasons (see its module docstring) — honest "not enough data yet" over fake
-sophistication. Revisit MINIMUM_GAMES_FOR_REGRESSION once the real nba_api
-ingestion pipeline provides a full season per team.
+Why a regression/heuristic split at all: with too little data (this
+project's original seed data was 12 games total, 4 teams, ~6 games/team),
+fitting a multi-feature OLS regression against a handful of point-margin
+observations is not honest statistics — every real Four Factors study
+assumes a full season per team. Below MINIMUM_GAMES_FOR_REGRESSION, this
+module falls back to fixed, literature-informed weights instead of
+presenting an overfit regression as if it were reliable. This is the same
+call predict.py makes for its own reasons (see its module docstring) —
+honest "not enough data yet" over fake sophistication. With a full season
+now loaded (1,300+ completed games), MINIMUM_GAMES_FOR_REGRESSION is
+comfortably exceeded and the regression path is what actually runs in
+production — the heuristic weights below are now only a cold-start fallback
+for a freshly seeded/near-empty database, not the common case.
 
 Chronology: every average used to predict a game (or to train a row of the
 regression) is computed only from that team's games strictly before the
@@ -46,9 +49,17 @@ import numpy as np
 # Below this many completed games leaguewide, a fitted regression is
 # considered too unstable to trust — see module docstring. 30 is a loose
 # rule of thumb (comfortably more observations than the 3 features being
-# fit); this project's seed data (12 games) is always below it, so seed
-# data always exercises the heuristic path, not the regression path.
+# fit); a freshly seeded/near-empty database is below it and exercises the
+# heuristic path, but a real season's worth of games (the common case once
+# ingestion has run) clears it and uses the fitted regression instead.
 MINIMUM_GAMES_FOR_REGRESSION = 30
+
+# Only this Game.seasonType feeds the running averages and the regression's
+# training rows. Same reasoning as elo.py's REGULAR_SEASON_TYPE: postseason
+# Four Factors come from a different distribution, and mixing them into
+# regular-season training rows degrades the fit rather than enriching it.
+# Postseason games are ingested but excluded from every model input.
+REGULAR_SEASON_TYPE = "REGULAR"
 
 # Points a 3-pointer counts as, above the 1.0 implicit weight of a
 # 2-pointer, in effective FG% (Oliver's standard formula:
@@ -108,6 +119,44 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
     matchup. Ordering by date is load-bearing here, not cosmetic — every
     chronological computation downstream (running averages, regression
     training rows) depends on processing games oldest-first.
+
+    Joins on PlayerGameStat.teamId (the team a player suited up for IN
+    THAT GAME), not Player.teamId (a player's current team) — an earlier
+    version of this query joined on Player.teamId, which silently
+    misattributed every traded player's past games to whichever team they
+    play for now. Confirmed live before the fix: ~7.7% of PlayerGameStat
+    rows had a Player.teamId that didn't match either team in that row's
+    own game. See PlayerGameStat.teamId's schema doc comment.
+
+    Backtested impact of this fix on this project's single-season dataset:
+    MAE 12.52 -> 12.51 (walk-forward 12.65 -> 12.62) — a real but small
+    change, since only ~7.7% of rows were affected and correcting them
+    redistributes stats between two teams' season averages rather than
+    adding new signal. This was still worth fixing on correctness grounds
+    alone (a team's Four Factors average should reflect the players who
+    actually played for them), and matters more as more seasons of data
+    with more real trades are added — see docs/reports for the full
+    write-up.
+
+    Postseason games are excluded — see REGULAR_SEASON_TYPE.
+
+    Joins on PlayerGameStat.teamId (the team a player suited up for IN
+    THAT GAME), not Player.teamId (a player's current team) — an earlier
+    version of this query joined on Player.teamId, which silently
+    misattributed every traded player's past games to whichever team they
+    play for now. Confirmed live before the fix: ~7.7% of PlayerGameStat
+    rows had a Player.teamId that didn't match either team in that row's
+    own game. See PlayerGameStat.teamId's schema doc comment.
+
+    Backtested impact of this fix on this project's single-season dataset:
+    MAE 12.52 -> 12.51 (walk-forward 12.65 -> 12.62) — a real but small
+    change, since only ~7.7% of rows were affected and correcting them
+    redistributes stats between two teams' season averages rather than
+    adding new signal. This was still worth fixing on correctness grounds
+    alone (a team's Four Factors average should reflect the players who
+    actually played for them), and matters more as more seasons of data
+    with more real trades are added — see docs/reports for the full
+    write-up.
     """
     cursor.execute(
         """
@@ -119,12 +168,13 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
                CASE WHEN g."homeTeamId" = t."id" THEN g."awayScore" ELSE g."homeScore" END AS opponent_score
         FROM "Game" g
         JOIN "Team" t ON t."id" = g."homeTeamId" OR t."id" = g."awayTeamId"
-        JOIN "PlayerGameStat" pgs ON pgs."gameId" = g."id"
-          AND pgs."playerId" IN (SELECT "id" FROM "Player" WHERE "teamId" = t."id")
+        JOIN "PlayerGameStat" pgs ON pgs."gameId" = g."id" AND pgs."teamId" = t."id"
         WHERE g."homeScore" IS NOT NULL AND g."awayScore" IS NOT NULL
+          AND g."seasonType" = %(season_type)s
         GROUP BY g."id", g."gameDate", t."id", g."homeTeamId", g."awayTeamId", g."homeScore", g."awayScore"
         ORDER BY g."gameDate" ASC
-        """
+        """,
+        {"season_type": REGULAR_SEASON_TYPE},
     )
     return cursor.fetchall()
 

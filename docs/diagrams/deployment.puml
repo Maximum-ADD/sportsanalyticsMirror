@@ -1,0 +1,142 @@
+@startuml deployment
+title NBA Analytics Platform — Deployment Diagram
+
+skinparam shadowing false
+skinparam defaultTextAlignment left
+skinparam node {
+  BackgroundColor White
+  BorderColor Black
+}
+skinparam database {
+  BackgroundColor White
+  BorderColor Black
+}
+skinparam cloud {
+  BackgroundColor White
+  BorderColor Black
+}
+
+actor "End user" as user
+
+cloud "Cloudflare Pages" as cfPages {
+  artifact "apps/web\n(React + Vite SPA,\nbuilt to static dist/)" as webApp
+  note right of webApp
+    Global CDN, managed TLS.
+    _redirects: SPA fallback
+    (unmatched paths -> index.html)
+    Build-time VITE_API_BASE_URL
+    points at the Render API origin.
+  endnote
+}
+
+cloud "Render (free plan)" as render {
+  node "Web Service" as renderWeb {
+    artifact "apps/api\n(NestJS + Express)" as apiApp
+    note right of apiApp
+      npm start (node dist/main.js)
+      Serves REST under /v1/*
+      Mounts BetterAuth under /auth/*
+      Spins down after 15 min idle;
+      ~30s cold start on next request.
+      Sessions live in Supabase, so
+      they survive a cold start.
+    endnote
+  }
+
+  node "Cron Job / Background Worker\n(planned, not yet wired up)" as renderBatch {
+    artifact "apps/ingestion\n(ingest.py)" as ingestionApp
+    artifact "apps/predictor\n(predict_games.py,\nbacktest.py)" as predictorApp
+    artifact "apps/optimizer\n(predict.py,\noptimize.py)" as optimizerApp
+    note bottom of renderBatch
+      ADR-003 "Neutral / follow-ups":
+      render.yaml has no entries for
+      these yet -- currently still run
+      by hand from a developer machine.
+    endnote
+  }
+}
+
+cloud "Supabase" as supabase {
+  database "Managed Postgres\n(pooled via PgBouncer, TLS)" as pgProd
+  note right of pgProd
+    Auto REST/Auth/Storage APIs
+    deliberately unused -- the NestJS
+    API stays the only HTTP path to
+    the data, per the brief.
+    Free tier: ~500MB cap, pauses
+    after inactivity.
+  endnote
+}
+
+cloud "Google Identity Platform" as google {
+  note right of google
+    OAuth 2.0 (Google Sign-In)
+    Authorized redirect:
+    https://<api-domain>/auth/callback/google
+  endnote
+}
+
+cloud "stats.nba.com" as nbaApi {
+  note right of nbaApi
+    Unofficial nba_api endpoints.
+    Blocks cloud-provider IP ranges
+    -- ingestion must run from a
+    residential/office network,
+    a factor in it not yet being
+    a Render Cron Job either.
+  endnote
+}
+
+node "Developer / Team Machine (local dev, unchanged)" as devMachine {
+  node "Vite Dev Server :5173" as viteDev
+  node "NestJS :4000" as localApi
+  node "Docker: postgres :55432\n+ postgres-test :55433 (tmpfs)" as localPg
+}
+
+node "Gitea (sdp.ms.wits.ac.za)" as gitea {
+  artifact "Gitea Actions\n(self-hosted act_runner)" as ci
+  note right of ci
+    Lints/typechecks both apps,
+    runs both test suites against
+    postgres-test service.
+    No deploy stage wired up yet --
+    Render/Cloudflare currently
+    deploy via a Gitea -> GitHub
+    mirror, not directly from Gitea.
+  endnote
+}
+
+' --- production traffic ---
+user --> webApp : HTTPS
+webApp --> apiApp : fetch VITE_API_BASE_URL + /v1/*\n(credentials: include,\nCORS allowlist + SameSite=None;Secure)
+apiApp --> pgProd : Prisma Client\n(pooled SQL over TLS)
+apiApp --> google : OAuth redirect / token exchange
+
+' --- batch data-pipeline writes (direct DB, no HTTP) ---
+ingestionApp --> pgProd : upsert Team/Player/Game/\nPlayerGameStat rows
+ingestionApp --> nbaApi : HTTPS (throttled, 1 req/s)
+predictorApp --> pgProd : upsert GamePrediction rows
+optimizerApp --> pgProd : write PlayerPrediction/\nLineup/LineupSlot rows
+
+' --- local dev, parallel to prod, not wired to it ---
+localApi --> localPg : Prisma Client (local dev only)
+viteDev --> localApi : proxy /api/* -> :4000 (dev only)
+
+' --- CI ---
+gitea --> localPg : ephemeral test DB\nfor Supertest e2e suite
+gitea ..> render : deploy trigger via\nGitea -> GitHub mirror
+gitea ..> cfPages : deploy trigger via\nGitea -> GitHub mirror
+
+note as N1
+  Hosting per docs/decisions/ADR-003-hosting-topology.md
+  (status: Accepted, implemented 2026-08-19). Live:
+  sportsanalytics.pages.dev (frontend) and
+  sportsanalytics-api.onrender.com/health (API), both
+  returning 200 OK. Python batch jobs are the one piece
+  of this ADR not yet realized -- render.yaml only
+  declares the API web service, so ingestion/predictor/
+  optimizer still run manually against the same
+  Supabase database prod uses.
+end note
+
+@enduml

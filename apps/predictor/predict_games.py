@@ -14,6 +14,10 @@ Four Factors don't depend on each other's output the way optimize.py
 depends on predict.py's written PlayerPrediction rows, they just both feed
 the same GamePrediction row — splitting them would only add UPSERT-merge
 complexity for no workflow benefit.
+
+Every row is also written to GamePredictionRun, tagged with MODEL_VERSION
+below — see save_predictions' docstring for why that table, unlike
+GamePrediction itself, never overwrites a superseded version's numbers.
 """
 
 import uuid
@@ -28,13 +32,31 @@ from four_factors import (
     predict_margin,
 )
 
+# Identifies the exact model definition behind every row this script writes,
+# so a prediction stays attributable (and, via GamePredictionRun, exactly
+# reproducible) after the model changes rather than silently blending into
+# whatever the "current" numbers happen to be. The two halves version
+# independently since either model can change without the other:
+#
+# - Bump the "elo" number when elo.py's tuned constants (K_FACTOR,
+#   HOME_COURT_ADVANTAGE_ELO, SEASON_RESET_FRACTION) or its update logic
+#   change — see elo.py's own module docstring for the validated tuning
+#   history behind the current values.
+# - Bump the "ff" number when four_factors.py's methodology, inputs, or
+#   fitted-vs-heuristic fallback logic change.
+#
+# v1 marks the introduction of model versioning itself, tagging the Elo/Four
+# Factors definitions exactly as they stood at that point — not a claim that
+# either has been "version 1" all along.
+MODEL_VERSION = "elo-v1+ff-v1"
+
 
 def build_predictions(cursor) -> tuple[list[dict], str]:
     """Runs both models and returns (prediction rows, margin method used)."""
     completed_games = fetch_completed_games_chronological(cursor)
     upcoming_games = fetch_upcoming_games(cursor)
-    final_ratings, pre_game_state = compute_elo_ratings(completed_games)
-    upcoming_state = predict_upcoming_games(upcoming_games, final_ratings)
+    final_ratings, pre_game_state, final_completed_season = compute_elo_ratings(completed_games)
+    upcoming_state = predict_upcoming_games(upcoming_games, final_ratings, final_completed_season)
 
     boxscores = fetch_team_game_boxscores(cursor)
     team_game_factors = [compute_team_game_four_factors(row) for row in boxscores]
@@ -98,24 +120,59 @@ def _build_prediction_row(
         "away_elo_pre": round(elo_state["away_elo_pre"], 2),
         "predicted_margin_home": predicted_margin,
         "margin_method": margin_method if predicted_margin is not None else None,
+        "model_version": MODEL_VERSION,
     }
 
 
 def save_predictions(cursor, predictions: list[dict]) -> None:
-    """Upserts one GamePrediction row per game (ON CONFLICT ("gameId") DO UPDATE).
+    """Writes every prediction row to both GamePrediction and GamePredictionRun.
 
-    Upsert, not append: see schema.prisma's GamePrediction docstring for why
-    this table keeps only the latest prediction per game rather than a
-    history of every run.
+    GamePrediction is upserted by gameId alone (ON CONFLICT ("gameId") DO
+    UPDATE) — see schema.prisma's docstring for why this table keeps only
+    the latest prediction per game rather than a history of every run; every
+    existing `game.prediction` read path (picks, leaderboard, follows,
+    teams) depends on that single-row-per-game shape and is untouched here.
+
+    GamePredictionRun is upserted by (gameId, modelVersion) instead: a rerun
+    under the SAME model version refreshes that version's numbers (e.g.
+    after reseeding data), but a row for a version that's since been
+    superseded is never touched again — that's what makes an old prediction
+    stay reproducible after MODEL_VERSION above is bumped.
     """
     for prediction in predictions:
         cursor.execute(
             """
             INSERT INTO "GamePrediction"
                 ("id", "gameId", "homeWinProbability", "homeTeamEloPre", "awayTeamEloPre",
-                 "predictedMarginHome", "marginMethod")
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                 "predictedMarginHome", "marginMethod", "modelVersion")
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT ("gameId") DO UPDATE SET
+                "homeWinProbability" = EXCLUDED."homeWinProbability",
+                "homeTeamEloPre" = EXCLUDED."homeTeamEloPre",
+                "awayTeamEloPre" = EXCLUDED."awayTeamEloPre",
+                "predictedMarginHome" = EXCLUDED."predictedMarginHome",
+                "marginMethod" = EXCLUDED."marginMethod",
+                "modelVersion" = EXCLUDED."modelVersion",
+                "createdAt" = now()
+            """,
+            (
+                str(uuid.uuid4()),
+                prediction["game_id"],
+                prediction["home_win_probability"],
+                prediction["home_elo_pre"],
+                prediction["away_elo_pre"],
+                prediction["predicted_margin_home"],
+                prediction["margin_method"],
+                prediction["model_version"],
+            ),
+        )
+        cursor.execute(
+            """
+            INSERT INTO "GamePredictionRun"
+                ("id", "gameId", "modelVersion", "homeWinProbability", "homeTeamEloPre",
+                 "awayTeamEloPre", "predictedMarginHome", "marginMethod")
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT ("gameId", "modelVersion") DO UPDATE SET
                 "homeWinProbability" = EXCLUDED."homeWinProbability",
                 "homeTeamEloPre" = EXCLUDED."homeTeamEloPre",
                 "awayTeamEloPre" = EXCLUDED."awayTeamEloPre",
@@ -126,6 +183,7 @@ def save_predictions(cursor, predictions: list[dict]) -> None:
             (
                 str(uuid.uuid4()),
                 prediction["game_id"],
+                prediction["model_version"],
                 prediction["home_win_probability"],
                 prediction["home_elo_pre"],
                 prediction["away_elo_pre"],
