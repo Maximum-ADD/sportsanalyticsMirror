@@ -68,6 +68,7 @@ function makeProfile(overrides: Partial<MeProfile> = {}): MeProfile {
     avatarUrl: null,
     favoriteTeam: null,
     followedPlayers: [],
+    role: "USER",
     ...overrides,
   };
 }
