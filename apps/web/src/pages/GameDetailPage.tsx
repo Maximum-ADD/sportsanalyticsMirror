@@ -412,7 +412,7 @@ export function GameDetailPage() {
   }
 
   const game = gameQuery.data;
-  const { prediction, predictedScorers } = game;
+  const { prediction, marketOdds, predictedScorers } = game;
   const effectiveScorers = predictedScorers.map((scorer) => ({
     ...scorer,
     predictedPoints: pointsOverrides[scorer.player.id] ?? scorer.predictedPoints,
@@ -460,7 +460,7 @@ export function GameDetailPage() {
           )}
         </div>
 
-        <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           <div className="border border-landing-light bg-landing-hero px-4 py-3">
             <div className="font-mono text-[10.5px] tracking-[0.1em] text-locker-ink-muted uppercase">
               Win probability
@@ -490,6 +490,31 @@ export function GameDetailPage() {
             <div className="mt-1 font-display text-[27px] text-landing-ink tabular-nums">
               {prediction ? formatMargin(prediction.predictedMarginHome, game.homeTeam, game.awayTeam) : "—"}
             </div>
+          </div>
+          <div
+            className="border border-landing-light bg-landing-hero px-4 py-3"
+            title="Bookmaker-averaged, vig-removed home win probability from The Odds API — a market baseline built from real money, not this project's own model."
+          >
+            <div className="font-mono text-[10.5px] tracking-[0.1em] text-locker-ink-muted uppercase">
+              Market win probability
+            </div>
+            <div className="mt-1 font-display text-[27px] text-landing-ink tabular-nums">
+              {marketOdds ? (
+                <>
+                  {(marketOdds.homeWinProbability >= 0.5 ? game.homeTeam : game.awayTeam).abbreviation}{" "}
+                  {PERCENT(
+                    marketOdds.homeWinProbability >= 0.5 ? marketOdds.homeWinProbability : 1 - marketOdds.homeWinProbability
+                  )}
+                </>
+              ) : (
+                "—"
+              )}
+            </div>
+            {marketOdds && (
+              <div className="mt-0.5 font-mono text-[10px] text-locker-ink-muted">
+                {marketOdds.bookmakerCount} book{marketOdds.bookmakerCount === 1 ? "" : "s"}
+              </div>
+            )}
           </div>
         </div>
 

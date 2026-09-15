@@ -34,8 +34,9 @@ export class GamesController {
   }
 
   // GET /v1/games/:id — a single game with its win probability/predicted
-  // margin (if generated) and predicted top scorers from both rosters —
-  // everything the game detail page needs in one request.
+  // margin (if generated), market odds (if fetched — see
+  // apps/ingestion/fetch_market_odds.py) and predicted top scorers from
+  // both rosters — everything the game detail page needs in one request.
   @Get(":id")
   @ApiOperation({ summary: "Get game detail with prediction and predicted scorers" })
   @ApiParam({ name: "id", description: "Game UUID" })

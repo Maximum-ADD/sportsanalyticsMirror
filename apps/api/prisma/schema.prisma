@@ -246,6 +246,7 @@ model Game {
   ingestionBatches IngestionBatch[]
   prediction       GamePrediction?
   predictionRuns   GamePredictionRun[]
+  marketOdds       GameMarketOdds?
 
   picks GamePick[]
 
@@ -629,6 +630,57 @@ model GamePredictionRun {
   // reseeding data) refreshes its numbers rather than accumulating
   // duplicate rows for a definition that hasn't actually changed.
   @@unique([gameId, modelVersion])
+  @@index([gameId])
+}
+
+// Pre-game market win-probability snapshot, fetched from The Odds API by
+// apps/ingestion/fetch_market_odds.py — this project's second external API
+// integration, and a demanding baseline for GamePrediction's own
+// homeWinProbability: a sportsbook's line reflects real money, not just
+// this project's own boxscore history, so "does the model beat the
+// market" is a much stronger question than "does it beat a coin flip."
+//
+// Deliberately its own table rather than extra columns on GamePrediction,
+// even though both describe the same game's pre-game state: they're
+// written by two independent, unrelated processes (predict_games.py vs.
+// fetch_market_odds.py), and an odds-API outage or exhausted free-tier
+// quota must never be able to block Elo/Four Factors from writing their
+// own prediction, or vice versa.
+//
+// The Odds API's free tier only ever returns current/upcoming lines, never
+// historical closing lines (a paid-tier feature) — see
+// fetch_market_odds.py's module docstring. That's why this row is only
+// ever written/refreshed while the game is still upcoming: once it's been
+// played, re-fetching "today's odds" for it isn't possible at all, so the
+// script stops touching it, preserving whichever pre-tip-off snapshot was
+// last taken rather than nothing (or something dishonestly reconstructed).
+model GameMarketOdds {
+  id     String @id @default(uuid())
+  gameId String @unique
+  game   Game   @relation(fields: [gameId], references: [id])
+
+  // De-vigged (bookmaker-overround-removed) home win probability, averaged
+  // across every US bookmaker's moneyline the API returned for this game —
+  // see fetch_market_odds.py's remove_vig for the formula and why a book's
+  // own quoted price alone overstates both teams' true win probability.
+  homeWinProbability Float
+
+  // How many bookmakers homeWinProbability is averaged over — surfaced
+  // alongside the number so a caller can judge how stable it is rather
+  // than treating it as if it came from one canonical source.
+  bookmakerCount Int
+
+  // Which provider this came from, so a second odds source could be added
+  // later without a schema change or ambiguity about which row is which.
+  source String @default("the-odds-api")
+
+  // When this snapshot was actually fetched — distinct from any Prisma
+  // bookkeeping timestamp, since re-running the ingestion script while a
+  // game is still upcoming updates this row's numbers in place (a fresher
+  // pre-tip-off line), and callers care when the line itself was taken,
+  // not when the database row happened to last be touched.
+  fetchedAt DateTime
+
   @@index([gameId])
 }
 
