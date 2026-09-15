@@ -117,8 +117,12 @@ same pattern as every other endpoint.
 - `SessionAuthGuard` calls `auth.api.getSession(...)`; if there's no
   session it throws `401 UNAUTHENTICATED`, otherwise it sets
   `request.user` for downstream guards/controllers.
-- Games and optimizer controllers require `SessionAuthGuard`; player and
-  team endpoints remain public.
+- Optimizer controllers require `SessionAuthGuard`. Player, team and game
+  endpoints are public — `3a1673a fix: allow public access to game read
+  endpoints` deliberately opened the latter up (see games.controller.ts's
+  own comment: it lets the landing page's live-match widget call them
+  while signed out too), a decision this file never caught up to
+  describing correctly until now.
 - `RolesGuard` reads `@Roles(...)` metadata off the handler/class via
   `Reflector` and throws `403 FORBIDDEN` unless `request.user.role` is in
   that list. A handler with no `@Roles(...)` is unrestricted.
@@ -162,6 +166,8 @@ Closing that gap (real event → boxscore derivation) is still open; see
   aggregates into season averages today. Also carries the offensive/
   defensive rebound split, plus/minus, and NBA's own usage rate and
   offensive/defensive ratings, all nullable — see "Advanced stats" below
+- **GameMarketOdds** — a real sportsbook's own pre-game win-probability
+  line for a game, from a second external API — see "Market odds" below
 - **User / Session / Account / Verification** — BetterAuth's required core
   schema (see [better-auth.com/docs/concepts/database](https://better-auth.com/docs/concepts/database)).
   `User.role` is the one project-specific addition (see RBAC above).
@@ -258,6 +264,37 @@ cameo shouldn't count as much as a 38-minute start. Plus/minus is a plain
 per-game average, and the derived percentages come from season totals, the
 same way `fieldGoalPercentage` already does.
 
+## Market odds
+
+`GameMarketOdds` holds a real sportsbook-derived home win probability per
+game, fetched from [The Odds API](https://the-odds-api.com/) by
+`apps/ingestion/fetch_market_odds.py` — this project's second external API
+integration (`nba_api` is the first), and a genuinely demanding baseline
+for `GamePrediction`'s own Elo-based `homeWinProbability`: a sportsbook's
+line reflects real money, not this project's own boxscore history, so
+"does our model beat the market" is a far stronger question than "does it
+beat a coin flip." Surfaced on `GameDetailPage` alongside the model's own
+win probability and predicted margin.
+
+**De-vigged, not raw.** A bookmaker's two moneyline prices always imply
+more than 100% combined (the "vig"/overround, how a book guarantees itself
+a margin) — `remove_vig` normalizes that away, the same way this project
+insists on real per-request derivations elsewhere rather than presenting a
+number that would systematically mislead.
+
+**Averaged across every US bookmaker** the API returns for a game, not one
+canonical source — the free tier can return several, and there's no
+principled way to call one of them "the" line.
+
+**Pre-game snapshot, honestly bounded.** The Odds API's free tier only
+ever returns current/upcoming lines, never historical closing lines (a
+paid-tier feature), so this is only ever fetched/refreshed for games that
+haven't been played yet. A completed game simply keeps whichever pre-game
+snapshot was last taken — the same invariant `GamePrediction`'s own
+`homeWinProbability` keeps, for the same reason. `bookmakerCount` travels
+with the probability so a caller can see how many books it's averaged
+over, not just trust a single number.
+
 ## API reference
 
 Base: `http://localhost:4000` in dev. All error responses share the
@@ -274,9 +311,10 @@ envelope `{ error: { code, message } }`.
 | GET | `/v1/players/compare` | Query: `ids` (comma-separated, 2–4), `seasonType`. Each player + derived season averages |
 | GET | `/v1/teams` | Query: `page`, `pageSize` |
 | GET | `/v1/teams/:id` | |
-| GET | `/v1/games` | Auth required; paginated games and predictions. Query: `seasonType` (omitted = every segment) |
-| GET | `/v1/games/:id` | Auth required; game and prediction detail |
-| GET | `/v1/games/:id/prediction` | Auth required |
+| GET | `/v1/games` | Public; paginated games, predictions and market odds. Query: `seasonType` (omitted = every segment) |
+| GET | `/v1/games/:id` | Public; game, prediction, market odds and predicted-scorer detail |
+| GET | `/v1/games/:id/prediction` | Public |
+| GET | `/v1/games/:id/prediction/history` | Public; every model version's prediction for this game |
 | GET | `/v1/optimizer/lineup` | Auth required; latest optimized lineup |
 | ALL | `*` | Catch-all → `404 NOT_FOUND` |
 
@@ -291,8 +329,8 @@ list defaults to *no* filter, since a schedule running chronologically
 through the postseason is useful there and nothing is averaged across
 segments.
 
-Games and optimizer routes require a BetterAuth session. Player and team
-routes remain public. No route currently requires a role above `USER`.
+Optimizer routes require a BetterAuth session. Player, team and game
+routes are public. No route currently requires a role above `USER`.
 
 ## Frontend architecture (`apps/web`)
 
@@ -425,7 +463,6 @@ checks and review required before merging.
 - `PlayerGameStat` is seeded directly rather than derived from `GameEvent`
   rows — the event-sourcing story isn't fully real yet.
 - Real NBA data ingestion (`nba_api`, Python) into Postgres — not started.
-- A second external API integration (brief requirement) — not started.
 - **Multi-season postseason history** — `Game.season` is a single string
   and nothing iterates seasons, so only the configured season's postseason
   is available. Out of scope for the postseason views.
