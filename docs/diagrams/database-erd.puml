@@ -1,5 +1,6 @@
 @startuml database-erd
-title NBA Analytics Platform — Database Schema (Prisma / Supabase Postgres)
+!pragma layout smetana
+title NBA Analytics Platform — Database Schema (Prisma / Supabase PostgreSQL)\nAll 20 tables, as of migration 20260913140000_game_prediction_versioning
 
 hide circle
 skinparam shadowing false
@@ -10,7 +11,14 @@ skinparam class {
   ArrowColor Black
 }
 
-package "Auth (BetterAuth core schema)" {
+legend top left
+  * = required (NOT NULL)    ? = optional (NULL allowed)
+  PK = primary key    FK = foreign key
+  Lines below the dotted divider are unique constraints and indexes.
+  Crow's foot = "many"; bar = "exactly one"; circle = "zero".
+endlegend
+
+package "Accounts (BetterAuth core schema + profile fields)" {
   entity "User" as User {
     * id : uuid <<PK>>
     --
@@ -19,6 +27,9 @@ package "Auth (BetterAuth core schema)" {
     * emailVerified : boolean = false
     image : string?
     * role : Role = USER
+    username : string? <<unique>>
+    avatarUrl : string? (storage object path)
+    favoriteTeamId : uuid? <<FK>>
     * createdAt : datetime
     * updatedAt : datetime
   }
@@ -70,7 +81,7 @@ package "Auth (BetterAuth core schema)" {
   }
 }
 
-package "Domain (teams, players, games)" {
+package "NBA data (apps/ingestion writes, API reads only)" {
   entity "Team" as Team {
     * id : uuid <<PK>>
     --
@@ -95,6 +106,17 @@ package "Domain (teams, players, games)" {
     jerseyNumber : string?
     headshotUrl : string?
     teamId : uuid? <<FK>>
+    birthDate : datetime?
+    school : string?
+    country : string?
+    lastAffiliation : string?
+    seasonExp : int?
+    rosterStatus : string?
+    draftYear : int?
+    draftRound : int?
+    draftNumber : int?
+    ..
+    index (teamId)
   }
 
   entity "Game" as Game {
@@ -107,6 +129,13 @@ package "Domain (teams, players, games)" {
     * awayTeamId : uuid <<FK>>
     homeScore : int?
     awayScore : int?
+    * seasonType : SeasonType = REGULAR
+    playoffRound : int?
+    ..
+    index (seasonType)
+    index (gameDate)
+    index (homeTeamId, gameDate)
+    index (awayTeamId, gameDate)
   }
 
   entity "GameEvent" as GameEvent {
@@ -117,7 +146,7 @@ package "Domain (teams, players, games)" {
     * period : int
     * clock : string
     * eventType : string
-    playerId : uuid?
+    playerId : string? (not a FK)
     * description : string
     * createdAt : datetime
     ..
@@ -129,6 +158,7 @@ package "Domain (teams, players, games)" {
     --
     * playerId : uuid <<FK>>
     * gameId : uuid <<FK>>
+    teamId : uuid? <<FK>> (team in this game)
     * minutes : int
     * points : int
     * rebounds : int
@@ -142,12 +172,59 @@ package "Domain (teams, players, games)" {
     * threesAttempted : int
     * freeThrowsMade : int
     * freeThrowsAttempted : int
+    offensiveRebounds : int?
+    defensiveRebounds : int?
+    plusMinus : int?
+    usagePercentage : float?
+    offensiveRating : float?
+    defensiveRating : float?
     ..
     unique (playerId, gameId)
+    index (gameId)
+  }
+
+  enum "SeasonType" as SeasonType {
+    REGULAR
+    PLAY_IN
+    PLAYOFFS
+    FINALS
   }
 }
 
-package "Fantasy optimizer (apps/optimizer writes, API reads-only)" {
+package "Game prediction (apps/predictor writes, API reads only)" {
+  entity "GamePrediction" as GamePrediction {
+    * id : uuid <<PK>>
+    --
+    * gameId : uuid <<FK, unique>>
+    * homeWinProbability : float
+    * homeTeamEloPre : float
+    * awayTeamEloPre : float
+    predictedMarginHome : float?
+    marginMethod : string?
+    * modelVersion : string = "unversioned"
+    * createdAt : datetime
+    ..
+    index (gameId)
+  }
+
+  entity "GamePredictionRun" as GamePredictionRun {
+    * id : uuid <<PK>>
+    --
+    * gameId : uuid <<FK>>
+    * modelVersion : string
+    * homeWinProbability : float
+    * homeTeamEloPre : float
+    * awayTeamEloPre : float
+    predictedMarginHome : float?
+    marginMethod : string?
+    * createdAt : datetime
+    ..
+    unique (gameId, modelVersion)
+    index (gameId)
+  }
+}
+
+package "Fantasy optimizer (apps/optimizer writes, API reads only)" {
   entity "PlayerPrediction" as PlayerPrediction {
     * id : uuid <<PK>>
     --
@@ -178,40 +255,121 @@ package "Fantasy optimizer (apps/optimizer writes, API reads-only)" {
   }
 }
 
-package "Game prediction (apps/predictor writes, API reads-only)" {
-  entity "GamePrediction" as GamePrediction {
-    * id : uuid <<PK>>
-    --
-    * gameId : uuid <<FK, unique>>
-    * homeWinProbability : float
-    * homeTeamEloPre : float
-    * awayTeamEloPre : float
-    predictedMarginHome : float?
-    marginMethod : string?
+package "Personal data (API writes on a signed-in user's request)" {
+  entity "UserFollowedPlayer" as UserFollowedPlayer {
+    * userId : uuid <<FK>>
+    * playerId : uuid <<FK>>
     * createdAt : datetime
     ..
-    index (gameId)
+    unique (userId, playerId)
+  }
+
+  entity "GamePick" as GamePick {
+    * id : uuid <<PK>>
+    --
+    * userId : uuid <<FK>>
+    * gameId : uuid <<FK>>
+    * pickedTeamId : string (not a FK)
+    * outcome : PickOutcome
+    * modelHomeWinProbabilityAtPick : float
+    modelPredictedMarginAtPick : float?
+    * homeTeamEloAtPick : float
+    * awayTeamEloAtPick : float
+    * createdAt : datetime
+    ..
+    unique (userId, gameId)
+    index (userId, createdAt)
+  }
+
+  entity "SavedComparison" as SavedComparison {
+    * id : uuid <<PK>>
+    --
+    * userId : uuid <<FK>>
+    * name : string
+    * createdAt : datetime
+    ..
+    index (userId, createdAt)
+  }
+
+  entity "SavedComparisonPlayer" as SavedComparisonPlayer {
+    * id : uuid <<PK>>
+    --
+    * savedComparisonId : uuid <<FK>>
+    * playerId : uuid <<FK>>
+    * position : int (left-to-right order)
+    ..
+    unique (savedComparisonId, playerId)
+  }
+
+  entity "SavedLineup" as SavedLineup {
+    * id : uuid <<PK>>
+    --
+    * userId : uuid <<FK>>
+    * name : string
+    sourceLineupId : string? (not a FK)
+    * totalPredictedPointsAtSave : float
+    * totalSalaryAtSave : int
+    * budgetAtSave : int
+    * createdAt : datetime
+    ..
+    index (userId, createdAt)
+  }
+
+  entity "SavedLineupSlot" as SavedLineupSlot {
+    * id : uuid <<PK>>
+    --
+    * savedLineupId : uuid <<FK>>
+    * playerId : uuid <<FK>>
+    * predictedPointsAtSave : float
+    * salaryAtSave : int
+    ..
+    unique (savedLineupId, playerId)
+  }
+
+  enum "PickOutcome" as PickOutcome {
+    CORRECT
+    MISSED
   }
 }
 
-' --- Auth relationships ---
+' --- Account relationships ---
 User ||--o{ Session : "has"
 User ||--o{ Account : "has (per sign-in provider)"
+Team |o--o{ User : "favourite team"
 
-' --- Domain relationships ---
-Team ||--o{ Player : "rosters"
+' --- NBA data relationships ---
+Team |o--o{ Player : "current roster"
 Team ||--o{ Game : "homeTeam"
 Team ||--o{ Game : "awayTeam"
-Game ||--o{ GameEvent : "raw play-by-play"
-Game ||--o{ PlayerGameStat : "boxscore rows"
+Game ||--o{ GameEvent : "play-by-play"
+Game ||--o{ PlayerGameStat : "box score rows"
 Player ||--o{ PlayerGameStat : "per-game stats"
-Game ||--o| GamePrediction : "0..1 prediction"
+Team |o--o{ PlayerGameStat : "team played for"
+
+' --- Prediction relationships ---
+Game ||--o| GamePrediction : "current prediction"
+Game ||--o{ GamePredictionRun : "prediction history"
 
 ' --- Optimizer relationships ---
 Player ||--o{ PlayerPrediction : "fantasy point predictions"
 Player ||--o{ LineupSlot : "appears in"
-Lineup ||--o{ LineupSlot : "5 slots per run"
+Lineup ||--o{ LineupSlot : "5 players per lineup"
 
-User .. Role : "role : Role"
+' --- Personal data relationships ---
+User ||--o{ UserFollowedPlayer : "follows"
+Player ||--o{ UserFollowedPlayer : "followed by"
+User ||--o{ GamePick : "calls"
+Game ||--o{ GamePick : "called in"
+User ||--o{ SavedComparison : "saves"
+SavedComparison ||--o{ SavedComparisonPlayer : "contains"
+Player ||--o{ SavedComparisonPlayer : "compared in"
+User ||--o{ SavedLineup : "saves"
+SavedLineup ||--o{ SavedLineupSlot : "contains"
+Player ||--o{ SavedLineupSlot : "picked in"
+
+' --- Enum usage ---
+User .. Role : "role"
+Game .. SeasonType : "seasonType"
+GamePick .. PickOutcome : "outcome"
 
 @enduml
