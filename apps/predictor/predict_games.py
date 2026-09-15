@@ -47,8 +47,12 @@ from four_factors import (
 #
 # v1 marks the introduction of model versioning itself, tagging the Elo/Four
 # Factors definitions exactly as they stood at that point — not a claim that
-# either has been "version 1" all along.
-MODEL_VERSION = "elo-v1+ff-v1"
+# either has been "version 1" all along. ff bumped to v2 when four_factors.py
+# added offensive rebound rate as a 4th feature (previously 3) — a real
+# methodology change, not a tuning tweak, so predictions made under the old
+# 3-feature model stay attributable to "ff-v1" via GamePredictionRun instead
+# of silently blending into "current" once ff-v2 predictions start landing.
+MODEL_VERSION = "elo-v1+ff-v2"
 
 
 def build_predictions(cursor) -> tuple[list[dict], str]:
