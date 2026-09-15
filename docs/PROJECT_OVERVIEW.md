@@ -424,18 +424,15 @@ checks and review required before merging.
 
 - `PlayerGameStat` is seeded directly rather than derived from `GameEvent`
   rows — the event-sourcing story isn't fully real yet.
-- Real NBA data ingestion (`nba_api`, Python) into Postgres — not started.
-- A second external API integration (brief requirement) — not started.
+- A second external API integration (brief requirement, e.g. an
+  injury/news feed) — not started. (`nba_api` ingestion below is the
+  *first* external API, not this one.)
 - **Multi-season postseason history** — `Game.season` is a single string
   and nothing iterates seasons, so only the configured season's postseason
   is available. Out of scope for the postseason views.
 - **Postseason predictions** — the Elo/Four Factors/optimizer models are
   regular-season only by deliberate choice (see "Season segments"), so
   postseason games carry no prediction.
-- **Offensive rebound rate in Four Factors** — `four_factors.py` still
-  omits Oliver's fourth factor, but the blocker is now gone:
-  `PlayerGameStat` carries the offensive/defensive rebound split. Wiring it
-  in is a follow-up, not a data problem.
 - **Postseason-only players** — a player appearing in a postseason boxscore
   but not on an ingested roster is skipped, matching existing regular-season
   behaviour. Acceptable for now; revisit if it drops notable players.
@@ -443,10 +440,20 @@ checks and review required before merging.
   nothing reads it yet; the UI treats rounds 1–3 as one "Playoffs" segment.
 - Public documentation site (Docusaurus/MkDocs, deployed via static
   hosting) — not started. This file lives in-repo; it isn't that site.
-- Lint/typecheck aren't enforced in CI yet, only run manually.
-- Responsiveness/accessibility pass (beyond the one contrast fix already
-  made) — not done.
-- Production deployment — not done.
+- Automated accessibility checks (`axe-core`) run against a handful of
+  pages/components (`Home`, `Optimizer`, `PlayersListPage`,
+  `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/
+  accessibility.ts`), not the whole app, and there's been no full manual
+  responsiveness/accessibility audit beyond that plus the one contrast fix
+  in "Theme" above.
+- Coverage thresholds are not enforced yet — CI reports API/Web coverage
+  without failing a build for falling under some minimum.
+
+Lint/typecheck enforcement, real `nba_api` ingestion, offensive rebound
+rate in Four Factors, and production deployment (Cloudflare Pages + Render
++ Supabase, see [`ADR-003`](decisions/ADR-003-hosting-topology.md)) all
+used to be listed here as gaps; they're done, so removed rather than left
+to go stale like the last version of this list did.
 
 ## Personalization preferences
 

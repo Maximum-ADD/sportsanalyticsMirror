@@ -125,10 +125,12 @@ This is a base scaffold, not the finished product. What's wired up:
 
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
-- `axe-core` automated accessibility checks — not wired in anywhere yet,
-  despite being listed as done in an earlier draft of this file. Some
-  responsive breakpoints and keyboard/focus handling exist (`Navbar.tsx`,
-  `App.tsx`, `RecentResultWidget.tsx`) but haven't had a real audit pass.
+- `axe-core` automated accessibility checks now run against a handful of
+  pages/components (`Home`, `Optimizer`, `PlayersListPage`,
+  `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/
+  accessibility.ts`), not the whole app yet. Some responsive breakpoints
+  and keyboard/focus handling exist (`Navbar.tsx`, `App.tsx`,
+  `RecentResultWidget.tsx`) but haven't had a real full audit pass.
 - Coverage thresholds are not enforced yet. CI reports the current API and
   Web coverage without failing builds for a minimum percentage.
 
