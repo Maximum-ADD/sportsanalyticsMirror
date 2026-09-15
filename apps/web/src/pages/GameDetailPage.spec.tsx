@@ -5,7 +5,15 @@ import { GameDetailPage } from "./GameDetailPage";
 import { fetchGameDetail, fetchPlayerStats } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
-import type { GameDetail, GamePrediction, Player, PlayerStatsResponse, PredictedScorer, Team } from "@/types/nba";
+import type {
+  GameDetail,
+  GameMarketOdds,
+  GamePrediction,
+  Player,
+  PlayerStatsResponse,
+  PredictedScorer,
+  Team,
+} from "@/types/nba";
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchGameDetail: vi.fn(),
@@ -74,6 +82,15 @@ const PREDICTION: GamePrediction = {
 };
 
 const SCORER: PredictedScorer = { player: LEBRON, predictedPoints: 27.4, gamesConsidered: 8 };
+
+const MARKET_ODDS: GameMarketOdds = {
+  id: "market-odds-1",
+  gameId: "game-1",
+  homeWinProbability: 0.58,
+  bookmakerCount: 6,
+  source: "the-odds-api",
+  fetchedAt: "2026-08-18T00:00:00.000Z",
+};
 
 const PLAYER_STATS: PlayerStatsResponse = {
   playerId: LEBRON.id,
@@ -151,6 +168,24 @@ describe("GameDetailPage", () => {
     expect(await screen.findByText("LAL 62%")).toBeInTheDocument();
     expect(screen.getByText("LAL by 3.7", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Show LeBron James's predicted stats/ })).toBeInTheDocument();
+  });
+
+  it("shows the market's bookmaker-averaged win probability alongside the model's own", async () => {
+    vi.mocked(fetchGameDetail).mockResolvedValue(makeGameDetail({ marketOdds: MARKET_ODDS }));
+
+    renderWithProviders(<GameDetailPage />);
+
+    expect(await screen.findByText("LAL 58%")).toBeInTheDocument();
+    expect(screen.getByText("6 books")).toBeInTheDocument();
+  });
+
+  it("shows a placeholder for market win probability when no odds have been fetched yet", async () => {
+    vi.mocked(fetchGameDetail).mockResolvedValue(makeGameDetail({ marketOdds: null }));
+
+    renderWithProviders(<GameDetailPage />);
+
+    expect(await screen.findByText("Market win probability")).toBeInTheDocument();
+    expect(screen.queryByText(/books?$/)).not.toBeInTheDocument();
   });
 
   it("shows an explanatory message instead of win probability when no prediction exists yet", async () => {
