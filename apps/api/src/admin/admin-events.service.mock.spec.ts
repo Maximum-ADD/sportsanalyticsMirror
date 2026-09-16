@@ -3,7 +3,13 @@ import { AdminEventsService } from "./admin-events.service.js";
 
 function createMockPrisma() {
   const txProxy = {
-    gameEvent: { update: vi.fn().mockResolvedValue({}) },
+    gameEvent: { update: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([]) },
+    // Empty by default so recomputeDerivedStats's own "nothing to recompute"
+    // branch (existingStats.length === 0) short-circuits before it would
+    // need player.findMany/playerGameStat.update — none of the tests below
+    // exercise real recomputation, only the correction/audit-trail path.
+    playerGameStat: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
+    player: { findMany: vi.fn().mockResolvedValue([]) },
     eventCorrection: { create: vi.fn().mockResolvedValue({ id: "ec1" }) },
   };
   return {
