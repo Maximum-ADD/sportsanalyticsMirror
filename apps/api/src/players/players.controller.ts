@@ -72,6 +72,13 @@ const PLAYER_EXPORT_COLUMNS: { header: string; value: (player: PlayerWithTeam) =
 // Still bounded so a caller can't turn this into an unbounded full-table
 // scan.
 const MAX_BATCH_STATS_PLAYERS = 50;
+const AGGREGATE_METRICS = ["pointsPerGame", "reboundsPerGame", "assistsPerGame"] as const;
+type AggregateMetric = (typeof AGGREGATE_METRICS)[number];
+
+function parseAggregateMetric(metric: unknown): AggregateMetric {
+  if (typeof metric === "string" && AGGREGATE_METRICS.includes(metric as AggregateMetric)) return metric as AggregateMetric;
+  throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", `metric must be one of ${AGGREGATE_METRICS.join(", ")}`);
+}
 
 function parseBatchStatsIds(ids: unknown): string[] {
   const rawIds = typeof ids === "string" ? ids.split(",").map((id) => id.trim()).filter(Boolean) : [];
@@ -281,6 +288,41 @@ export class PlayersController {
   async getLeagueAverages(@Query("seasonType") rawSeasonType: unknown): Promise<LeagueAverages> {
     const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
     return this.statsService.getLeagueAverages(seasonType);
+  }
+
+  @Get("aggregates")
+  @ApiOperation({ summary: "Aggregate player metrics by team or position" })
+  @ApiQuery({ name: "metric", required: true, description: "pointsPerGame, reboundsPerGame, or assistsPerGame" })
+  @ApiQuery({ name: "groupBy", required: false, description: "team or position; defaults to team" })
+  async getAggregates(
+    @Query("metric") rawMetric: unknown,
+    @Query("groupBy") rawGroupBy: unknown,
+    @Query("seasonType") rawSeasonType: unknown
+  ) {
+    const metric = parseAggregateMetric(rawMetric);
+    const groupBy = rawGroupBy === "position" ? "position" : "team";
+    const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    const players = await this.playersService.getMatchingPlayers({});
+    const stats = await this.statsService.getPlayerStatsBatch(players.map((player) => player.id), seasonType);
+    const valuesByGroup = new Map<string, number[]>();
+
+    players.forEach((player, index) => {
+      const group = groupBy === "position" ? player.position : player.team?.abbreviation ?? "UNASSIGNED";
+      const values = valuesByGroup.get(group) ?? [];
+      values.push(stats[index].seasonAverages[metric]);
+      valuesByGroup.set(group, values);
+    });
+
+    return {
+      metric,
+      groupBy,
+      seasonType,
+      groups: [...valuesByGroup.entries()].map(([group, values]) => ({
+        group,
+        playerCount: values.length,
+        average: Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10,
+      })),
+    };
   }
 
   // GET /v1/players/:id/stats/career — career totals + averages + per-season
