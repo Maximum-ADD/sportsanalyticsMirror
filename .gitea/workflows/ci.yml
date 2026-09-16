@@ -96,6 +96,12 @@ jobs:
     name: API and Web — test coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Each coverage job starts its own Postgres container on one shared
+    # runner. Keep those database-backed suites serial; lint/typecheck jobs
+    # remain parallel and a queued coverage run is safer than a dropped DB.
+    concurrency:
+      group: api-web-coverage
+      cancel-in-progress: false
 
     # The API e2e suite needs a real, disposable Postgres database, and it is
     # started as a step below rather than with `services:`. Three attempts at
@@ -162,11 +168,11 @@ jobs:
             exit 1
           fi
 
-          # A cancelled run is killed before its cleanup step, so sweep our own
-          # leftovers. Matched by label and excluding this run, so a concurrent
-          # run on another branch is left alone.
-          docker ps -a --filter label=ci-postgres-for=nba-analytics --format '{{.Names}}' \
-            | grep -vFx "$NAME" | xargs -r docker rm -f || true
+          # A cancelled run can leave an exited container behind. Remove only
+          # those leftovers: deleting every labelled container here can kill
+          # another live coverage job's database midway through its test suite.
+          docker ps -a --filter label=ci-postgres-for=nba-analytics --filter status=exited --format '{{.Names}}' \
+            | xargs -r docker rm || true
 
           # Every probe below is wrapped in `timeout`. An earlier version of
           # this step used a bare `exec 3<>/dev/tcp/...`, which does not fail

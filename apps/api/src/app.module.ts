@@ -18,6 +18,7 @@ import { OptimizerModule } from "./optimizer/optimizer.module.js";
 import { PlayersModule } from "./players/players.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
 import { TeamsModule } from "./teams/teams.module.js";
+import { CustomStatisticsModule } from "./custom-statistics/custom-statistics.module.js";
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TeamsModule } from "./teams/teams.module.js";
     SavedModule,
     AdminModule,
     DatasetsModule,
+    CustomStatisticsModule,
     // Registers a catch-all {/*splat, ALL} route (see NotFoundController) —
     // must stay last, or it would intercept every request meant for a
     // module imported after it before that module's own routes ever match.
