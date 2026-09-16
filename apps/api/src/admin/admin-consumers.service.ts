@@ -167,6 +167,20 @@ export class AdminConsumersService {
     });
     return true;
   }
+
+  // Delete a consumer outright — unlike revokeApiKey this isn't a soft
+  // delete: the consumer's own keys and usage log exist only to support
+  // it (both `onDelete: Cascade` in the schema), so removing the consumer
+  // removes them too. Matches AdminUsersService.deleteUser's hard delete,
+  // not IngestionBatch's soft delete — a consumer has no downstream
+  // provenance (like GameEvent rows) that needs to survive it.
+  async deleteConsumer(consumerId: string): Promise<boolean> {
+    const existing = await this.prisma.apiConsumer.findUnique({ where: { id: consumerId } });
+    if (!existing) return false;
+
+    await this.prisma.apiConsumer.delete({ where: { id: consumerId } });
+    return true;
+  }
 }
 
 export { parseConsumerBody, parseUpdateConsumerBody };

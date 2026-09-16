@@ -16,6 +16,7 @@ import {
   createAdminConsumer,
   createAdminApiKey,
   revokeAdminApiKey,
+  deleteAdminConsumer,
   fetchIngestionSchedule,
   updateIngestionSchedule,
   triggerIngestionPull,
@@ -1079,6 +1080,11 @@ function AdminConsumersSection() {
     onSuccess: () => refetch(),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (consumerId: string) => deleteAdminConsumer(consumerId),
+    onSuccess: () => refetch(),
+  });
+
   if (isError) {
     return <ErrorState message="Could not load API consumers." onRetry={() => refetch()} />;
   }
@@ -1176,13 +1182,26 @@ function AdminConsumersSection() {
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        className={BUTTON_CLASS}
-                        onClick={() => keyMutation.mutate(consumer.id)}
-                      >
-                        Generate Key
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className={BUTTON_CLASS}
+                          onClick={() => keyMutation.mutate(consumer.id)}
+                        >
+                          Generate Key
+                        </button>
+                        <button
+                          type="button"
+                          className={`${BUTTON_CLASS} border-gray-300 text-gray-600`}
+                          onClick={() => {
+                            if (confirm(`Delete consumer "${consumer.name}"? Their API keys will stop working immediately.`)) {
+                              deleteMutation.mutate(consumer.id);
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

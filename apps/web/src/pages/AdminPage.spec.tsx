@@ -20,6 +20,7 @@ import {
   createAdminConsumer,
   createAdminApiKey,
   revokeAdminApiKey,
+  deleteAdminConsumer,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
@@ -49,6 +50,7 @@ vi.mock("@/lib/adminApi", () => ({
   createAdminConsumer: vi.fn(),
   createAdminApiKey: vi.fn(),
   revokeAdminApiKey: vi.fn(),
+  deleteAdminConsumer: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -442,6 +444,53 @@ describe("AdminPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Revoke" }));
       await waitFor(() => expect(revokeAdminApiKey).toHaveBeenCalledWith("c1", "k1"));
+    });
+
+    it("deletes a consumer after confirming", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({
+        data: [{
+          id: "c1", name: "TestApp", contactEmail: null,
+          rateLimit: 60, dailyQuota: 1000, isActive: true,
+          createdAt: "2026-09-01",
+          keys: [],
+          _count: { usageLog: 0 },
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+      vi.mocked(deleteAdminConsumer).mockResolvedValue({ deleted: true });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+      await screen.findByText("TestApp");
+
+      await user.click(screen.getByRole("button", { name: "Delete" }));
+      await waitFor(() => expect(deleteAdminConsumer).toHaveBeenCalledWith("c1"));
+    });
+
+    it("does not delete a consumer when confirmation is cancelled", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.spyOn(window, "confirm").mockReturnValue(false);
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({
+        data: [{
+          id: "c1", name: "TestApp", contactEmail: null,
+          rateLimit: 60, dailyQuota: 1000, isActive: true,
+          createdAt: "2026-09-01",
+          keys: [],
+          _count: { usageLog: 0 },
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+      await screen.findByText("TestApp");
+
+      await user.click(screen.getByRole("button", { name: "Delete" }));
+      expect(deleteAdminConsumer).not.toHaveBeenCalled();
     });
 
     it("shows error state", async () => {

@@ -8,6 +8,7 @@ function createMockPrisma() {
       findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "c1" }),
       update: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue({}),
       count: vi.fn().mockResolvedValue(0),
     },
     apiKey: {
@@ -127,6 +128,22 @@ describe("AdminConsumersService", () => {
           data: { isActive: false },
         })
       );
+    });
+  });
+
+  describe("deleteConsumer", () => {
+    it("returns false when consumer does not exist", async () => {
+      prisma.apiConsumer.findUnique.mockResolvedValue(null);
+      const result = await service.deleteConsumer("nonexistent");
+      expect(result).toBe(false);
+      expect(prisma.apiConsumer.delete).not.toHaveBeenCalled();
+    });
+
+    it("deletes the consumer and returns true", async () => {
+      prisma.apiConsumer.findUnique.mockResolvedValue({ id: "c1" });
+      const result = await service.deleteConsumer("c1");
+      expect(result).toBe(true);
+      expect(prisma.apiConsumer.delete).toHaveBeenCalledWith({ where: { id: "c1" } });
     });
   });
 });
