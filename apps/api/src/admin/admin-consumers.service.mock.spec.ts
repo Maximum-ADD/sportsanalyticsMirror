@@ -15,6 +15,7 @@ function createMockPrisma() {
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
   } as any;
 }
 

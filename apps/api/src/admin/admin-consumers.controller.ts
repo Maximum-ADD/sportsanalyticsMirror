@@ -18,7 +18,6 @@ import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import {
   AdminConsumersService,
-  type ConsumerWithStats,
   type CreatedApiKey,
 } from "./admin-consumers.service.js";
 

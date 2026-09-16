@@ -1,13 +1,8 @@
 import type { ExecutionContext } from "@nestjs/common";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createHash } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
 import { ApiKeyGuard } from "./api-key.guard.js";
 import { ApiException } from "./api-exception.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
-
-function hashKey(raw: string) {
-  return createHash("sha256").update(raw).digest("hex");
-}
 
 function createContext(opts: {
   user?: { id: string };

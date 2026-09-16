@@ -162,14 +162,14 @@ export class DatasetReleasesService {
     season: string;
     publishedById?: string;
   }): Promise<DatasetRelease> {
-    const { csv, rowCount, checksum } = await this.generateSeasonCsv(params.season);
+    const { rowCount, checksum } = await this.generateSeasonCsv(params.season);
 
     // Count distinct games and players in the season for the metadata.
     const [gamesCount, playersCount] = await Promise.all([
       this.prisma.game.count({ where: { season: params.season } }),
       this.prisma.playerGameStat.count({
         where: { game: { season: params.season } },
-      }).then((count) => {
+      }).then((_count) => {
         // We want distinct players, not total stat rows.
         return rowCount;
       }),

@@ -18,10 +18,12 @@ function createMockPrisma() {
       return fn(txProxy);
     }),
     _tx: txProxy,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
   } as any;
 }
 
 function createMockCache() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
   return { invalidate: vi.fn() } as any;
 }
 
