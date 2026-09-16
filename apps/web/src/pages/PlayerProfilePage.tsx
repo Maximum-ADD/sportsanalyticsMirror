@@ -24,9 +24,9 @@ import type { Player, PlayerStatsResponse, SeasonAverages, SeasonType, UpcomingG
 // fill for toggles (the edit overlay) so the engaged state reads at a
 // glance.
 const LOCKER_BUTTON_CLASS =
-  "border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather";
+  "min-h-10 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather sm:min-h-0";
 const LOCKER_BUTTON_ACTIVE_CLASS =
-  "border border-locker-leather bg-locker-leather px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors";
+  "min-h-10 border border-locker-leather bg-locker-leather px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors sm:min-h-0";
 
 // A card-internal section title in the predictions/home pattern: display
 // type, wide tracking, hairline rule running out to the card's right edge.
@@ -280,7 +280,7 @@ export function PlayerProfilePage() {
 
   if (playerQuery.isPending || statsQuery.isPending) {
     return (
-      <div className="min-h-full bg-landing-hero p-6">
+      <div className="min-h-full bg-landing-hero p-4 sm:p-6">
         <PageLoading label="Loading player" />
       </div>
     );
@@ -320,7 +320,7 @@ export function PlayerProfilePage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-4">
           <button type="button" onClick={goBack} className={LOCKER_BUTTON_CLASS}>
             ← Back
@@ -336,7 +336,7 @@ export function PlayerProfilePage() {
               the stats sections keep their in-place blur underneath. */}
           <Reveal className="xl:col-span-2">
             <SectionLoading loading={isSwitchingStatsSegment} label="Loading player stats">
-            <section className="border border-landing-light bg-locker-surface p-6">
+            <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <div className="flex flex-wrap items-center gap-4">
               <PlayerHeadshot player={player} size="lg" />
               <div className="min-w-0">
@@ -525,7 +525,7 @@ export function PlayerProfilePage() {
 
           <Reveal delay={1}>
             <SectionLoading loading={isSwitchingStatsSegment} label="Loading player stats">
-            <section className="border border-landing-light bg-locker-surface p-6">
+            <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
               <SectionHeading title="Player traits" />
             <PlayerTraitsRadar seasonAverages={effectiveAverages} />
             </section>
@@ -534,7 +534,7 @@ export function PlayerProfilePage() {
 
           <Reveal className="xl:col-span-3">
             <SectionLoading loading={isSwitchingStatsSegment} label="Loading player stats">
-            <section className="border border-landing-light bg-locker-surface p-6">
+            <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
               <SectionHeading title="Shooting splits" />
             {/* Six across so the two efficiency measures sit on the same
                 line as the raw percentages they contextualise — TS% and
@@ -586,7 +586,7 @@ export function PlayerProfilePage() {
               between segments, not about whichever one is currently
               selected. */}
           <Reveal className="xl:col-span-3">
-          <section className="border border-landing-light bg-locker-surface p-6">
+          <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <SectionHeading title="Regular season vs. postseason" />
             <p className="mb-4 text-[12.5px] text-locker-ink-muted">
               Change from this player's regular-season line. Postseason samples are small, so rates from fewer than
@@ -606,7 +606,7 @@ export function PlayerProfilePage() {
           </Reveal>
 
           <Reveal className="xl:col-span-3">
-          <section className="border border-landing-light bg-locker-surface p-6">
+          <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <SectionHeading title="Matchup analysis" />
             <p className="mb-4 text-[12.5px] text-locker-ink-muted">
               Scoring against each opponent over this player's regular-season history, and the projected line for the
@@ -622,7 +622,7 @@ export function PlayerProfilePage() {
           </Reveal>
 
           <Reveal className="xl:col-span-3">
-          <section className="border border-landing-light bg-locker-surface p-6">
+          <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <SectionHeading title="Bio" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <BioField label="Height" value={formatHeight(player.heightInches)} />

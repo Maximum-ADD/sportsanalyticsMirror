@@ -26,7 +26,7 @@ const PERCENT = (value: number) => `${Math.round(value * 100)}%`;
 // LOCKER_BUTTON_CLASS — a bordered button with the "←" glyph, not the plain
 // text-link-with-icon this page used before.
 const LOCKER_BUTTON_CLASS =
-  "border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather";
+  "min-h-10 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather sm:min-h-0";
 
 function formatMargin(predictedMarginHome: number | null, homeTeam: Game["homeTeam"], awayTeam: Game["awayTeam"]): string {
   if (predictedMarginHome === null) return "—";
@@ -401,7 +401,7 @@ export function GameDetailPage() {
 
   if (gameQuery.isPending) {
     return (
-      <div className="min-h-full bg-landing-hero p-6">
+      <div className="min-h-full bg-landing-hero p-4 sm:p-6">
         <PageLoading label="Loading game" />
       </div>
     );
@@ -436,19 +436,23 @@ export function GameDetailPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         <button type="button" onClick={goBack} className={`mb-4 ${LOCKER_BUTTON_CLASS}`}>
           ← Back
         </button>
 
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          {/* Wraps: two full club names ("Portland Trail Blazers" at
+              "Oklahoma City Thunder") set at text-lg are far wider than a
+              phone, and without this the row pushed the whole page into a
+              horizontal scroll. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <TeamBadge team={game.awayTeam} size="md" />
-            <span className="font-display text-lg tracking-[0.01em] text-landing-ink uppercase">
+            <span className="font-display text-base tracking-[0.01em] text-landing-ink uppercase sm:text-lg">
               {game.awayTeam.city} {game.awayTeam.name}
             </span>
             <span className="font-mono text-[11px] text-locker-ink-muted">@</span>
-            <span className="font-display text-lg tracking-[0.01em] text-landing-ink uppercase">
+            <span className="font-display text-base tracking-[0.01em] text-landing-ink uppercase sm:text-lg">
               {game.homeTeam.city} {game.homeTeam.name}
             </span>
             <TeamBadge team={game.homeTeam} size="md" />
@@ -524,7 +528,7 @@ export function GameDetailPage() {
         </div>
 
         {predictedScorers.length === 0 ? (
-          <div className="border border-landing-light bg-locker-surface p-6 text-[12.5px] text-locker-ink-muted">
+          <div className="border border-landing-light bg-locker-surface p-4 sm:p-6 text-[12.5px] text-locker-ink-muted">
             Not enough game history yet for either roster to predict scoring for this matchup.
           </div>
         ) : (

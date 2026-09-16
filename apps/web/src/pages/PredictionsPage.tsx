@@ -359,7 +359,7 @@ function matchesSearch(game: Game, query: string): boolean {
 // actual numbers behind these two models.
 function HowItWorksSection() {
   return (
-    <section className="relative overflow-hidden bg-landing-dark px-6 py-10 lg:px-10">
+    <section className="relative overflow-hidden bg-landing-dark px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-3xl text-center">
         <span className="font-mono text-[10px] tracking-[0.2em] text-white/60 uppercase">How it works</span>
         <h2 className="mt-2 font-display text-2xl tracking-[0.01em] text-white uppercase">
@@ -690,7 +690,7 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
           to={`/games/${favoriteTeamNextGame.id}`}
           className="mb-3 block border border-landing-light bg-landing-hero p-3 transition-colors hover:border-locker-leather"
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
               {me.favoriteTeam!.name}'s next game
             </span>
@@ -700,7 +700,7 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
               </span>
             )}
           </div>
-          <div className="mt-1.5 flex items-center justify-between gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <span className="font-display text-sm text-landing-ink uppercase">
               {favoriteTeamNextGame.awayTeam.abbreviation} @ {favoriteTeamNextGame.homeTeam.abbreviation}
             </span>
@@ -833,7 +833,7 @@ export function PredictionsPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         {/* Hero — explains the page and how to read it, the same job the
             homepage's own opening band does, not a second landing-page
             hero (no photo, nothing viewport-filling). Each major block
@@ -841,7 +841,7 @@ export function PredictionsPage() {
             page's Reveal idiom) — entrances only, interactive controls
             stay put. */}
         <Reveal>
-          <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+          <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
             <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Predictions</h1>
             <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed text-locker-ink-muted">
               Elo-based win probability and Four Factors-based predicted margin for every ingested game. Cards for
@@ -924,8 +924,11 @@ export function PredictionsPage() {
 
         {/* Filter + search */}
         <div className="mb-5 flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5">
-            <Search aria-hidden className="size-3.5 text-locker-ink-muted" />
+          {/* Full width on phones — a fixed field plus its chrome leaves
+              nothing beside it at 360px, so it would take its own row
+              regardless. */}
+          <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 sm:min-h-0 sm:w-auto">
+            <Search aria-hidden className="size-3.5 shrink-0 text-locker-ink-muted" />
             <input
               type="search"
               value={searchQuery}
@@ -935,7 +938,7 @@ export function PredictionsPage() {
               }}
               placeholder="Search a team"
               aria-label="Search games by team"
-              className="w-40 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none"
+              className="w-full min-w-0 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-40"
             />
           </div>
           <select
@@ -945,7 +948,7 @@ export function PredictionsPage() {
               setShowAllCards(false);
             }}
             aria-label="Filter games by season"
-            className="border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none"
+            className="min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none sm:min-h-0"
           >
             <option value="all">Upcoming games</option>
             {(seasonsQuery.data ?? []).map((season) => (
@@ -985,7 +988,7 @@ export function PredictionsPage() {
                 ))}
               </div>
             ) : filteredGames.length === 0 ? (
-              <p className="border border-dashed border-landing-light bg-locker-surface p-6 text-center text-[12.5px] text-locker-ink-muted">
+              <p className="border border-dashed border-landing-light bg-locker-surface p-4 sm:p-6 text-center text-[12.5px] text-locker-ink-muted">
                 No games match that search.
               </p>
             ) : (

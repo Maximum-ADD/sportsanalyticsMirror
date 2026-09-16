@@ -75,7 +75,7 @@ function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="border border-locker-leather bg-locker-leather px-6 py-2.5 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors hover:bg-locker-leather/90 disabled:cursor-not-allowed disabled:border-landing-light disabled:bg-locker-surface disabled:text-locker-ink-muted"
+      className="min-h-11 border border-locker-leather bg-locker-leather px-6 py-2.5 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors hover:bg-locker-leather/90 disabled:cursor-not-allowed disabled:border-landing-light disabled:bg-locker-surface disabled:text-locker-ink-muted sm:min-h-0"
     >
       {children}
     </button>
@@ -313,8 +313,8 @@ export function OnboardingPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-2xl px-6 py-10">
-        <div className="border border-landing-light bg-locker-surface p-6">
+      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+        <div className="border border-landing-light bg-locker-surface p-4 sm:p-6">
           <StepHeader step={step} stepNumber={stepNumber} />
 
           {step === "username" && <UsernameStep onNext={() => setStep("team")} />}

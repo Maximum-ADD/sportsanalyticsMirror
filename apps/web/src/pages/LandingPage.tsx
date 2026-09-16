@@ -105,7 +105,7 @@ export function LandingPage() {
   const appHomeURL = new URL(APP_HOME, window.location.origin).href;
 
   return (
-    <div className="flex min-h-screen flex-col bg-landing-ink">
+    <div className="flex min-h-dvh flex-col bg-landing-ink">
       <LandingHeader signInCallbackURL={appHomeURL} beforeAuthStatus={<LandingMatchWidget />} />
       <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
         {/* Hero: the photo fills the whole first screen (object-cover — the
@@ -120,12 +120,12 @@ export function LandingPage() {
               hero's echo of the What We Do scan line. Portrait phones show
               no court: the narrow photo fills that width on its own. */}
           <HeroCourtLines />
-          <div className="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1500px] items-center px-6 py-20 lg:px-14">
+          <div className="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1500px] items-center px-4 py-20 sm:px-6 lg:px-14">
             <div className="max-w-2xl lg:pl-14">
               <Reveal as="p" className="font-mono text-xs tracking-[0.3em] text-white/80 uppercase">
                 Court Vision
               </Reveal>
-              <h1 className="mt-4 font-display text-[clamp(2.75rem,6.4vw,6.75rem)] leading-[1.12] tracking-[-0.02em] whitespace-nowrap uppercase">
+              <h1 className="mt-4 font-display text-[clamp(2.25rem,6.4vw,6.75rem)] leading-[1.12] tracking-[-0.02em] whitespace-nowrap uppercase">
                 {/* Line one carries the ball-leather texture fill (see the
                     hero-leather-text utility); the other two lines keep their
                     solid orange / outline treatments. */}
@@ -162,7 +162,7 @@ export function LandingPage() {
           <div aria-hidden className="pointer-events-none absolute inset-y-0 left-[12%] hidden w-px overflow-hidden bg-white/15 md:block">
             <span className="landing-scan absolute inset-x-0 h-1/3 bg-brand-accent/80 blur-[1px]" />
           </div>
-          <div className="relative mx-auto flex min-h-[48rem] w-full max-w-[1500px] items-end px-6 py-16 lg:min-h-[56rem] lg:px-14 lg:py-24">
+          <div className="relative mx-auto flex min-h-[48rem] w-full max-w-[1500px] items-end px-4 py-16 sm:px-6 lg:min-h-[56rem] lg:px-14 lg:py-24">
             <div className="max-w-3xl lg:pl-14">
               <Reveal
                 as="h2"
@@ -207,7 +207,7 @@ export function LandingPage() {
         <section className="relative overflow-hidden bg-landing-dark">
           <SectionPhoto name="clippers-arena" narrowName="clippers-arena-narrow" />
           <div aria-hidden className="absolute inset-0 bg-linear-to-r from-black/85 via-black/50 to-black/10" />
-          <div className="relative mx-auto flex min-h-[40rem] w-full max-w-[1500px] items-center px-6 py-16 lg:min-h-[46rem] lg:px-14">
+          <div className="relative mx-auto flex min-h-[40rem] w-full max-w-[1500px] items-center px-4 py-16 sm:px-6 lg:min-h-[46rem] lg:px-14">
             <div className="max-w-2xl lg:pl-14">
               <Reveal
                 as="h2"

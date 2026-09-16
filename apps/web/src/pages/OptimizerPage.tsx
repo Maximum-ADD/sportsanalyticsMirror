@@ -91,7 +91,7 @@ function ConstraintRow({ label, detail, met }: { label: string; detail: string; 
   // the rest of the app's verdicts. Glyph AND word, never colour alone.
   return (
     <li className="flex items-center justify-between gap-3 border border-landing-light bg-landing-hero px-3 py-2.5">
-      <div>
+      <div className="min-w-0">
         <p className="text-[12.5px] text-landing-ink">{label}</p>
         <p className="font-mono text-[9.5px] tracking-[0.08em] text-locker-ink-muted uppercase">{detail}</p>
       </div>
@@ -217,7 +217,7 @@ function SaveLineupDialog({
 
 function PageHeader({ solvedAt, budget }: { solvedAt?: string; budget?: number }) {
   return (
-    <header className="mb-6 border border-landing-light bg-locker-surface p-6">
+    <header className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
       <p className="mb-2 font-mono text-[10px] tracking-[0.2em] text-locker-leather uppercase">
         Fantasy optimizer · module 01
       </p>
@@ -327,7 +327,7 @@ export function OptimizerPage() {
   if (isError && error instanceof ApiError && error.status === 404) {
     return (
       <div className="min-h-full bg-landing-hero">
-        <div className="mx-auto max-w-[1100px] px-6 py-6 lg:px-8">
+        <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8">
           <Reveal>
             <PageHeader />
             <p className="border border-landing-light bg-locker-surface p-5 text-[12.5px] text-locker-ink-muted">
@@ -352,7 +352,7 @@ export function OptimizerPage() {
   if (isPending) {
     return (
       <div className="min-h-full bg-landing-hero">
-        <div className="mx-auto max-w-[1100px] px-6 py-6 lg:px-8">
+        <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8">
           <Reveal>
             <PageHeader />
             <PageLoading label="Loading optimized lineup" />
@@ -494,7 +494,7 @@ export function OptimizerPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1100px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8">
         <Reveal replay={false}>
           <PageHeader solvedAt={data.createdAt} budget={data.budget} />
         </Reveal>
@@ -665,10 +665,10 @@ export function OptimizerPage() {
                   <tr className="border-b border-landing-light bg-landing-hero">
                     <th className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Player</th>
                     <th className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Team</th>
-                    <th className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Pos</th>
+                    <th className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase hidden md:table-cell">Pos</th>
                     <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Proj pts</th>
                     <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Salary</th>
-                    <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">$ / PT</th>
+                    <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase hidden sm:table-cell">$ / PT</th>
                     {isEditingLineup && <th className="px-3 py-2.5"><span className="sr-only">Remove</span></th>}
                   </tr>
                 </thead>
@@ -696,14 +696,16 @@ export function OptimizerPage() {
                           <span className="text-[12px] text-locker-ink-muted">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-[12px] text-landing-ink">{slot.player.position}</td>
+                      <td className="hidden px-3 py-2.5 text-[12px] text-landing-ink md:table-cell">
+                        {slot.player.position}
+                      </td>
                       <td className="px-3 py-2.5 text-right text-[12.5px] text-landing-ink tabular-nums">
                         {formatPoints(slot.predictedFantasyPoints)}
                       </td>
                       <td className="px-3 py-2.5 text-right text-[12.5px] text-landing-ink tabular-nums">
                         {formatSalary(slot.salary)}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-[12.5px] text-landing-ink tabular-nums">
+                      <td className="hidden px-3 py-2.5 text-right text-[12.5px] text-landing-ink tabular-nums sm:table-cell">
                         {formatDollarsPerPoint(slot)}
                       </td>
                       {isEditingLineup && (
@@ -711,7 +713,7 @@ export function OptimizerPage() {
                           <button
                             type="button"
                             aria-label={`Remove ${slot.player.firstName} ${slot.player.lastName} from the lineup`}
-                            className="border border-landing-light px-1.5 py-0.5 font-mono text-[10px] text-locker-ink-muted transition-colors hover:border-locker-bad hover:text-locker-bad"
+                            className="inline-flex size-9 items-center justify-center border border-landing-light font-mono text-[10px] text-locker-ink-muted transition-colors hover:border-locker-bad hover:text-locker-bad sm:size-auto sm:px-1.5 sm:py-0.5"
                             onClick={() => removeSlot(slot.id)}
                           >
                             ✕
@@ -727,7 +729,7 @@ export function OptimizerPage() {
         </Reveal>
 
         <Reveal replay={false} delay={3}>
-          <section className="border border-landing-light bg-locker-surface p-6">
+          <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <div className="mb-4 flex items-center gap-3.5">
               <span className="font-mono text-[10px] tracking-[0.2em] text-locker-leather">04</span>
               <h2 className={MODULE_HEADING_CLASS}>Solver checks</h2>

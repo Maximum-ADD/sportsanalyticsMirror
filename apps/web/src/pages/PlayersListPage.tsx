@@ -44,7 +44,29 @@ const LEADER_CATEGORIES: {
   { key: "tsPct", label: "True shooting", selectValue: (leader) => leader.value, formatValue: (v) => `${v.toFixed(1)}%` },
 ];
 
-const TABLE_HEADERS = ["Player", "Team", "Pos", "#", "PPG", "RPG", "APG", "TS%", "Last 8"] as const;
+// Ten columns do not fit a phone, and a horizontally scrolling stat table
+// hides the numbers behind a gesture. Instead each column declares the
+// width it earns its place at, and the table sheds the least important
+// ones on the way down: identity (player, team) and the column the page is
+// ranked on (PPG) are always there, the rest return as the screen grows.
+// The class is declared once here and applied to both the header cell and
+// the body cell — set on only one of them, the table shears.
+const TABLE_COLUMNS = [
+  { label: "Player", className: "" },
+  { label: "Team", className: "" },
+  { label: "Pos", className: "hidden md:table-cell" },
+  { label: "#", className: "hidden lg:table-cell" },
+  { label: "PPG", className: "" },
+  { label: "RPG", className: "hidden sm:table-cell" },
+  { label: "APG", className: "hidden sm:table-cell" },
+  { label: "TS%", className: "hidden md:table-cell" },
+  { label: "Last 8", className: "hidden lg:table-cell" },
+] as const;
+
+// Shared by every cell in the table so the horizontal padding tightens in
+// one place on phones, where it is competing with the columns themselves
+// for width.
+const CELL_PADDING = "px-2 py-2.5 sm:px-3";
 
 // Client-side ranking for the followed-only view. That list comes from the
 // signed-in profile rather than the ranked API, so the page reproduces the
@@ -281,10 +303,10 @@ export function PlayersListPage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         {/* Header — the page's title and its method note, the same job the
             predictions page's opening band does. */}
-        <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+        <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Players</h1>
             {(playersQuery.data || isFollowingView) && (
@@ -414,18 +436,23 @@ export function PlayersListPage() {
           loading={hasLoadedTableOnce && (playersQuery.isFetching || statsQuery.isFetching)}
           label="Loading players"
         >
-          <div className="overflow-hidden border border-landing-light bg-locker-surface">
+          {/* The column set above is built to fit without scrolling, so this
+              is a safety net rather than the mechanism: an unusually long
+              name scrolls this box instead of widening the whole page. */}
+          <div className="overflow-x-auto border border-landing-light bg-locker-surface">
             <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-landing-light bg-landing-hero">
-                {[...TABLE_HEADERS, ...(session ? (["Follow"] as const) : [])].map((header) => (
-                  <th
-                    key={header}
-                    className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase"
-                  >
-                    {header}
-                  </th>
-                ))}
+                {[...TABLE_COLUMNS, ...(session ? ([{ label: "Follow", className: "" }] as const) : [])].map(
+                  (column) => (
+                    <th
+                      key={column.label}
+                      className={`${CELL_PADDING} font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase ${column.className}`}
+                    >
+                      {column.label}
+                    </th>
+                  )
+                )}
               </tr>
             </thead>
             <tbody>
@@ -456,7 +483,7 @@ export function PlayersListPage() {
                       key={player.id}
                       className="border-b border-landing-light transition-colors last:border-b-0 hover:bg-landing-hero"
                     >
-                      <td className="px-3 py-2.5">
+                      <td className={CELL_PADDING}>
                         {/* Carries the selected segment through to the profile.
                             Without it, clicking a player from a Playoffs list
                             lands on their regular-season page — the navigation
@@ -476,7 +503,7 @@ export function PlayersListPage() {
                           </Link>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className={CELL_PADDING}>
                         {player.team ? (
                           <Link
                             to={`/teams/${player.team.id}`}
@@ -489,28 +516,41 @@ export function PlayersListPage() {
                           <span className="text-locker-ink-muted">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-[10.5px] text-locker-ink-muted">
+                      <td
+                        className={`${CELL_PADDING} hidden font-mono text-[10.5px] text-locker-ink-muted md:table-cell`}
+                      >
                         {player.position}
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-[10.5px] text-locker-ink-muted">
+                      <td
+                        className={`${CELL_PADDING} hidden font-mono text-[10.5px] text-locker-ink-muted lg:table-cell`}
+                      >
                         {player.jerseyNumber ? `#${player.jerseyNumber}` : "—"}
                       </td>
                       <StatCell accent entry={entry} selectValue={(averages) => averages.pointsPerGame} />
-                      <StatCell entry={entry} selectValue={(averages) => averages.reboundsPerGame} />
-                      <StatCell entry={entry} selectValue={(averages) => averages.assistsPerGame} />
                       <StatCell
+                        className="hidden sm:table-cell"
+                        entry={entry}
+                        selectValue={(averages) => averages.reboundsPerGame}
+                      />
+                      <StatCell
+                        className="hidden sm:table-cell"
+                        entry={entry}
+                        selectValue={(averages) => averages.assistsPerGame}
+                      />
+                      <StatCell
+                        className="hidden md:table-cell"
                         entry={entry}
                         selectValue={(averages) => averages.trueShootingPercentage}
                         suffix="%"
                       />
-                      <td className="px-3 py-2.5">
+                      <td className={`${CELL_PADDING} hidden lg:table-cell`}>
                         <Sparkline
                           points={(entry?.gameLog ?? []).slice(-SPARKLINE_GAME_COUNT).map((game) => game.points)}
                           label={`${playerName} points across the last ${SPARKLINE_GAME_COUNT} games`}
                         />
                       </td>
                       {session && (
-                        <td className="px-3 py-2.5">
+                        <td className={CELL_PADDING}>
                           <FollowPlayerButton playerId={player.id} playerName={playerName} />
                         </td>
                       )}
@@ -545,18 +585,21 @@ interface StatCellProps {
   accent?: boolean;
   // TS% carries a "%" suffix; the per-game rates don't.
   suffix?: string;
+  // The column's responsive visibility, which has to match the header
+  // cell's in TABLE_COLUMNS.
+  className?: string;
 }
 
 // One rate column cell. A player with no games in the segment gets an em
 // dash rather than a wall of 0.0s — a zero there would be a real
 // measurement, and these players simply have none.
-function StatCell({ entry, selectValue, accent = false, suffix = "" }: StatCellProps) {
+function StatCell({ entry, selectValue, accent = false, suffix = "", className = "" }: StatCellProps) {
   const hasPlayed = (entry?.seasonAverages.gamesPlayed ?? 0) > 0;
   return (
     <td
-      className={`px-3 py-2.5 font-display text-lg tabular-nums ${
+      className={`${CELL_PADDING} font-display text-lg tabular-nums ${
         accent ? "text-locker-leather" : "text-landing-ink"
-      }`}
+      } ${className}`}
     >
       {entry && hasPlayed ? `${selectValue(entry.seasonAverages).toFixed(1)}${suffix}` : "—"}
     </td>

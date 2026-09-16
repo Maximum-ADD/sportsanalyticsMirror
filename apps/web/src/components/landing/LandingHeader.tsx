@@ -1,5 +1,6 @@
-import { type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { Menu, X } from "lucide-react";
 import { AuthStatus } from "@/components/AuthStatus";
 import { useMe } from "@/lib/useMe";
 import { FlameBallLogo } from "./FlameBallLogo";
@@ -38,6 +39,34 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
   const { data: me } = useMe();
   const links = me?.role === "ADMIN" ? [...APP_LINKS, { label: "Admin", to: "/admin" }] : APP_LINKS;
 
+  // Below lg the links live in a drawer behind a menu button instead of in
+  // the row: seven nowrap links cannot fit a phone width, and the previous
+  // swipe-to-scroll row hid most of them behind a gesture with no
+  // affordance — every link was reachable in principle and invisible in
+  // practice.
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuId = useId();
+  const { pathname } = useLocation();
+
+  // Navigating is the drawer's success case, so it closes itself rather
+  // than staying open over the page the user just asked for. Keyed on the
+  // path so tapping the link for the current page still closes it.
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
+
+  // Escape closes the drawer, matching what any other overlay on the page
+  // does. Bound only while open so the header adds no global key handler
+  // to every page in the app.
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsMenuOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isMenuOpen]);
+
   return (
     <header className="relative inset-x-0 top-0 z-20 shrink-0">
       <a
@@ -46,7 +75,7 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
       >
         Skip to content
       </a>
-      <div className="flex h-14 items-center gap-x-6 bg-landing-ink px-6 lg:px-14">
+      <div className="flex h-14 items-center gap-x-3 bg-landing-ink px-4 sm:gap-x-6 sm:px-6 lg:px-14">
         <Link
           to="/"
           aria-label="Court Vision, home"
@@ -54,15 +83,12 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
         >
           <FlameBallLogo className="h-7" />
         </Link>
-        {/* The link row is the one part of the header allowed to scroll: at
-            phone widths six nowrap links cannot fit, and letting them blow
-            out the row instead both overflows the page horizontally and
-            (via flex shrink) squeezes AuthStatus until its button wraps
-            into a tall block. flex-1 + overflow-x-auto keeps every link
-            reachable by swiping, while AuthStatus stays pinned at full
-            size. */}
+        {/* One "Primary" landmark for both layouts: the in-row list and the
+            drawer are two presentations of the same nav, and two landmarks
+            with the same name would read as two different navigations to a
+            screen reader. */}
         <nav aria-label="Primary" className="flex min-w-0 flex-1 items-center gap-x-6 lg:gap-x-10">
-          <ul className="flex flex-1 items-center gap-x-6 overflow-x-auto scrollbar-none lg:gap-x-10">
+          <ul className="hidden flex-1 items-center gap-x-6 lg:flex lg:gap-x-10">
             {links.map((link) => (
               <li key={link.label} className="shrink-0">
                 <Link to={link.to} className={LINK_CLASS}>
@@ -79,10 +105,46 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
               xl: at narrower widths the nav links alone already crowd the
               row. */}
           {beforeAuthStatus && <div className="hidden shrink-0 xl:block">{beforeAuthStatus}</div>}
-          <div className="ml-auto flex shrink-0 items-center">
+          <div className="ml-auto flex shrink-0 items-center gap-x-2 sm:gap-x-3">
             <AuthStatus signInCallbackURL={signInCallbackURL} />
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((open) => !open)}
+              aria-expanded={isMenuOpen}
+              aria-controls={menuId}
+              aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+              // -mr-2 pulls the 44px touch target back to the row's optical
+              // edge: the button needs the height to be tappable, the icon
+              // inside it should still line up with the page gutter.
+              className="-mr-2 flex size-11 items-center justify-center text-white transition-colors hover:text-brand-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent lg:hidden"
+            >
+              {isMenuOpen ? <X aria-hidden className="size-5" /> : <Menu aria-hidden className="size-5" />}
+            </button>
           </div>
         </nav>
+      </div>
+      {/* Absolute rather than in flow so opening the drawer never pushes the
+          page down — it sits over the content like every other menu. */}
+      <div
+        id={menuId}
+        hidden={!isMenuOpen}
+        className="absolute inset-x-0 top-14 border-t border-white/10 bg-landing-ink shadow-[0_18px_30px_rgba(0,0,0,0.35)] lg:hidden"
+      >
+        <ul className="flex flex-col px-4 py-2 sm:px-6">
+          {links.map((link) => (
+            <li key={link.label}>
+              <Link
+                to={link.to}
+                // Full-row links at a 44px minimum: the drawer is the only
+                // way to these routes on a phone, so each target is sized
+                // for a thumb rather than for a cursor.
+                className={`flex min-h-11 items-center border-b border-white/10 last:border-b-0 ${LINK_CLASS}`}
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </header>
   );

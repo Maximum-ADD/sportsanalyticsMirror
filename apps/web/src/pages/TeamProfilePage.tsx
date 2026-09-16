@@ -10,7 +10,7 @@ import { Reveal } from "@/components/landing/Reveal";
 import { TeamBadge } from "@/components/TeamBadge";
 
 const LOCKER_BUTTON_CLASS =
-  "border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather";
+  "min-h-10 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather sm:min-h-0";
 
 const TABLE_HEADERS = ["Player", "Position", "Jersey"] as const;
 
@@ -64,7 +64,7 @@ export function TeamProfilePage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         <Reveal>
           <button type="button" onClick={goBack} className={`mb-4 ${LOCKER_BUTTON_CLASS}`}>
             ← Back
@@ -72,7 +72,7 @@ export function TeamProfilePage() {
         </Reveal>
 
         <Reveal>
-          <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+          <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <TeamBadge team={team} size="md" className="size-14 text-base" />
@@ -124,7 +124,7 @@ export function TeamProfilePage() {
         <Reveal>
           <h2 className="mb-3 font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">Roster</h2>
           <SectionLoading loading={rosterQuery.isSuccess && rosterQuery.isFetching} label="Loading roster">
-            <div className="overflow-hidden border border-landing-light bg-locker-surface">
+            <div className="overflow-x-auto border border-landing-light bg-locker-surface">
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-landing-light bg-landing-hero">

@@ -139,8 +139,8 @@ function UsernameEditor({ currentUsername }: { currentUsername: string }) {
 
   if (!isEditing) {
     return (
-      <div className="flex items-center gap-3">
-        <span className="font-display text-lg text-landing-ink uppercase">{currentUsername}</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-display text-lg break-all text-landing-ink uppercase">{currentUsername}</span>
         <LockerButton
           onClick={() => {
             setValue(currentUsername);
@@ -158,13 +158,13 @@ function UsernameEditor({ currentUsername }: { currentUsername: string }) {
 
   return (
     <div>
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-2.5">
         <input
           type="text"
           value={value}
           onChange={(event) => setValue(event.target.value)}
           autoComplete="off"
-          className="max-w-56 border border-landing-light bg-landing-hero px-3 py-2 text-[13px] text-landing-ink focus:border-locker-leather focus:outline-none"
+          className="w-full max-w-56 min-w-0 border border-landing-light bg-landing-hero px-3 py-2 text-[13px] text-landing-ink focus:border-locker-leather focus:outline-none"
         />
         <LockerButton
           onClick={() => updateMutation.mutate(value.trim())}
@@ -199,11 +199,11 @@ function FavoriteTeamEditor({ favoriteTeam }: { favoriteTeam: Team | null }) {
 
   if (!isEditing) {
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {favoriteTeam ? (
           <>
             <TeamBadge team={favoriteTeam} size="md" />
-            <span className="font-display text-lg text-landing-ink uppercase">
+            <span className="font-display text-base text-landing-ink uppercase sm:text-lg">
               {favoriteTeam.city} {favoriteTeam.name}
             </span>
           </>
@@ -267,7 +267,7 @@ function FollowedPlayersList({ players }: { players: { id: string; firstName: st
             aria-label={`Unfollow ${player.firstName} ${player.lastName}`}
             onClick={() => unfollowMutation.mutate(player.id)}
             disabled={unfollowMutation.isPending}
-            className="shrink-0 border border-landing-light p-1 text-locker-ink-muted transition-colors hover:border-locker-bad hover:text-locker-bad disabled:opacity-50"
+            className="flex size-9 shrink-0 items-center justify-center border border-landing-light text-locker-ink-muted transition-colors hover:border-locker-bad hover:text-locker-bad disabled:opacity-50 sm:size-auto sm:p-1"
           >
             <X aria-hidden className="size-3.5" />
           </button>
@@ -486,7 +486,7 @@ export function ProfilePage() {
 
   if (isError || !me) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-10">
+      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
         <p className="border border-landing-light bg-locker-surface p-5 text-center text-[12.5px] text-locker-ink-muted">
           Could not load your profile.{" "}
           <button type="button" onClick={() => refetch()} className="underline hover:text-landing-ink">
@@ -499,8 +499,8 @@ export function ProfilePage() {
 
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <div className="mb-6 border border-landing-light bg-locker-surface p-6">
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
           <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Profile</h1>
           <p className="mt-2 text-[12.5px] text-locker-ink-muted">{me.email}</p>
         </div>

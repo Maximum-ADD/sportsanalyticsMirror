@@ -37,7 +37,7 @@ import { YourTeamsList } from "@/components/home/YourTeamsList";
 export function HomePage() {
   return (
     <div className="min-h-full bg-landing-hero">
-      <div className="mx-auto flex max-w-[1500px] flex-col gap-6 px-6 py-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         {/* TODO(onboarding): a brand-new account needs the three-step "Set up
             your locker" strip here — claim a team, follow three players, make
             one call — so the page assembles itself instead of opening on

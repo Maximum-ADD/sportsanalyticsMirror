@@ -102,9 +102,7 @@ describe("BeatTheModelCard", () => {
     const user = userEvent.setup();
     vi.mocked(fetchNextChallenge)
       .mockResolvedValueOnce(createChallenge())
-      .mockResolvedValueOnce(
-        createChallenge({ gameId: "game-2", homeTeam: MIAMI, awayTeam: OKC })
-      );
+      .mockResolvedValue(createChallenge({ gameId: "game-2", homeTeam: MIAMI, awayTeam: OKC }));
 
     renderWithProviders(<BeatTheModelCard />);
     await user.click(await screen.findByRole("button", { name: "Denver" }));
@@ -184,12 +182,60 @@ describe("BeatTheModelCard", () => {
     expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
   });
 
-  it("says so plainly when every game has been called", async () => {
+  it("says it is waiting for new games when every game has been called", async () => {
     vi.mocked(fetchNextChallenge).mockRejectedValue(new ApiError("Nothing left", 404));
 
     renderWithProviders(<BeatTheModelCard />);
 
-    expect(await screen.findByText(/called every game we hold/i)).toBeInTheDocument();
+    expect(await screen.findByText("Waiting For New Games")).toBeInTheDocument();
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
+  });
+
+  it("waits for new games once the last one is called, rather than showing it again", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchNextChallenge)
+      .mockResolvedValueOnce(createChallenge())
+      .mockRejectedValue(new ApiError("Nothing left", 404));
+
+    renderWithProviders(<BeatTheModelCard />);
+    await user.click(await screen.findByRole("button", { name: "Denver" }));
+    await screen.findByText("Correct");
+    await user.click(screen.getByRole("button", { name: /next call/i }));
+
+    expect(await screen.findByText("Waiting For New Games")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Denver" })).not.toBeInTheDocument();
+  });
+
+  // The repeat bug, from the side the other tests mock away: the server (or a
+  // cache in front of it) answers with the game that was just called. "Next
+  // call" used to only reset local state, so it showed that game again on
+  // every press without sending a request.
+  it("never asks a called game again, even when a response hands it back", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchNextChallenge).mockResolvedValue(createChallenge());
+
+    renderWithProviders(<BeatTheModelCard />);
+    await user.click(await screen.findByRole("button", { name: "Denver" }));
+    await screen.findByText("Correct");
+    const fetchesBeforeNextCall = vi.mocked(fetchNextChallenge).mock.calls.length;
+    await user.click(screen.getByRole("button", { name: /next call/i }));
+
+    expect(await screen.findByText("Waiting For New Games")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Denver" })).not.toBeInTheDocument();
+    expect(vi.mocked(fetchNextChallenge).mock.calls.length).toBeGreaterThan(fetchesBeforeNextCall);
+  });
+
+  it("offers a new game when checking again finds one", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchNextChallenge)
+      .mockRejectedValueOnce(new ApiError("Nothing left", 404))
+      .mockResolvedValue(createChallenge({ gameId: "game-2", homeTeam: MIAMI, awayTeam: OKC }));
+
+    renderWithProviders(<BeatTheModelCard />);
+    await user.click(await screen.findByRole("button", { name: /check again/i }));
+
+    expect(await screen.findByRole("button", { name: "Miami" })).toBeInTheDocument();
+    expect(screen.queryByText("Waiting For New Games")).not.toBeInTheDocument();
   });
 
   it("surfaces the server's message when a call is rejected", async () => {

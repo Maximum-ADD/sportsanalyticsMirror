@@ -265,7 +265,10 @@ body {
 }
 
 #root {
-  min-height: 100vh;
+  /* dvh for the same reason AppLayout uses h-dvh: on mobile browsers 100vh
+     is the viewport with the URL bar collapsed, so it overshoots what is
+     actually on screen while that chrome is showing. */
+  min-height: 100dvh;
 }
 
 @utility leather-texture {
@@ -341,6 +344,24 @@ body {
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* iOS Safari zooms the whole page in when a form control is focused whose
+   text is smaller than 16px, and it does not zoom back out — the page is
+   left scrolled and oversized after every search or filter. The app's
+   controls are deliberately set at 10-13px, so on phone widths they are
+   pulled up to 16px instead: the alternative fix, maximum-scale=1 on the
+   viewport, defeats pinch zoom for everyone and fails WCAG 1.4.4.
+
+   The selectors carry an extra :not() only to out-specify the Tailwind
+   text-size utility on the element itself; they match every control. Above
+   this width a pointer is doing the work and the dense type stands. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select:not([hidden]),
+  textarea:not([hidden]) {
+    font-size: 16px;
   }
 }
 

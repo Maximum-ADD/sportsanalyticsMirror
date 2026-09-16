@@ -49,7 +49,7 @@ export function FollowTeamButton({ teamId, teamName }: FollowTeamButtonProps) {
           if (isFollowing) unfollowMutation.mutate();
           else followMutation.mutate();
         }}
-        className={`border px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors disabled:opacity-50 ${
+        className={`min-h-9 border px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors disabled:opacity-50 sm:min-h-0 ${
           isFollowing
             ? "border-locker-leather bg-locker-leather text-white hover:border-locker-bad hover:bg-locker-bad"
             : "border-landing-light bg-locker-surface text-landing-ink hover:border-locker-leather"
