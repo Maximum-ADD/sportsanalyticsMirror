@@ -36,7 +36,7 @@ describe("DatasetsPage", () => {
   it("shows loading spinner initially", () => {
     vi.mocked(fetchJson).mockReturnValue(new Promise(() => {}));
     renderWithProviders(<DatasetsPage />);
-    expect(screen.getByText("Loading releases")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading releases" })).toBeInTheDocument();
   });
 
   it("shows error state on fetch failure", async () => {
