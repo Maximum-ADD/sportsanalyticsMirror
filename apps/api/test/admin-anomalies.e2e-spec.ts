@@ -43,7 +43,6 @@ describe("GET /v1/admin/games/:gameId/anomalies", () => {
   afterAll(async () => {
     await testPrisma.user.deleteMany({ where: { id: ADMIN_USER_ID } });
     await resetDatabase();
-    await testPrisma.$disconnect();
     await app.close();
   });
 

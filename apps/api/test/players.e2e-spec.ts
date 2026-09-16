@@ -127,7 +127,6 @@ describe("Players API", () => {
   });
 
   afterAll(async () => {
-    await testPrisma.$disconnect();
     await app.close();
   });
 

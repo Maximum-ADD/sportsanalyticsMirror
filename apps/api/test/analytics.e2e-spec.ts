@@ -126,7 +126,6 @@ describe("Analytics API", () => {
   });
 
   afterAll(async () => {
-    await testPrisma.$disconnect();
     await app.close();
   });
 
