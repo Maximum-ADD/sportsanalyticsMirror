@@ -175,3 +175,33 @@ reflect the real data instead of the old mock dataset:
 cd ../predictor && python predict_games.py
 cd ../optimizer && python predict.py && python optimize.py
 ```
+
+## Market odds (second external API)
+
+```bash
+python fetch_market_odds.py
+```
+
+Fetches every upcoming NBA game's moneyline odds from
+[The Odds API](https://the-odds-api.com/) (free tier, no card required —
+500 credits/month; this script's single `regions=us&markets=h2h` request
+costs a handful of credits, so even running it several times a day stays
+comfortably inside the free tier) and stores a de-vigged,
+bookmaker-averaged home win probability per game as `GameMarketOdds` — see
+its schema doc comment and `fetch_market_odds.py`'s own module docstring
+for the de-vig math and the team/game matching. This is the project's
+second external API integration (the brief requirement `nba_api` alone
+doesn't satisfy) and a genuine baseline for `predict_games.py`'s own
+Elo-based win probability: a sportsbook's line is built from real money,
+not this project's boxscore history, so it's a far more demanding "does
+our model actually add anything" check than beating a coin flip.
+
+Needs `ODDS_API_KEY` in `.env` — sign up free at the link above and copy
+the key from your account page. Free-tier access only ever returns
+current/upcoming lines (never historical closing lines), so this only
+ever writes a snapshot for a game that hasn't been played yet, and simply
+skips games it can't confidently match to one of its own upcoming rows.
+Safe to re-run on a schedule (e.g. once or twice a day): re-running while
+a game is still upcoming refreshes its snapshot with a fresher pre-tip-off
+line; once the game is final, this script has nothing left to say about it
+and leaves its row exactly as it was.

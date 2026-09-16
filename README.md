@@ -129,11 +129,16 @@ This is a base scaffold, not the finished product. What's wired up:
   trend line chart, and a regular-season-vs-postseason comparison) built
   with Recharts + Tailwind. A segment selector on the player, compare and
   predictions pages keeps its choice in the URL (`?segment=playoffs`).
+- **Market odds**: `apps/ingestion/fetch_market_odds.py` pulls NBA
+  moneyline odds from [The Odds API](https://the-odds-api.com/) (free, no
+  card required) — this project's second external API integration — and
+  stores a de-vigged, bookmaker-averaged home win probability per upcoming
+  game (`GameMarketOdds`), shown on the game detail page alongside the
+  model's own prediction. See `docs/PROJECT_OVERVIEW.md`'s "Market odds"
+  section.
 
 ## What's not done yet (follow-up tasks for the team)
 
-- Second external API integration (brief requirement — e.g. an
-  injury/news feed).
 - `axe-core` automated accessibility checks now run against a handful of
   pages/components (`Home`, `Optimizer`, `PlayersListPage`,
   `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/

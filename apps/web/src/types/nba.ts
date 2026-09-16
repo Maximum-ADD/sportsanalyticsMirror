@@ -190,6 +190,23 @@ export interface Game {
   // doesn't include the relation, so callers can tell "not fetched" apart
   // from "fetched, but this game has no prediction yet".
   prediction?: GamePrediction | null;
+  // Same undefined-vs-null distinction as prediction above. Written by
+  // apps/ingestion/fetch_market_odds.py, independently of prediction —
+  // null means either this game hasn't been matched to an odds-API event
+  // yet, or (once played) never was, not that fetching failed.
+  marketOdds?: GameMarketOdds | null;
+}
+
+// GET /v1/games and GET /v1/games/:id's joined market-odds snapshot — see
+// GameMarketOdds's Prisma schema doc comment for the de-vig/free-tier
+// details this type doesn't repeat.
+export interface GameMarketOdds {
+  id: string;
+  gameId: string;
+  homeWinProbability: number;
+  bookmakerCount: number;
+  source: string;
+  fetchedAt: string;
 }
 
 export interface LineupSlot {

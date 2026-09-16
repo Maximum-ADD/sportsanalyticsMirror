@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Game, GameEvent, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
+import type { Game, GameEvent, GameMarketOdds, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
 import { DERIVED_DATA_TTL_MS, REFERENCE_DATA_TTL_MS } from "../cache/cache-ttl.js";
 import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
@@ -7,9 +7,21 @@ import { parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 export type GameWithTeams = Game & { homeTeam: Team; awayTeam: Team };
-export type GameWithTeamsAndPrediction = GameWithTeams & { prediction: GamePrediction | null };
+export type GameWithTeamsAndPrediction = GameWithTeams & {
+  prediction: GamePrediction | null;
+  // Written by apps/ingestion/fetch_market_odds.py, independently of
+  // prediction above — null means either the game hasn't been matched to
+  // an odds-API event yet, or (once played) never was, not that fetching
+  // failed. See GameMarketOdds's schema doc comment.
+  marketOdds: GameMarketOdds | null;
+};
 
-const INCLUDE_TEAMS_AND_PREDICTION = { homeTeam: true, awayTeam: true, prediction: true } as const;
+const INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS = {
+  homeTeam: true,
+  awayTeam: true,
+  prediction: true,
+  marketOdds: true,
+} as const;
 
 type GameStatusFilter = "all" | "upcoming" | "completed";
 
@@ -116,7 +128,7 @@ export class GamesService {
       const [data, total] = await Promise.all([
         this.prisma.game.findMany({
           where: { ...seasonWhere, homeScore: null },
-          include: INCLUDE_TEAMS_AND_PREDICTION,
+          include: INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS,
           skip: (page - 1) * pageSize,
           take: pageSize,
           orderBy: [{ gameDate: "asc" }, { id: "asc" }],
@@ -130,7 +142,7 @@ export class GamesService {
       const [data, total] = await Promise.all([
         this.prisma.game.findMany({
           where: { ...seasonWhere, homeScore: { not: null } },
-          include: INCLUDE_TEAMS_AND_PREDICTION,
+          include: INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS,
           skip: (page - 1) * pageSize,
           take: pageSize,
           orderBy: [{ gameDate: "desc" }, { id: "asc" }],
@@ -143,13 +155,13 @@ export class GamesService {
     const [upcoming, completed, total] = await Promise.all([
       this.prisma.game.findMany({
         where: { ...seasonWhere, homeScore: null },
-        include: INCLUDE_TEAMS_AND_PREDICTION,
+        include: INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS,
         take: rowsNeeded,
         orderBy: [{ gameDate: "asc" }, { id: "asc" }],
       }),
       this.prisma.game.findMany({
         where: { ...seasonWhere, homeScore: { not: null } },
-        include: INCLUDE_TEAMS_AND_PREDICTION,
+        include: INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS,
         take: rowsNeeded,
         orderBy: [{ gameDate: "desc" }, { id: "asc" }],
       }),
@@ -165,7 +177,7 @@ export class GamesService {
   getGameById(gameId: string): Promise<GameWithTeamsAndPrediction | null> {
     return this.prisma.game.findUnique({
       where: { id: gameId },
-      include: INCLUDE_TEAMS_AND_PREDICTION,
+      include: INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS,
     });
   }
 
