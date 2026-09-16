@@ -33,6 +33,20 @@ export class GamesController {
     return this.gamesService.getSeasons();
   }
 
+  @Get(":id/live")
+  @ApiOperation({ summary: "Poll newly received events for an in-progress fixture" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  async getLiveFeed(@Param("id") id: string, @Query("afterSequence") rawAfterSequence: unknown) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    const afterSequence = typeof rawAfterSequence === "string" ? Number(rawAfterSequence) : -1;
+    if (!Number.isInteger(afterSequence) || afterSequence < -1) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "afterSequence must be a non-negative integer");
+    }
+    const events = await this.gamesService.getLiveEvents(id, afterSequence);
+    return { gameId: id, events, nextSequence: events.at(-1)?.sequence ?? afterSequence, pollAfterMilliseconds: 5_000 };
+  }
+
   // GET /v1/games/:id — a single game with its win probability/predicted
   // margin (if generated), market odds (if fetched — see
   // apps/ingestion/fetch_market_odds.py) and predicted top scorers from
