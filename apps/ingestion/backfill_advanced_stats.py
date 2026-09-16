@@ -1,11 +1,19 @@
-"""One-off backfill: fills plus/minus, the offensive/defensive rebound
-split, and usage/offensive/defensive ratings on PlayerGameStat rows that
-predate those columns, without re-fetching anything else.
+"""One-off backfill: fills plus/minus and usage/offensive/defensive ratings
+on PlayerGameStat rows that predate those columns, without re-fetching
+anything else.
 
 Use this on a database populated before the advanced columns existed —
 including production. It leaves every counting stat, roster, bio and game
-row untouched and only writes the six columns added by the
-add_advanced_player_game_stats migration.
+row untouched and only writes the four columns below.
+
+Deliberately does NOT touch offensiveRebounds/defensiveRebounds anymore,
+even though this same PlayerGameLogs feed carries them (see
+player_game_logs.py) — those two columns are now event-derived (see
+play_by_play.py/derive_player_game_stats.py), which is the more honest
+source once it's available, and this script's COALESCE-on-every-column
+pattern would otherwise silently overwrite a real event-derived split with
+the older leaguewide-feed one on every re-run, quietly reintroducing the
+two-sources-of-truth problem event-derivation exists to remove.
 
 Why not just re-run ingest.py: that phase is recency-windowed. It fetches
 each team's GAMES_PER_TEAM (15) most recent games, roughly 400 unique
@@ -68,7 +76,10 @@ def read_player_game_keys(cursor) -> list[dict]:
 
 
 def update_player_game_figures(cursor, player_id: str, game_id: str, figures: dict) -> None:
-    """Writes only the six backfilled columns for one (player, game).
+    """Writes only the four backfilled columns for one (player, game) — see
+    module docstring for why offensiveRebounds/defensiveRebounds, also in
+    `figures` (fetch_season_player_game_logs carries them for ingest.py's
+    own, differently-ordered merge), are deliberately never written here.
 
     COALESCE on every column means a figure the feed didn't carry leaves
     whatever is already stored alone, rather than overwriting a real value
@@ -78,8 +89,6 @@ def update_player_game_figures(cursor, player_id: str, game_id: str, figures: di
         """
         UPDATE "PlayerGameStat" SET
             "plusMinus" = COALESCE(%(plus_minus)s, "plusMinus"),
-            "offensiveRebounds" = COALESCE(%(offensive_rebounds)s, "offensiveRebounds"),
-            "defensiveRebounds" = COALESCE(%(defensive_rebounds)s, "defensiveRebounds"),
             "usagePercentage" = COALESCE(%(usage_percentage)s, "usagePercentage"),
             "offensiveRating" = COALESCE(%(offensive_rating)s, "offensiveRating"),
             "defensiveRating" = COALESCE(%(defensive_rating)s, "defensiveRating")

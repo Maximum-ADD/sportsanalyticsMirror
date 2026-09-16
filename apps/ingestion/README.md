@@ -4,7 +4,10 @@ A small Python service, separate from the NestJS API, that pulls **real**
 NBA data from [`nba_api`](https://github.com/swar/nba_api) (a wrapper
 around stats.nba.com's endpoints) and writes it into the same Postgres
 database Prisma/NestJS manages: all 30 current NBA teams, their current
-rosters, each team's ~15 most recent games with real per-player boxscores,
+rosters, each team's ~15 most recent games with real per-player boxscores
+*derived from that game's real play-by-play* (see "Play-by-play and
+event-derived stats" below — this is the platform's actual "every
+statistic traces back to events" story, not just a documented intention),
 and the season's full postseason (play-in, playoffs and Finals).
 
 This is the real ingestion pipeline the root `README.md`/`PROJECT_OVERVIEW.md`
@@ -28,10 +31,12 @@ transient failures. Don't lower `RATE_LIMIT_DELAY_SECONDS` without a good
 reason — this endpoint is unofficial and undocumented, and being
 aggressive risks a temporary block.
 
-**Expect this to take 25-35 minutes.** Teams are free (bundled static
-data), rosters are 30 calls, player bios are the largest phase by call
-count, and boxscores are the bulk of the remaining runtime — see
-`ingest.py`'s module docstring for the exact call-budget breakdown.
+**Expect this to take 35-45 minutes.** Teams are free (bundled static
+data), rosters are 30 calls, player bios are the largest single phase by
+call count, and boxscores plus their matching play-by-play calls (one
+`PlayByPlayV3` alongside every `BoxScoreTraditionalV3`, see "Play-by-play
+and event-derived stats" below) make up the bulk of the remaining runtime
+— see `ingest.py`'s module docstring for the exact call-budget breakdown.
 
 Plus/minus and the advanced figures (usage rate, offensive/defensive
 ratings) come from leaguewide `PlayerGameLogs` — 2 calls per season
@@ -64,6 +69,47 @@ and their real players, so re-running ingestion after seeding just
 refreshes those specific rows with real data rather than creating
 duplicates — but the mock games/boxscores would still need to be
 overwritten by re-running ingestion again afterward if you seed first.
+
+## Play-by-play and event-derived stats
+
+Every game's `PlayerGameStat` counting stats (points, shooting splits, the
+rebound split, assists, steals, blocks, turnovers) are aggregated from
+real per-play `PlayByPlayV3` data — see `play_by_play.py` (fetch +
+validate + write `GameEvent`) and `derive_player_game_stats.py` (pure
+event → boxscore aggregation, unit-testable with zero DB/network, same
+split as `apps/predictor/four_factors.py`'s fetch/compute functions).
+`minutes` and `plusMinus` stay sourced from the boxscore/`PlayerGameLogs`
+endpoints instead — see `PlayerGameStat`'s schema doc comment for why.
+
+Each run is recorded as an `IngestionBatch` (accepted/rejected event
+counts, rejection reasons) — this pipeline's own "submission" a published
+stat traces back to, alongside the events themselves. A raw action that
+fails schema validation (`event_validation.py` — missing fields, an
+out-of-order/duplicate `actionNumber`, an unrecognised `actionType`, an
+unknown `personId`) is rejected with a structured reason, not silently
+written or silently dropped; `ingest.py` prints a summary when any game
+has rejections.
+
+**Known limitation, needs live verification before trusting it in
+production**: `event_validation.py`'s `KNOWN_ACTION_TYPES` is assembled
+from public research on NBA's play-by-play feed, not confirmed against a
+live fetch — this development machine has no network path to
+stats.nba.com (a plain HTTPS request to it times out here while general
+internet access works fine, the same cloud/sandbox-IP-blocking issue
+described above). Run `play_by_play.py` against one real game and check
+its `IngestionBatch.rejectionSummary` for unexpected
+`UNKNOWN_ACTION_TYPE` rejections before relying on this for real ingestion
+— extend the set rather than widen the check if a real, legitimate action
+type shows up rejected.
+
+Assist/steal/block attribution is best-effort: `PlayByPlayV3` has no
+dedicated person-id field for a shot's assister or a block/steal's second
+player (confirmed against the installed `nba_api` source — that richer
+shape belongs to a different, real-time-only feed), so it's regexed out of
+the action's free-text `description` and resolved against that game's own
+roster. An unresolvable or ambiguous name (e.g. two players sharing a
+surname) is left uncounted rather than guessed — see
+`derive_player_game_stats.py`'s own docstring.
 
 ## Setup
 
@@ -99,13 +145,16 @@ python backfill_advanced_stats.py # plus/minus, usage and ratings only (~seconds
 python backfill_player_bios.py    # CommonPlayerInfo bio fields only
 ```
 
-`backfill_advanced_stats.py` fills the plus/minus, rebound-split and
-advanced-rating columns on a database populated before those columns
-existed, including production. Use it rather than re-running `ingest.py`
-for that purpose: the regular-season phase is recency-windowed to each
-team's newest 15 games (~400 unique), so a re-run would leave the older
-two thirds of a full season's ~1,240 games null forever. The backfill
-instead walks the games already in the database.
+`backfill_advanced_stats.py` fills the plus/minus and advanced-rating
+columns on a database populated before those columns existed, including
+production. Use it rather than re-running `ingest.py` for that purpose:
+the regular-season phase is recency-windowed to each team's newest 15
+games (~400 unique), so a re-run would leave the older two thirds of a
+full season's ~1,240 games null forever. The backfill instead walks the
+games already in the database. Deliberately does **not** touch the
+offensive/defensive rebound split anymore — see its own module docstring
+for why overwriting an event-derived split with the older leaguewide-feed
+one would be a regression, not a backfill.
 
 `ingest_postseason.py` is what to use when adding the postseason to a
 database populated before `Game.seasonType` existed — including

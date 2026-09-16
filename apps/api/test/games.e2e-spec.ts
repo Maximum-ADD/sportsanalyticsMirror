@@ -425,6 +425,67 @@ describe("Games API", () => {
     });
   });
 
+  describe("GET /v1/games/:id/events", () => {
+    it("returns a 404 with the standard error envelope for a game that doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/games/does-not-exist/events");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+      expect(response.body.error.message).toBe("Game not found");
+    });
+
+    it("returns an empty page (not 404) for a game that exists but has no events yet", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "NO-EVENTS-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/events`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ data: [], page: 1, pageSize: 25, total: 0 });
+    });
+
+    it("returns this game's events ordered by sequence, not insertion order", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "EVENTS-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      // Created out of sequence order on purpose — the response must sort
+      // by `sequence`, not by insertion/creation order.
+      await testPrisma.gameEvent.create({
+        data: { gameId: game.id, sequence: 2, period: 1, clock: "PT10M00.00S", eventType: "2pt", description: "Second action" },
+      });
+      await testPrisma.gameEvent.create({
+        data: { gameId: game.id, sequence: 1, period: 1, clock: "PT11M00.00S", eventType: "2pt", description: "First action" },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/events`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((event: { sequence: number }) => event.sequence)).toEqual([1, 2]);
+      expect(response.body.total).toBe(2);
+    });
+  });
+
   describe("GET /v1/games/:id", () => {
     it("returns a 404 with the standard error envelope for a game that doesn't exist", async () => {
       const response = await request(app.getHttpServer()).get("/v1/games/does-not-exist");

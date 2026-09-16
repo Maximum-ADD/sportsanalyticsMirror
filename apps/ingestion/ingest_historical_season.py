@@ -29,9 +29,11 @@ historical accuracy, and it doesn't have the "which season's data wins"
 problem Player.teamId does, since it's scoped per-game, not per-player.
 
 Call budget for one season: 30 LeagueGameFinder calls (one per team) plus
-up to ~1,230 boxscore calls (30 teams * ~82 games / 2, since each game is
-shared by two teams and deduplicated by game id) — roughly 1,260 stats.nba.com
-calls, ~20-25 minutes at RATE_LIMIT_DELAY_SECONDS. Same residential-network
+up to ~1,230 boxscore calls and the same number of play-by-play calls (30
+teams * ~82 games / 2, since each game is shared by two teams and
+deduplicated by game id, doubled for the PlayByPlayV3 call each game now
+also needs — see play_by_play.py) — roughly 2,490 stats.nba.com calls,
+~40-50 minutes at RATE_LIMIT_DELAY_SECONDS. Same residential-network
 requirement as ingest.py — see its module docstring / README.md.
 
 Opens (and closes) a fresh DB connection for every single game, not one
@@ -54,7 +56,9 @@ import sys
 import psycopg2
 
 from db import get_connection
-from games import fetch_game_boxscore, fetch_recent_games, upsert_game, upsert_period_bookend_events, upsert_player_game_stat
+from derive_player_game_stats import aggregate_player_game_stats
+from games import fetch_game_boxscore, fetch_recent_games, upsert_game, upsert_player_game_stat
+from play_by_play import run_ingestion_batch
 
 # Comfortably above a real season's ~82 games/team (including a healthy
 # margin for teams that played more due to play-in/playoff games counted
@@ -89,15 +93,18 @@ def collect_season_game_dates(season: str, team_id_by_nba_id: dict[int, str]) ->
 
 
 def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id):
-    """One game's worth of writes (Game + bookend events + every
-    PlayerGameStat row) — split out so it can be retried as a unit against
-    a fresh cursor/connection if the one it started on drops mid-write.
+    """One game's worth of writes (Game + real play-by-play + every
+    PlayerGameStat row, event-derived exactly like ingest.py's current-
+    season path — see its module docstring for the merge/fallback rules)
+    — split out so it can be retried as a unit against a fresh cursor/
+    connection if the one it started on drops mid-write.
     Returns (skipped_unknown_players, skipped_unknown_teams) for this game.
     """
     game_internal_id = upsert_game(
         cursor, nba_game_id, game_date, season, home_team_id, away_team_id, boxscore["home_score"], boxscore["away_score"]
     )
-    upsert_period_bookend_events(cursor, game_internal_id)
+    batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+    derived_stats_by_nba_player_id = aggregate_player_game_stats(batch_summary["accepted_events"])
 
     skipped_unknown_players = 0
     skipped_unknown_teams = 0
@@ -110,13 +117,11 @@ def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_
         if team_internal_id is None:
             skipped_unknown_teams += 1
             continue
-        upsert_player_game_stat(
-            cursor,
-            player_internal_id,
-            game_internal_id,
-            team_internal_id,
-            {key: value for key, value in player_stats.items() if key not in ("nba_player_id", "nba_team_id")},
-        )
+        merged_stats = {key: value for key, value in player_stats.items() if key not in ("nba_player_id", "nba_team_id")}
+        derived_stats = derived_stats_by_nba_player_id.get(player_stats["nba_player_id"])
+        if derived_stats is not None:
+            merged_stats.update(derived_stats)
+        upsert_player_game_stat(cursor, player_internal_id, game_internal_id, team_internal_id, merged_stats)
     return skipped_unknown_players, skipped_unknown_teams
 
 

@@ -46,12 +46,16 @@ export class PlayersService {
   // Every player matching the list endpoint's filters, with no pagination —
   // the unit StatsService.getPlayersRanked sorts over before slicing out one
   // page. Ordered by last name so callers that don't re-sort get a stable,
-  // alphabetical listing.
-  getMatchingPlayers(query: Record<string, unknown>): Promise<PlayerWithTeam[]> {
+  // alphabetical listing. `limit` is undefined for that ranking caller (it
+  // genuinely needs every match to rank correctly) and set by the CSV
+  // export route instead, which wants everything matching but still capped
+  // — see PlayersController.MAX_EXPORT_ROWS.
+  getMatchingPlayers(query: Record<string, unknown>, limit?: number): Promise<PlayerWithTeam[]> {
     return this.prisma.player.findMany({
       where: this.buildPlayerWhere(query),
       include: { team: true },
       orderBy: { lastName: "asc" },
+      ...(limit !== undefined ? { take: limit } : {}),
     });
   }
 

@@ -1,9 +1,11 @@
-import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Param, Query, Res } from "@nestjs/common";
 import { SeasonType } from "@prisma/client";
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/swagger";
+import type { Response } from "express";
 import { ApiException } from "../common/api-exception.js";
+import { toCsv } from "../common/csv.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
-import { PlayersService } from "./players.service.js";
+import { PlayersService, type PlayerWithTeam } from "./players.service.js";
 import {
   DEFAULT_LEADERS_MIN_GAMES,
   POSTSEASON_LEADERS_MIN_GAMES,
@@ -40,6 +42,27 @@ function parseComparisonIds(ids: unknown): string[] {
   }
   return uniqueIds;
 }
+
+// A cap on the export endpoint's row count, independent of the paginated
+// list's own MAX_PAGE_SIZE — an export is one deliberate download, not a
+// page a user clicks through, so it can return far more than 100 rows,
+// but still needs *some* ceiling protecting the DB from an unbounded
+// full-table scan behind an unauthenticated GET.
+const MAX_EXPORT_ROWS = 5000;
+
+const PLAYER_EXPORT_COLUMNS: { header: string; value: (player: PlayerWithTeam) => string | number | null }[] = [
+  { header: "id", value: (player) => player.id },
+  { header: "nbaPlayerId", value: (player) => player.nbaPlayerId },
+  { header: "firstName", value: (player) => player.firstName },
+  { header: "lastName", value: (player) => player.lastName },
+  { header: "position", value: (player) => player.position },
+  { header: "jerseyNumber", value: (player) => player.jerseyNumber },
+  { header: "heightInches", value: (player) => player.heightInches },
+  { header: "weightLbs", value: (player) => player.weightLbs },
+  { header: "teamAbbreviation", value: (player) => player.team?.abbreviation ?? null },
+  { header: "teamCity", value: (player) => player.team?.city ?? null },
+  { header: "teamName", value: (player) => player.team?.name ?? null },
+];
 
 // Generous relative to /compare's 4-player cap on purpose — this backs
 // cross-game highlight pools (see PlayerCards.tsx's usePlayerReliability),
@@ -100,6 +123,36 @@ export class PlayersController {
       return this.statsService.getPlayersRanked(query);
     }
     return this.playersService.getPlayers(query);
+  }
+
+  // GET /v1/players/export?teamId=&position=&search= — the same filters
+  // as the paginated list above, as a downloadable CSV file instead of a
+  // JSON page: "an analyst should be able to export a filtered slice of
+  // the data as a file for use elsewhere" (the brief, verbatim). Declared
+  // before ":id" so "export" is never swallowed as a player id.
+  //
+  // Bio/identity fields only, matching what the list endpoint's own rows
+  // carry — not derived season stats, which would mean either an N+1 fetch
+  // per exported player or a bulk-stats join this route doesn't build; a
+  // roster export is still a real, useful "filtered slice… for use
+  // elsewhere" on its own; joining stats in is a documented follow-up, not
+  // silently missing scope.
+  @Get("export")
+  @ApiOperation({ summary: "Export a filtered slice of players as CSV" })
+  @ApiQuery({ name: "teamId", required: false, description: "Filter by team ID" })
+  @ApiQuery({ name: "position", required: false, description: "Filter by position (PG, SG, SF, PF, C)" })
+  @ApiQuery({ name: "search", required: false, description: "Search by player name" })
+  @ApiResponse({ status: 200, description: "CSV file" })
+  async exportPlayers(@Query() query: Record<string, unknown>, @Res() res: Response): Promise<void> {
+    const players = await this.playersService.getMatchingPlayers(query, MAX_EXPORT_ROWS);
+    const csv = toCsv(players, PLAYER_EXPORT_COLUMNS);
+    res
+      .status(HttpStatus.OK)
+      .set({
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="players.csv"',
+      })
+      .send(csv);
   }
 
   // GET /v1/players/compare?ids=a,b,c&seasonType=PLAYOFFS — the same
