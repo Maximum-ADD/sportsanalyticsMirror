@@ -17,7 +17,7 @@ import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { AdminBatchesService } from "./admin-batches.service.js";
 
-function parseReviewBody(body: unknown): { reviewNotes?: string } {
+export function parseReviewBody(body: unknown): { reviewNotes?: string } {
   if (typeof body !== "object" || body === null) return {};
   const raw = body as Record<string, unknown>;
   if (typeof raw.reviewNotes === "string" && raw.reviewNotes.trim().length > 0) {

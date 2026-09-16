@@ -959,6 +959,42 @@ describe("Players API", () => {
       expect(response.body.career.seasonBreakdown).toEqual([]);
     });
 
+    it("exercises zero-turnover and zero-attempt branches in career derivation", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const player = await createPlayer({ teamId: home.id, lastName: "ZeroTO" });
+
+      // A game with zero turnovers (exercises assistToTurnoverRatio null branch)
+      // and zero field goal attempts (exercises fg% / efg% zero-denom branches).
+      const game = await createGame(home.id, away.id, new Date("2025-10-15"));
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: player.id,
+          gameId: game.id,
+          minutes: 10,
+          points: 0,
+          rebounds: 0,
+          assists: 5,
+          steals: 0,
+          blocks: 0,
+          turnovers: 0,
+          fieldGoalsMade: 0,
+          fieldGoalsAttempted: 0,
+          threesMade: 0,
+          threesAttempted: 0,
+          freeThrowsMade: 0,
+          freeThrowsAttempted: 0,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats/career`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.career.careerAverages.assistToTurnoverRatio).toBeNull();
+      expect(response.body.career.careerAverages.fieldGoalPercentage).toBe(0);
+      expect(response.body.career.careerAverages.trueShootingPercentage).toBe(0);
+    });
+
     it("returns a 404 when the player doesn't exist", async () => {
       const response = await request(app.getHttpServer()).get("/v1/players/does-not-exist/stats/career");
 
@@ -993,6 +1029,22 @@ describe("Players API", () => {
       expect(response.status).toBe(200);
       expect(response.body.playerCount).toBe(0);
       expect(response.body.averages.pointsPerGame).toBe(0);
+    });
+
+    it("returns zero playerCount when players exist but have no games in the segment", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      // Create a player with regular-season games only.
+      const player = await createPlayer({ teamId: home.id, lastName: "RegularOnly" });
+      const game = await createGame(home.id, away.id, new Date("2025-10-15"));
+      await createGameStat(player.id, game.id, { points: 20 });
+
+      // Query the PLAYOFFS segment — player exists but has no playoff games.
+      const response = await request(app.getHttpServer()).get("/v1/players/league-averages?seasonType=PLAYOFFS");
+
+      expect(response.status).toBe(200);
+      expect(response.body.playerCount).toBe(0);
+      expect(response.body.averages.gamesPlayed).toBe(0);
     });
   });
 });
