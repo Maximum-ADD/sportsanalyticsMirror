@@ -96,6 +96,12 @@ jobs:
     name: API and Web — test coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Each coverage job starts its own Postgres container on one shared
+    # runner. Keep those database-backed suites serial; lint/typecheck jobs
+    # remain parallel and a queued coverage run is safer than a dropped DB.
+    concurrency:
+      group: api-web-coverage
+      cancel-in-progress: false
 
     # The API e2e suite needs a real, disposable Postgres database, and it is
     # started as a step below rather than with `services:`. Three attempts at
