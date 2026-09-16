@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeCsvField } from "./datasets.service.js";
+import { compareDatasetReleases, escapeCsvField } from "./datasets.service.js";
 
 describe("escapeCsvField", () => {
   it("returns empty string for null", () => {
@@ -26,5 +26,14 @@ describe("escapeCsvField", () => {
 
   it("wraps in double quotes when text contains a carriage return", () => {
     expect(escapeCsvField("line1\rline2")).toBe('"line1\rline2"');
+  });
+});
+
+describe("compareDatasetReleases", () => {
+  it("reports only changed release metadata", () => {
+    const from = { checksum: "old", season: "2025-26", gamesCount: 10, playersCount: 5, eventsCount: 50, fieldSchema: { columns: ["id"] } } as never;
+    const to = { ...from, checksum: "new", gamesCount: 11 } as never;
+
+    expect(compareDatasetReleases(from, to).changedFields).toEqual(["checksum", "gamesCount"]);
   });
 });
