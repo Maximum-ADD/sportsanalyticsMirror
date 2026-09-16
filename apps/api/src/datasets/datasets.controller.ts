@@ -69,6 +69,18 @@ export class DatasetReleasesController {
     return result;
   }
 
+  @Get("changes")
+  @ApiOperation({ summary: "List dataset releases published after a cursor" })
+  @ApiQuery({ name: "since", required: true, description: "ISO-8601 timestamp cursor" })
+  async getChanges(@Query("since") rawSince: string) {
+    const since = new Date(rawSince);
+    if (Number.isNaN(since.getTime())) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "since must be an ISO-8601 timestamp");
+    }
+    const changes = await this.datasetsService.getChangesSince(since);
+    return { changes, nextSince: changes.at(-1)?.publishedAt.toISOString() ?? rawSince };
+  }
+
   // GET /v1/datasets/:version — single release with field schema and checksum.
   @Get(":version")
   @ApiOperation({ summary: "Get a single dataset release by version" })

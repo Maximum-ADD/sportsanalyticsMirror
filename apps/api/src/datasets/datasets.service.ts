@@ -104,6 +104,14 @@ export class DatasetReleasesService {
     return compareDatasetReleases(from, to);
   }
 
+  async getChangesSince(since: Date): Promise<ReleaseWithPublisher[]> {
+    return this.prisma.datasetRelease.findMany({
+      where: { publishedAt: { gt: since } },
+      include: { publishedBy: { select: { id: true, name: true } } },
+      orderBy: { publishedAt: "asc" },
+    });
+  }
+
   // Generate the CSV content for a given season — one row per player
   // with their season averages. Returns the raw CSV string.
   async generateSeasonCsv(season: string): Promise<{ csv: string; rowCount: number; checksum: string }> {
