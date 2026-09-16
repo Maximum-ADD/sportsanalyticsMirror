@@ -173,6 +173,7 @@ model Team {
   homeGames       Game[]           @relation("HomeTeam")
   awayGames       Game[]           @relation("AwayTeam")
   playerGameStats PlayerGameStat[]
+  events          GameEvent[]
   favoritedBy     User[]
 }
 
@@ -240,10 +241,11 @@ model Game {
   // from the NBA game id at ingestion time — see classify_game().
   playoffRound Int?
 
-  playerStats    PlayerGameStat[]
-  events         GameEvent[]
-  prediction     GamePrediction?
-  predictionRuns GamePredictionRun[]
+  playerStats      PlayerGameStat[]
+  events           GameEvent[]
+  ingestionBatches IngestionBatch[]
+  prediction       GamePrediction?
+  predictionRuns   GamePredictionRun[]
 
   picks GamePick[]
 
@@ -259,22 +261,113 @@ model Game {
 }
 
 // Raw play-by-play events — the source of truth every derived stat traces back to.
+// Every row this project's own ingestion pipeline writes — the actions in
+// a PlayByPlayV3 response, one row each — plus, historically, two
+// PERIOD_START/PERIOD_END bookend rows per game that predate real
+// play-by-play ingestion. See apps/ingestion/play_by_play.py.
 model GameEvent {
   id          String   @id @default(uuid())
   gameId      String
   game        Game     @relation(fields: [gameId], references: [id])
-  sequence    Int
-  period      Int
-  clock       String
-  eventType   String
-  playerId    String?
-  description String
-  createdAt   DateTime @default(now())
 
-  @@index([gameId, sequence])
+  // Both together are the platform's own event schema a submitted row is
+  // checked against before acceptance — see event_validation.py.
+  sequence  Int // NBA's own actionNumber; strictly increasing within a game
+  period    Int
+  clock     String
+  eventType String // NBA's actionType, e.g. "2pt", "rebound", "turnover"
+
+  // Null for a team-level action (e.g. a team rebound) or one this
+  // schema's validation didn't need to resolve — never a stand-in for "we
+  // don't know", which the rejection path handles instead.
+  subType String?
+
+  playerId String?
+  team     Team?   @relation(fields: [teamId], references: [id])
+  teamId   String?
+
+  // Made/missed, for shot and free-throw actions only — null otherwise,
+  // not a false "not made".
+  success Boolean?
+  // Point value of a made shot/free throw (1, 2 or 3) — null otherwise.
+  value Int?
+
+  description String
+
+  // Which ingestion run wrote this row — see IngestionBatch. Nullable and
+  // onDelete: SetNull for the same reason User.favoriteTeamId is: cleaning
+  // up an old batch record must never be able to cascade-delete real event
+  // history that other rows (and every stat derived from it) still depend
+  // on.
+  batchId String?
+  batch   IngestionBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  // One row per (game, NBA actionNumber) — the constraint this schema was
+  // missing before real play-by-play ingestion existed. Without it, the
+  // old bookend-only ON CONFLICT DO NOTHING upsert silently duplicated its
+  // two dummy rows on every re-run (ids are random UUIDs, which never
+  // collide) — see this migration's own comment for the cleanup that had
+  // to happen alongside adding it.
+  @@unique([gameId, sequence])
 }
 
-// Per-game boxscore figures — derived from GameEvent rows, never entered by hand.
+// One row per play-by-play ingestion attempt for one game — the automated
+// pipeline's own "submission" a published stat traces back to, alongside
+// the GameEvent rows it wrote. Append-only like GamePredictionRun: a
+// re-ingested game gets a NEW batch row rather than overwriting the last
+// one, so run history (including past rejections) is never lost.
+//
+// Deliberately scoped to this project's own automated ingestion pipeline,
+// not a multi-human-submitter workflow with per-user approval — this
+// project pulls from the NBA's own authoritative stats feed rather than
+// accepting hand-entered boxscores from many submitters, so "the approved
+// submitter" is this pipeline itself, run under one source identifier.
+model IngestionBatch {
+  id     String @id @default(uuid())
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id])
+
+  // e.g. "nba_api:playbyplayv3" — mirrors GamePredictionRun.modelVersion:
+  // a stat stays traceable to the exact source that derived it even after
+  // the pipeline itself moves on to a different one.
+  source String
+
+  status         IngestionBatchStatus @default(RUNNING)
+  startedAt      DateTime             @default(now())
+  completedAt    DateTime?
+  eventsAccepted Int                  @default(0)
+  eventsRejected Int                  @default(0)
+
+  // Reason code -> count (e.g. {"UNKNOWN_ACTION_TYPE": 2}), from
+  // event_validation.py. A rejection must tell the submitter what was
+  // wrong rather than fail quietly — this is that record, readable back
+  // by a human or a future admin view, not queried into individually
+  // (hence Json rather than a child table).
+  rejectionSummary Json?
+
+  events GameEvent[]
+
+  @@index([gameId])
+  @@index([status])
+}
+
+enum IngestionBatchStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// Per-game boxscore figures — derived from GameEvent rows via
+// apps/ingestion/derive_player_game_stats.py, never entered by hand.
+// Exceptions: minutes and plusMinus (see their own field comments below)
+// stay sourced from the official boxscore/PlayerGameLogs feeds — the same
+// "stored as given, not invented" precedent this model already sets for
+// usage rate and the two ratings, applied here because replaying
+// substitution events to recover on-court time correctly would need a
+// full stateful stint simulation to reproduce a number the official feed
+// already provides for free.
 model PlayerGameStat {
   id       String @id @default(uuid())
   playerId String
@@ -295,7 +388,13 @@ model PlayerGameStat {
   teamId String?
   team   Team?   @relation(fields: [teamId], references: [id])
 
-  minutes             Int
+  // Not event-derived, unlike everything else on this model — see the
+  // model's own doc comment above. Kept sourced from BoxScoreTraditionalV3
+  // (as it always has been): correct on-court time needs a full stateful
+  // replay of every substitution event per team/period, for a number the
+  // official feed already provides for free.
+  minutes Int
+
   points              Int
   rebounds            Int
   assists             Int
@@ -315,17 +414,17 @@ model PlayerGameStat {
   // "—" rather than as a zero. A zero here would be a real, and wrong,
   // measurement: 0.0 plus/minus means an even game, not a missing one.
   //
-  // Offensive/defensive rebounds come from the same BoxScoreTraditionalV3
-  // response the counting stats above already come from — the split was
-  // simply discarded before. apps/predictor/four_factors.py documents
-  // leaving Oliver's offensive-rebound factor out for want of exactly this,
-  // so storing it unblocks that too.
+  // Offensive/defensive rebounds are derived from GameEvent rebound
+  // actions (subType "offensive"/"defensive"), like the counting stats
+  // above — apps/predictor/four_factors.py documents having once left
+  // Oliver's offensive-rebound factor out for want of exactly this split.
   offensiveRebounds Int?
   defensiveRebounds Int?
 
   // Plus/minus is an observation, not a calculation — it cannot be derived
-  // from any combination of the columns above. Also from
-  // BoxScoreTraditionalV3, so it costs no extra API call.
+  // from any combination of the columns above, event-sourced or not. Also
+  // from BoxScoreTraditionalV3, so it costs no extra API call. Same
+  // not-event-derived exception as minutes above.
   plusMinus Int?
 
   // From BoxScoreAdvancedV3, one extra call per game. These are NBA's own

@@ -301,27 +301,6 @@ def upsert_game(
     return cursor.fetchone()["id"]
 
 
-def upsert_period_bookend_events(cursor, game_internal_id: str) -> None:
-    """Writes the same minimal period-start/end GameEvent bookend rows seed.ts writes.
-
-    Real play-by-play ingestion (every made shot, foul, etc. as its own
-    GameEvent) is a separate, much heavier endpoint (PlayByPlayV3) out of
-    scope here — this matches the existing seed data's precedent of two
-    bookend events per game rather than leaving GameEvent empty for real
-    games while seed-generated games have entries.
-    """
-    cursor.execute(
-        """
-        INSERT INTO "GameEvent" ("id", "gameId", "sequence", "period", "clock", "eventType", "description")
-        VALUES
-            (gen_random_uuid(), %(game_id)s, 1, 1, '12:00', 'PERIOD_START', 'Period 1 start'),
-            (gen_random_uuid(), %(game_id)s, 2, 4, '0:00', 'PERIOD_END', 'Game end')
-        ON CONFLICT DO NOTHING
-        """,
-        {"game_id": game_internal_id},
-    )
-
-
 # Columns that may be absent from a caller's `stats` dict — either because
 # the advanced endpoint wasn't fetched for this game, or because the row is
 # being written by an older code path. Defaulted to None rather than 0 so a
