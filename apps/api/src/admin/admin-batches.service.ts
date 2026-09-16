@@ -56,7 +56,10 @@ export class AdminBatchesService {
     const searchTerms = getSearchTerms(query.search);
     const statusFilter = typeof query.status === "string" ? query.status : undefined;
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      // Exclude soft-deleted batches
+      deletedAt: null,
+    };
     if (statusFilter && Object.values(IngestionBatchStatus).includes(statusFilter as IngestionBatchStatus)) {
       where.status = statusFilter;
     }
@@ -100,7 +103,7 @@ export class AdminBatchesService {
 
   // Single batch with full details — the admin detail view.
   async getBatchById(batchId: string): Promise<BatchWithDetails | null> {
-    return this.prisma.ingestionBatch.findUnique({
+    const batch = await this.prisma.ingestionBatch.findUnique({
       where: { id: batchId },
       include: {
         game: {
@@ -115,14 +118,17 @@ export class AdminBatchesService {
         },
         reviewedBy: { select: { id: true, name: true } },
       },
-    }) as unknown as Promise<BatchWithDetails | null>;
+    });
+    // Exclude soft-deleted batches
+    if (batch?.deletedAt) return null;
+    return batch as unknown as BatchWithDetails | null;
   }
 
   // Promote a PENDING_REVIEW batch to COMPLETED — the admin has reviewed
   // the events and accepts them as published.
   async approveBatch(batchId: string, reviewedById: string, reviewNotes?: string) {
     const result = await this.prisma.ingestionBatch.update({
-      where: { id: batchId },
+      where: { id: batchId, deletedAt: null },
       data: {
         status: IngestionBatchStatus.COMPLETED,
         reviewedById,
@@ -143,7 +149,7 @@ export class AdminBatchesService {
   // that need the pipeline to re-submit.
   async rejectBatch(batchId: string, reviewedById: string, reviewNotes?: string) {
     return this.prisma.ingestionBatch.update({
-      where: { id: batchId },
+      where: { id: batchId, deletedAt: null },
       data: {
         status: IngestionBatchStatus.REJECTED,
         reviewedById,

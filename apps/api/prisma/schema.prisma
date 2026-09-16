@@ -101,8 +101,10 @@ model User {
 
   // Admin actions: batch reviews, event corrections, dataset releases.
   reviewedBatches   IngestionBatch[]  @relation("BatchReviewer")
+  deletedBatches    IngestionBatch[]  @relation("BatchDeleter")
   eventCorrections  EventCorrection[]
   publishedReleases DatasetRelease[]
+  ingestionSchedule IngestionSchedule?
 }
 
 model Session {
@@ -361,6 +363,12 @@ model IngestionBatch {
   reviewedBy   User?   @relation("BatchReviewer", fields: [reviewedById], references: [id])
   reviewedAt   DateTime?
   reviewNotes  String?
+
+  // Soft-delete — an admin can remove a batch and its associated data
+  // without cascading deletes on the Game/PlayerGameStat rows.
+  deletedAt     DateTime?
+  deletedById   String?
+  deletedBy     User?    @relation("BatchDeleter", fields: [deletedById], references: [id])
 
   events GameEvent[]
 
@@ -899,4 +907,30 @@ model DatasetRelease {
   publishedAt   DateTime @default(now())
 
   @@index([season])
+}
+
+// Ingestion schedule configuration — an admin can set the platform to
+// pull new NBA data on a recurring basis (hourly, daily, weekly) or
+// disable automatic pulls entirely ("never").  A single-row singleton
+// enforced by the service layer keeps the model simple.
+model IngestionSchedule {
+  id String @id @default("singleton")
+
+  frequency IngestionFrequency @default(NEVER)
+
+  // Track when the last automatic pull ran so the scheduler can
+  // decide whether it's time for the next one.
+  lastRunAt DateTime?
+
+  // Who last changed the schedule.
+  updatedById String?  @unique
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
+}
+
+enum IngestionFrequency {
+  NEVER
+  HOURLY
+  DAILY
+  WEEKLY
 }
