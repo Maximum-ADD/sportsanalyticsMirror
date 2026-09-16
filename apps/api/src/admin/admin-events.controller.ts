@@ -83,4 +83,19 @@ export class AdminEventsController {
 
     return correction;
   }
+
+  @Post("games/:gameId/replay")
+  @ApiOperation({
+    summary: "Re-derive a game's stats from its current events without correcting anything (admin only)",
+  })
+  @ApiParam({ name: "gameId", description: "Game UUID" })
+  @ApiResponse({ status: 201, description: "Replay result: how many players' stats were recomputed" })
+  @ApiResponse({ status: 404, description: "Game not found" })
+  async replayGame(@Param("gameId") gameId: string) {
+    const result = await this.adminEventsService.replayGame(gameId);
+    if (!result) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    }
+    return result;
+  }
 }
