@@ -280,4 +280,14 @@ export class GamesService {
       return { data, page, pageSize, total };
     });
   }
+
+  // A lightweight polling feed for an in-progress fixture. Clients retain
+  // the greatest sequence they received and only request newer events.
+  getLiveEvents(gameId: string, afterSequence: number): Promise<GameEvent[]> {
+    return this.prisma.gameEvent.findMany({
+      where: { gameId, sequence: { gt: afterSequence } },
+      orderBy: { sequence: "asc" },
+      take: 100,
+    });
+  }
 }
