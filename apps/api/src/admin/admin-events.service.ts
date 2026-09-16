@@ -218,4 +218,23 @@ export class AdminEventsService {
 
     return playerIds.length;
   }
+
+  // Replays one game's derivation on demand — the same recomputation
+  // correctEvent runs automatically, exposed as its own admin action for
+  // when nothing was actually mistyped (no GameEvent field to correct) but
+  // the stored PlayerGameStat rows are suspected stale anyway, e.g. after a
+  // manual data fix applied straight to Postgres, or as a sanity re-check.
+  // Unlike correctEvent, this never touches GameEvent or EventCorrection —
+  // it only re-runs the same aggregation over whatever events already exist.
+  async replayGame(gameId: string): Promise<{ gameId: string; playersRecomputed: number }> {
+    const game = await this.prisma.game.findUnique({ where: { id: gameId }, select: { id: true } });
+    if (!game) return null as unknown as { gameId: string; playersRecomputed: number };
+
+    const playersRecomputed = await this.prisma.$transaction((tx) => this.recomputeDerivedStats(tx, gameId));
+
+    this.cache.invalidate("games");
+    this.cache.invalidate("players");
+
+    return { gameId, playersRecomputed };
+  }
 }

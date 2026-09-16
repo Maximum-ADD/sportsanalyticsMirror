@@ -201,4 +201,25 @@ describe("Admin event corrections and replay", () => {
       expect(response.status).toBe(404);
     });
   });
+
+  describe("POST /v1/admin/games/:gameId/replay", () => {
+    it("recomputes stats without requiring any event correction", async () => {
+      const { game, scorer } = await seedAssistedThree();
+
+      const response = await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({ gameId: game.id, playersRecomputed: 2 });
+
+      const scorerStat = await testPrisma.playerGameStat.findUniqueOrThrow({
+        where: { playerId_gameId: { playerId: scorer.id, gameId: game.id } },
+      });
+      expect(scorerStat.points).toBe(3);
+    });
+
+    it("returns 404 for a game that doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).post("/v1/admin/games/does-not-exist/replay");
+      expect(response.status).toBe(404);
+    });
+  });
 });
