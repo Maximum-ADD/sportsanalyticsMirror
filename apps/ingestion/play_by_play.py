@@ -45,13 +45,27 @@ def fetch_game_actions(nba_game_id: str) -> list[dict]:
     return [dict(zip(headers, row)) for row in raw["data"]]
 
 
-def upsert_ingestion_batch(cursor, game_internal_id: str, source: str = SOURCE) -> str:
+def upsert_ingestion_batch(cursor, game_internal_id: str, source: str = SOURCE) -> tuple[str, int | None]:
     """Opens a new RUNNING IngestionBatch row for this game, returns its id.
 
     Always a new row (never upserted onto a previous run) — see
     IngestionBatch's schema doc comment: a re-ingested game's run history,
     including any past rejections, is never overwritten.
     """
+    cursor.execute(
+        '''SELECT "id", "resumeAfterSequence" FROM "IngestionBatch"
+           WHERE "gameId" = %s AND "source" = %s AND "status" = 'FAILED'
+           ORDER BY "startedAt" DESC LIMIT 1''',
+        (game_internal_id, source),
+    )
+    resumable_batch = cursor.fetchone()
+    if resumable_batch:
+        cursor.execute(
+            '''UPDATE "IngestionBatch" SET "status" = 'RUNNING', "completedAt" = NULL WHERE "id" = %s''',
+            (resumable_batch["id"],),
+        )
+        return resumable_batch["id"], resumable_batch["resumeAfterSequence"]
+
     cursor.execute(
         """
         INSERT INTO "IngestionBatch" ("id", "gameId", "source", "status")
@@ -60,7 +74,15 @@ def upsert_ingestion_batch(cursor, game_internal_id: str, source: str = SOURCE) 
         """,
         (game_internal_id, source),
     )
-    return cursor.fetchone()["id"]
+    return cursor.fetchone()["id"], None
+
+
+def save_resume_checkpoint(cursor, batch_id: str, sequence: int) -> None:
+    """Persists the last action written so a failed batch can continue after it."""
+    cursor.execute(
+        'UPDATE "IngestionBatch" SET "resumeAfterSequence" = %s WHERE "id" = %s',
+        (sequence, batch_id),
+    )
 
 
 def complete_ingestion_batch(
@@ -150,7 +172,7 @@ def run_ingestion_batch(
     sitting in memory.
     """
     known_player_ids = set(player_id_by_nba_id.keys())
-    batch_id = upsert_ingestion_batch(cursor, game_internal_id)
+    batch_id, resume_after_sequence = upsert_ingestion_batch(cursor, game_internal_id)
 
     accepted_events: list[dict] = []
     rejected = 0
@@ -164,6 +186,8 @@ def run_ingestion_batch(
         raise
 
     for action in actions:
+        if resume_after_sequence is not None and action.get("actionNumber", -1) <= resume_after_sequence:
+            continue
         result = validate_raw_event(action, previous_sequence=previous_sequence, known_player_ids=known_player_ids)
         if not result.accepted:
             rejected += 1
@@ -176,6 +200,7 @@ def run_ingestion_batch(
         player_internal_id = player_id_by_nba_id.get(person_id) if person_id else None
         team_internal_id = team_id_by_nba_id.get(action.get("teamId"))
         upsert_game_event(cursor, game_internal_id, batch_id, action, team_internal_id, player_internal_id)
+        save_resume_checkpoint(cursor, batch_id, action["actionNumber"])
         accepted_events.append(action)
 
     complete_ingestion_batch(cursor, batch_id, final_status, len(accepted_events), rejected, dict(rejection_counts))

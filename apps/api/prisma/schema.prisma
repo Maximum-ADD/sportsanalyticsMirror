@@ -348,6 +348,7 @@ model IngestionBatch {
   completedAt    DateTime?
   eventsAccepted Int                  @default(0)
   eventsRejected Int                  @default(0)
+  resumeAfterSequence Int?
 
   // Reason code -> count (e.g. {"UNKNOWN_ACTION_TYPE": 2}), from
   // event_validation.py. A rejection must tell the submitter what was
