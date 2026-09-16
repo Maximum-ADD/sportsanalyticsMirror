@@ -324,6 +324,23 @@ export interface PlayerMatchupProjection {
   upcomingGames: UpcomingGameProjection[];
 }
 
+// One player's career-wide aggregates — totals, averages, and a
+// per-season breakdown so the career tab can show both the headline
+// numbers and how they were built up year by year.
+export interface CareerStats {
+  careerTotals: DerivedSeasonAverages;
+  careerAverages: DerivedSeasonAverages;
+  seasonBreakdown: { season: string; averages: DerivedSeasonAverages }[];
+}
+
+// Competition-wide averages for one season segment — the benchmark
+// layer the career tab and leaders page can show "league average" against.
+export interface LeagueAverages {
+  seasonType: SeasonType;
+  playerCount: number;
+  averages: DerivedSeasonAverages;
+}
+
 // Shrinkage prior for the opponent adjustment, in games: an opponent split
 // over exactly this many games is trusted exactly halfway, and trust grows
 // toward "the split is real" from there. Stops a two-game explosion against
@@ -734,6 +751,82 @@ export class StatsService {
         this.deriveSeasonAverages(allGameStats.filter((stat) => stat.game.seasonType === seasonType)),
       ])
     ) as PlayerSeasonSplits;
+  }
+
+  // Career-wide aggregates for one player: totals across every season,
+  // averages (same numbers, since deriveSeasonAverages already returns
+  // per-game rates), and a per-season breakdown so the career tab can
+  // chart progression. No seasonType filter — the whole point is
+  // "across every segment the player appeared in".
+  //
+  // Cached per player with the same TTL as season stats.
+  getCareerStats(playerId: string): Promise<CareerStats | null> {
+    return this.cache.getOrLoad(
+      buildCacheKey("players:career", [playerId]),
+      DERIVED_DATA_TTL_MS,
+      () => this.readCareerStats(playerId),
+    );
+  }
+
+  private async readCareerStats(playerId: string): Promise<CareerStats | null> {
+    const player = await this.playersService.getPlayerById(playerId);
+    if (!player) return null;
+
+    // Every boxscore row for this player, across every segment.
+    const allGameStats = await this.playersService.getPlayerSeasonStatsBatch([playerId]);
+    if (allGameStats.length === 0) {
+      const empty = this.deriveSeasonAverages([]);
+      return { careerTotals: empty, careerAverages: empty, seasonBreakdown: [] };
+    }
+
+    const careerAverages = this.deriveSeasonAverages(allGameStats);
+
+    // Group by season string for the year-over-year breakdown.
+    const bySeason = new Map<string, typeof allGameStats>();
+    for (const stat of allGameStats) {
+      const existing = bySeason.get(stat.game.season);
+      if (existing) existing.push(stat);
+      else bySeason.set(stat.game.season, [stat]);
+    }
+
+    const seasonBreakdown = Array.from(bySeason.entries())
+      .sort(([a], [b]) => b.localeCompare(a)) // newest first
+      .map(([season, stats]) => ({
+        season,
+        averages: this.deriveSeasonAverages(stats),
+      }));
+
+    return { careerTotals: careerAverages, careerAverages, seasonBreakdown };
+  }
+
+  // Competition-wide averages for one season segment — average points,
+  // rebounds, assists, etc. across every player who appeared in the
+  // segment. Useful as a benchmark/context layer on the career tab and
+  // leaders page.
+  getLeagueAverages(seasonType: SeasonType): Promise<LeagueAverages> {
+    return this.cache.getOrLoad(
+      buildCacheKey("league-averages", [seasonType]),
+      DERIVED_DATA_TTL_MS,
+      () => this.readLeagueAverages(seasonType),
+    );
+  }
+
+  private async readLeagueAverages(seasonType: SeasonType): Promise<LeagueAverages> {
+    // Every player's season totals in this segment, aggregated in the DB.
+    const allPlayers = await this.playersService.getMatchingPlayers({});
+    const playerIds = allPlayers.map((p) => p.id);
+
+    // Use the batch stats read to get every boxscore row in the segment,
+    // then derive once over the full set — one derivation pass over the
+    // entire league's rows gives the league-wide averages.
+    const allGameStats = await this.playersService.getPlayerSeasonStatsBatch(playerIds, seasonType);
+
+    const averages = this.deriveSeasonAverages(allGameStats);
+    // Count distinct players who actually have at least one game in the
+    // segment — a roster player with zero appearances doesn't count.
+    const playersWithGames = new Set(allGameStats.map((s) => s.playerId)).size;
+
+    return { seasonType, playerCount: playersWithGames, averages };
   }
 
   /**

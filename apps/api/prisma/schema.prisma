@@ -98,6 +98,11 @@ model User {
   gamePicks        GamePick[]
   savedComparisons SavedComparison[]
   savedLineups     SavedLineup[]
+
+  // Admin actions: batch reviews, event corrections, dataset releases.
+  reviewedBatches   IngestionBatch[]  @relation("BatchReviewer")
+  eventCorrections  EventCorrection[]
+  publishedReleases DatasetRelease[]
 }
 
 model Session {
@@ -247,6 +252,7 @@ model Game {
   prediction       GamePrediction?
   predictionRuns   GamePredictionRun[]
   marketOdds       GameMarketOdds?
+  corrections      EventCorrection[]
 
   picks GamePick[]
 
@@ -348,6 +354,14 @@ model IngestionBatch {
   // (hence Json rather than a child table).
   rejectionSummary Json?
 
+  // Admin review — a batch lands as PENDING_REVIEW when the pipeline is
+  // run with --review, and an admin promotes it to COMPLETED or marks it
+  // REJECTED. Null reviewedById means "no human has looked at it yet".
+  reviewedById String?
+  reviewedBy   User?   @relation("BatchReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNotes  String?
+
   events GameEvent[]
 
   @@index([gameId])
@@ -358,6 +372,8 @@ enum IngestionBatchStatus {
   RUNNING
   COMPLETED
   FAILED
+  PENDING_REVIEW
+  REJECTED
 }
 
 // Per-game boxscore figures — derived from GameEvent rows via
@@ -779,4 +795,108 @@ model SavedComparisonPlayer {
   position          Int
 
   @@unique([savedComparisonId, playerId])
+}
+
+// ── Event correction audit trail ──────────────────────────────────────
+// One row per manual correction to a GameEvent. When an admin fixes a
+// bad event (wrong player, wrong shot value, etc.) this table captures
+// the before/after snapshot so every derived stat that was based on the
+// old value can be traced back to the moment it changed — the brief's
+// "corrections should leave a history behind them".
+model EventCorrection {
+  id       String @id @default(uuid())
+  gameId   String
+  game     Game   @relation(fields: [gameId], references: [id])
+  sequence Int // the actionNumber that was corrected
+
+  // Snapshot of the row before the correction — enough to reconstruct
+  // what the old derived stats were based on.
+  previousValues Json
+  newValues      Json
+
+  correctedById String?
+  correctedBy   User?  @relation(fields: [correctedById], references: [id])
+  reason        String? // why the correction was made
+
+  correctedAt DateTime @default(now())
+
+  @@index([gameId, sequence])
+  @@index([correctedAt])
+}
+
+// ── API consumer management & rate limiting ────────────────────────────
+// An external consumer of the API (e.g. "ESPN Integration", "Third-party
+// analytics app"). Each gets its own rate limit and daily quota; the
+// brief's "hold them to rate limits and quotas so that one consumer
+// cannot exhaust the platform for the rest".
+model ApiConsumer {
+  id           String   @id @default(uuid())
+  name         String // e.g. "ESPN Integration"
+  contactEmail String?
+  rateLimit    Int      @default(100) // requests per minute
+  dailyQuota   Int      @default(10000) // requests per day
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  keys     ApiKey[]
+  usageLog ApiUsageLog[]
+}
+
+// One key per consumer. The raw key is shown once at creation time and
+// never stored — only its SHA-256 hash lives here, so a database leak
+// doesn't expose usable keys.
+model ApiKey {
+  id         String @id @default(uuid())
+  consumerId String
+  consumer   ApiConsumer @relation(fields: [consumerId], references: [id], onDelete: Cascade)
+
+  keyHash    String @unique
+  label      String? // e.g. "Production key"
+  isActive   Boolean  @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+}
+
+// Per-request usage log for rate limit and quota enforcement. Indexed
+// on (consumerId, calledAt) so the sliding-window count is a fast
+// index-only scan.
+model ApiUsageLog {
+  id         String @id @default(uuid())
+  consumerId String
+  consumer   ApiConsumer @relation(fields: [consumerId], references: [id], onDelete: Cascade)
+
+  endpoint   String // e.g. "GET /v1/players"
+  statusCode Int
+  calledAt   DateTime @default(now())
+
+  @@index([consumerId, calledAt])
+}
+
+// ── Versioned dataset releases ─────────────────────────────────────────
+// A snapshot of the platform's data published at a point in time, with a
+// checksum so a consumer can verify their download matches the release,
+// and a field schema so an analysis run against one release can be
+// repeated against the next and produce the same numbers.
+model DatasetRelease {
+  id          String   @id @default(uuid())
+  version     String   @unique // e.g. "2025-26.1"
+  description String // human-readable release notes
+  season      String // e.g. "2025-26"
+
+  // SHA-256 of the CSV content.
+  checksum String
+
+  // Row counts per table in the release.
+  gamesCount   Int
+  playersCount Int
+  eventsCount  Int
+
+  // JSON schema describing every column in the release CSV.
+  fieldSchema Json
+
+  publishedById String?
+  publishedBy   User?    @relation(fields: [publishedById], references: [id])
+  publishedAt   DateTime @default(now())
+
+  @@index([season])
 }

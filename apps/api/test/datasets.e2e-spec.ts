@@ -1,0 +1,237 @@
+import type { INestApplication } from "@nestjs/common";
+import request from "supertest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { createTestApp } from "./create-test-app.js";
+import { resetDatabase, testPrisma } from "./test-db.js";
+
+let nextId = 0;
+function uid() {
+  nextId += 1;
+  return nextId;
+}
+
+describe("Datasets API", () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    app = await createTestApp();
+  });
+
+  afterEach(async () => {
+    await resetDatabase();
+  });
+
+  afterAll(async () => {
+    await testPrisma.$disconnect();
+    await app.close();
+  });
+
+  describe("GET /v1/datasets", () => {
+    it("returns an empty page when no releases exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/datasets");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toEqual([]);
+      expect(response.body.total).toBe(0);
+    });
+
+    it("returns published releases ordered by publishedAt descending", async () => {
+      const user = await testPrisma.user.create({
+        data: {
+          email: `admin-${uid()}@test.com`,
+          name: "Admin",
+          role: "ADMIN",
+        },
+      });
+
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2024-25.1",
+          description: "First release",
+          season: "2024-25",
+          checksum: "abc123",
+          gamesCount: 10,
+          playersCount: 50,
+          eventsCount: 500,
+          fieldSchema: { columns: [] },
+          publishedById: user.id,
+        },
+      });
+
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2025-26.1",
+          description: "Second release",
+          season: "2025-26",
+          checksum: "def456",
+          gamesCount: 20,
+          playersCount: 60,
+          eventsCount: 800,
+          fieldSchema: { columns: [] },
+          publishedById: user.id,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets");
+
+      expect(response.status).toBe(200);
+      expect(response.body.total).toBe(2);
+      expect(response.body.data[0].version).toBe("2025-26.1");
+      expect(response.body.data[1].version).toBe("2024-25.1");
+    });
+  });
+
+  describe("GET /v1/datasets/:version", () => {
+    it("returns a single release with its field schema", async () => {
+      const user = await testPrisma.user.create({
+        data: {
+          email: `admin-${uid()}@test.com`,
+          name: "Admin",
+          role: "ADMIN",
+        },
+      });
+
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2025-26.1",
+          description: "Initial release",
+          season: "2025-26",
+          checksum: "sha256hash",
+          gamesCount: 10,
+          playersCount: 50,
+          eventsCount: 500,
+          fieldSchema: { columns: ["playerId", "points"] },
+          publishedById: user.id,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1");
+
+      expect(response.status).toBe(200);
+      expect(response.body.version).toBe("2025-26.1");
+      expect(response.body.fieldSchema).toEqual({ columns: ["playerId", "points"] });
+    });
+
+    it("returns a 404 when the version doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/datasets/nonexistent");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+  });
+
+  describe("GET /v1/datasets/:version/download", () => {
+    it("returns a 404 when the version doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/datasets/nonexistent/download");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+
+    it("returns CSV with player stats and checksum header when data exists", async () => {
+      // Create teams and a player with game stats so generateSeasonCsv
+      // exercises the percentage and per-game average branches.
+      const home = await testPrisma.team.create({
+        data: {
+          nbaTeamId: uid(),
+          name: "Lakers",
+          abbreviation: "LAL",
+          city: "Los Angeles",
+          conference: "West",
+          division: "Pacific",
+        },
+      });
+      const away = await testPrisma.team.create({
+        data: {
+          nbaTeamId: uid(),
+          name: "Celtics",
+          abbreviation: "BOS",
+          city: "Boston",
+          conference: "East",
+          division: "Atlantic",
+        },
+      });
+
+      const player = await testPrisma.player.create({
+        data: {
+          nbaPlayerId: uid(),
+          firstName: 'Le"Bron',
+          lastName: "James",
+          position: "F",
+          teamId: home.id,
+        },
+      });
+
+      // A player with no team (exercises the team abbreviation ?? "" branch).
+      await testPrisma.player.create({
+        data: {
+          nbaPlayerId: uid(),
+          firstName: "Free",
+          lastName: "Agent",
+          position: "G",
+          teamId: null,
+        },
+      });
+
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-${uid()}`,
+          gameDate: new Date("2025-10-15"),
+          season: "2025-26",
+          seasonType: "REGULAR",
+          homeTeamId: home.id,
+          awayTeamId: away.id,
+        },
+      });
+
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: player.id,
+          gameId: game.id,
+          minutes: 36,
+          points: 30,
+          rebounds: 8,
+          assists: 10,
+          steals: 2,
+          blocks: 1,
+          turnovers: 3,
+          fieldGoalsMade: 12,
+          fieldGoalsAttempted: 20,
+          threesMade: 3,
+          threesAttempted: 8,
+          freeThrowsMade: 3,
+          freeThrowsAttempted: 4,
+        },
+      });
+
+      // Create the dataset release directly so we can test the download
+      // endpoint — the publish endpoint requires admin auth.
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2025-26.1",
+          description: "Test release",
+          season: "2025-26",
+          checksum: "placeholder",
+          gamesCount: 1,
+          playersCount: 1,
+          eventsCount: 0,
+          fieldSchema: [],
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("text/csv");
+      expect(response.headers["x-checksum-sha256"]).toBeTruthy();
+
+      const csv = response.text;
+      expect(csv).toContain("playerId");
+      expect(csv).toContain("James");
+      // The name contains a double quote which must be escaped.
+      expect(csv).toContain('"Le""Bron"');
+      // Free Agent has no games in this season so should be skipped.
+      expect(csv).not.toContain("Agent");
+    });
+  });
+});

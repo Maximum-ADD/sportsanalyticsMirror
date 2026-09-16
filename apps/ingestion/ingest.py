@@ -156,6 +156,7 @@ def ingest_games_and_stats(
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
     extra_figures_by_player_game: dict[tuple[str, int], dict] | None = None,
+    final_status: str = "COMPLETED",
 ) -> None:
     """Fetches and writes one Game + its PlayerGameStat rows per game id.
 
@@ -212,7 +213,7 @@ def ingest_games_and_stats(
             playoff_round,
         )
 
-        batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+        batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status)
         if batch_summary["rejected"]:
             print(
                 f"  {nba_game_id}: rejected {batch_summary['rejected']} play-by-play rows "
@@ -274,6 +275,15 @@ def ingest_games_and_stats(
 
 
 def main() -> None:
+    # --review: sets the ingestion batch status to PENDING_REVIEW instead
+    # of COMPLETED, so the admin must approve the events in the review
+    # workflow before they count as published.
+    import sys
+    needs_review = "--review" in sys.argv
+    batch_status = "PENDING_REVIEW" if needs_review else "COMPLETED"
+    if needs_review:
+        print("Running with --review: batches will be set to PENDING_REVIEW for admin approval.")
+
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
@@ -295,7 +305,8 @@ def main() -> None:
 
         with connection.cursor() as cursor:
             ingest_games_and_stats(
-                cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, regular_season_figures
+                cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, regular_season_figures,
+                final_status=batch_status,
             )
         connection.commit()
 
@@ -308,7 +319,8 @@ def main() -> None:
 
         with connection.cursor() as cursor:
             ingest_games_and_stats(
-                cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures
+                cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures,
+                final_status=batch_status,
             )
         connection.commit()
 

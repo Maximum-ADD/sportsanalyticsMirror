@@ -10,6 +10,7 @@ import type {
   ModelAccuracyReport,
   PickRecord,
   SavedComparison,
+  SeasonAverages,
   TeamResultsFeed,
   WatchlistEntry,
   Player,
@@ -88,6 +89,32 @@ export function fetchPlayerStats(playerId: string, seasonType?: SeasonType): Pro
 // comparison view. See PlayerStatsSplitsResponse.
 export function fetchPlayerStatsSplits(playerId: string): Promise<PlayerStatsSplitsResponse> {
   return fetchJson<PlayerStatsSplitsResponse>(`/v1/players/${playerId}/stats/splits`);
+}
+
+// Career-wide aggregates: totals, averages, and a per-season breakdown
+// for the career tab on the player profile.
+export interface CareerStatsResponse {
+  playerId: string;
+  career: {
+    careerTotals: SeasonAverages;
+    careerAverages: SeasonAverages;
+    seasonBreakdown: { season: string; averages: SeasonAverages }[];
+  };
+}
+
+export function fetchPlayerCareerStats(playerId: string): Promise<CareerStatsResponse> {
+  return fetchJson<CareerStatsResponse>(`/v1/players/${playerId}/stats/career`);
+}
+
+// Competition-wide averages for one segment — the benchmark line.
+export interface LeagueAveragesResponse {
+  seasonType: string;
+  playerCount: number;
+  averages: SeasonAverages;
+}
+
+export function fetchLeagueAverages(seasonType?: SeasonType): Promise<LeagueAveragesResponse> {
+  return fetchJson<LeagueAveragesResponse>(`/v1/players/league-averages${toQueryString({ seasonType })}`);
 }
 
 // Opponent splits plus an opponent-adjusted projected-points line for every

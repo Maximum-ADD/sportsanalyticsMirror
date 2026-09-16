@@ -83,3 +83,112 @@ export function deleteAdminUser(userId: string): Promise<{ deleted: true }> {
 export function updateAdminUserRole(userId: string, role: UserRole): Promise<AdminUserSummary> {
   return sendJson<AdminUserSummary>(`/v1/admin/users/${userId}/role`, "PATCH", { role });
 }
+
+// --- Submission Review ---
+
+export interface IngestionBatchSummary {
+  id: string;
+  gameId: string;
+  source: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  eventsAccepted: number;
+  eventsRejected: number;
+  rejectionSummary: unknown;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  game: {
+    id: string;
+    gameDate: string;
+    season: string;
+    nbaGameId: string;
+    homeTeam: { name: string };
+    awayTeam: { name: string };
+  };
+  reviewedBy: { id: string; name: string } | null;
+}
+
+export interface FetchAdminBatchesParams {
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminBatches(params: FetchAdminBatchesParams = {}): Promise<PagedResult<IngestionBatchSummary>> {
+  return fetchJson<PagedResult<IngestionBatchSummary>>(`/v1/admin/batches${toQueryString(params)}`);
+}
+
+export function approveAdminBatch(batchId: string, reviewNotes?: string): Promise<IngestionBatchSummary> {
+  return sendJson<IngestionBatchSummary>(`/v1/admin/batches/${batchId}/approve`, "POST", { reviewNotes });
+}
+
+export function rejectAdminBatch(batchId: string, reviewNotes?: string): Promise<IngestionBatchSummary> {
+  return sendJson<IngestionBatchSummary>(`/v1/admin/batches/${batchId}/reject`, "POST", { reviewNotes });
+}
+
+// --- Event Corrections ---
+
+export interface EventCorrection {
+  id: string;
+  gameId: string;
+  sequence: number;
+  previousValues: Record<string, unknown>;
+  newValues: Record<string, unknown>;
+  correctedById: string | null;
+  reason: string | null;
+  correctedAt: string;
+  game: { id: string; gameDate: string; season: string; nbaGameId: string };
+  correctedBy: { id: string; name: string } | null;
+}
+
+export interface FetchAdminCorrectionsParams {
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminCorrections(params: FetchAdminCorrectionsParams = {}): Promise<PagedResult<EventCorrection>> {
+  return fetchJson<PagedResult<EventCorrection>>(`/v1/admin/events/corrections${toQueryString(params)}`);
+}
+
+// --- API Consumers ---
+
+export interface ApiConsumer {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  rateLimit: number;
+  dailyQuota: number;
+  isActive: boolean;
+  createdAt: string;
+  keys: { id: string; label: string | null; isActive: boolean; lastUsedAt: string | null; createdAt: string }[];
+  _count: { usageLog: number };
+}
+
+export interface CreatedApiKey {
+  id: string;
+  label: string | null;
+  rawKey: string;
+  createdAt: string;
+}
+
+export function fetchAdminConsumers(params: { page?: number; pageSize?: number } = {}): Promise<PagedResult<ApiConsumer>> {
+  return fetchJson<PagedResult<ApiConsumer>>(`/v1/admin/consumers${toQueryString(params)}`);
+}
+
+export function createAdminConsumer(data: { name: string; contactEmail?: string; rateLimit?: number; dailyQuota?: number }): Promise<ApiConsumer> {
+  return sendJson<ApiConsumer>("/v1/admin/consumers", "POST", data);
+}
+
+export function updateAdminConsumer(consumerId: string, patch: Record<string, unknown>): Promise<ApiConsumer> {
+  return sendJson<ApiConsumer>(`/v1/admin/consumers/${consumerId}`, "PATCH", patch);
+}
+
+export function createAdminApiKey(consumerId: string, label?: string): Promise<CreatedApiKey> {
+  return sendJson<CreatedApiKey>(`/v1/admin/consumers/${consumerId}/keys`, "POST", { label });
+}
+
+export function revokeAdminApiKey(consumerId: string, keyId: string): Promise<{ revoked: true }> {
+  return sendJson<{ revoked: true }>(`/v1/admin/consumers/${consumerId}/keys/${keyId}`, "DELETE");
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { fetchPlayer, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits } from "@/lib/nbaApi";
+import { fetchPlayer, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits, fetchPlayerCareerStats } from "@/lib/nbaApi";
 import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
@@ -220,6 +220,14 @@ export function PlayerProfilePage() {
   const splitsQuery = useQuery({
     queryKey: ["playerStatsSplits", playerId],
     queryFn: () => fetchPlayerStatsSplits(playerId!),
+    enabled: !!playerId,
+  });
+
+  // Career-wide aggregates: totals, averages, and per-season breakdown
+  // for the career tab below the main stat tiles.
+  const careerQuery = useQuery({
+    queryKey: ["playerCareerStats", playerId],
+    queryFn: () => fetchPlayerCareerStats(playerId!),
     enabled: !!playerId,
   });
 
@@ -649,6 +657,60 @@ export function PlayerProfilePage() {
               />
               <BioField label="Draft" value={formatDraft(player)} isPending={bioPending} />
             </div>
+          </section>
+          </Reveal>
+
+          <Reveal className="xl:col-span-3">
+          <section className="border border-landing-light bg-locker-surface p-6">
+            <SectionHeading title="Career" />
+            {careerQuery.isPending ? (
+              <p className="py-8 text-center text-[12.5px] text-locker-ink-muted">Loading career stats…</p>
+            ) : careerQuery.data?.career ? (
+              <div>
+                {/* Career headline numbers */}
+                <div className="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-8">
+                  <StatTile label="Games" value={careerQuery.data.career.careerAverages.gamesPlayed} />
+                  <StatTile label="PPG" value={formatNumber(careerQuery.data.career.careerAverages.pointsPerGame)} />
+                  <StatTile label="RPG" value={formatNumber(careerQuery.data.career.careerAverages.reboundsPerGame)} />
+                  <StatTile label="APG" value={formatNumber(careerQuery.data.career.careerAverages.assistsPerGame)} />
+                  <StatTile label="SPG" value={formatNumber(careerQuery.data.career.careerAverages.stealsPerGame)} />
+                  <StatTile label="BPG" value={formatNumber(careerQuery.data.career.careerAverages.blocksPerGame)} />
+                  <StatTile label="FG%" value={formatPercentage(careerQuery.data.career.careerAverages.fieldGoalPercentage)} />
+                  <StatTile label="TS%" value={formatPercentage(careerQuery.data.career.careerAverages.trueShootingPercentage)} />
+                </div>
+
+                {/* Per-season breakdown table */}
+                {careerQuery.data.career.seasonBreakdown.length > 0 && (
+                  <div className="overflow-hidden border border-landing-light">
+                    <table className="w-full border-collapse text-left">
+                      <thead>
+                        <tr className="border-b border-landing-light bg-landing-hero">
+                          {["Season", "GP", "PPG", "RPG", "APG", "FG%", "3P%", "TS%"].map((h) => (
+                            <th key={h} className="px-2.5 py-1.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {careerQuery.data.career.seasonBreakdown.map(({ season, averages }) => (
+                          <tr key={season} className="border-b border-landing-light last:border-b-0">
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-landing-ink">{season}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{averages.gamesPlayed}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{formatNumber(averages.pointsPerGame)}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{formatNumber(averages.reboundsPerGame)}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{formatNumber(averages.assistsPerGame)}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{formatPercentage(averages.fieldGoalPercentage)}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{formatPercentage(averages.threePointPercentage)}</td>
+                            <td className="px-2.5 py-1.5 font-mono text-[11px] text-locker-ink-muted">{formatPercentage(averages.trueShootingPercentage)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12.5px] text-locker-ink-muted">No career data available.</p>
+            )}
           </section>
           </Reveal>
         </div>

@@ -129,12 +129,18 @@ def run_ingestion_batch(
     nba_game_id: str,
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
+    final_status: str = "COMPLETED",
 ) -> dict:
     """Fetches, validates and writes one game's real play-by-play. Returns a run summary.
 
     known_player_ids for validation is derived from player_id_by_nba_id's
     own keys — the same already-ingested roster every other part of this
     pipeline uses, not a fresh query.
+
+    final_status controls the batch's terminal status on success — pass
+    "PENDING_REVIEW" when the pipeline runs with --review so the admin
+    must approve the events before they count as published. Defaults to
+    "COMPLETED" for the existing auto-publish behaviour.
 
     The summary's "accepted_events" carries the raw (NBA-id-keyed) accepted
     action dicts, not the internal-id-resolved rows just written to
@@ -172,7 +178,7 @@ def run_ingestion_batch(
         upsert_game_event(cursor, game_internal_id, batch_id, action, team_internal_id, player_internal_id)
         accepted_events.append(action)
 
-    complete_ingestion_batch(cursor, batch_id, "COMPLETED", len(accepted_events), rejected, dict(rejection_counts))
+    complete_ingestion_batch(cursor, batch_id, final_status, len(accepted_events), rejected, dict(rejection_counts))
     return {
         "batch_id": batch_id,
         "accepted": len(accepted_events),

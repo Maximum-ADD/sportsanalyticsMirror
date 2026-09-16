@@ -4,6 +4,7 @@ import { AdminModule } from "./admin/admin.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
+import { DatasetsModule } from "./datasets/datasets.module.js";
 import { GamesModule } from "./games/games.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { FollowsModule } from "./me/follows/follows.module.js";
@@ -30,6 +31,7 @@ import { TeamsModule } from "./teams/teams.module.js";
     FollowsModule,
     SavedModule,
     AdminModule,
+    DatasetsModule,
     // Registers a catch-all {/*splat, ALL} route (see NotFoundController) —
     // must stay last, or it would intercept every request meant for a
     // module imported after it before that module's own routes ever match.

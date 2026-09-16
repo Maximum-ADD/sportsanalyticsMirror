@@ -12,6 +12,14 @@ import {
   updateAdminTeam,
   updateAdminUserRole,
   deleteAdminUser,
+  fetchAdminBatches,
+  approveAdminBatch,
+  rejectAdminBatch,
+  fetchAdminCorrections,
+  fetchAdminConsumers,
+  createAdminConsumer,
+  createAdminApiKey,
+  revokeAdminApiKey,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
@@ -33,6 +41,14 @@ vi.mock("@/lib/adminApi", () => ({
   fetchAdminUsers: vi.fn(),
   updateAdminUserRole: vi.fn(),
   deleteAdminUser: vi.fn(),
+  fetchAdminBatches: vi.fn(),
+  approveAdminBatch: vi.fn(),
+  rejectAdminBatch: vi.fn(),
+  fetchAdminCorrections: vi.fn(),
+  fetchAdminConsumers: vi.fn(),
+  createAdminConsumer: vi.fn(),
+  createAdminApiKey: vi.fn(),
+  revokeAdminApiKey: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -248,6 +264,194 @@ describe("AdminPage", () => {
       await user.click(screen.getByRole("button", { name: "Yes, delete" }));
 
       await waitFor(() => expect(deleteAdminUser).toHaveBeenCalledWith("user-2"));
+    });
+  });
+
+  describe("Batches tab", () => {
+    it("lists batches and approves one", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({
+        data: [{
+          id: "b1", gameId: "g1", status: "PENDING_REVIEW", source: "nba_api",
+          startedAt: "2026-09-01T12:00:00.000Z", completedAt: null,
+          eventsAccepted: 200, eventsRejected: 5, rejectionSummary: null,
+          reviewedAt: null, reviewNotes: null,
+          game: { id: "g1", gameDate: "2026-09-01", season: "2025-26", nbaGameId: "001",
+            homeTeam: { name: "Lakers" }, awayTeam: { name: "Celtics" } },
+          reviewedBy: null,
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+      vi.mocked(approveAdminBatch).mockResolvedValue({} as never);
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+
+      expect(await screen.findByText(/Celtics @ Lakers/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Approve" }));
+      await waitFor(() => expect(approveAdminBatch).toHaveBeenCalledWith("b1", undefined));
+    });
+
+    it("rejects a batch", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({
+        data: [{
+          id: "b2", gameId: "g2", status: "PENDING_REVIEW", source: "nba_api",
+          startedAt: "2026-09-01T12:00:00.000Z", completedAt: null,
+          eventsAccepted: 0, eventsRejected: 50, rejectionSummary: null,
+          reviewedAt: null, reviewNotes: null,
+          game: { id: "g2", gameDate: "2026-09-02", season: "2025-26", nbaGameId: "002",
+            homeTeam: { name: "Lakers" }, awayTeam: { name: "Celtics" } },
+          reviewedBy: null,
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+      vi.mocked(rejectAdminBatch).mockResolvedValue({} as never);
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+      await screen.findByText(/Celtics @ Lakers/);
+
+      await user.click(screen.getByRole("button", { name: "Reject" }));
+      await waitFor(() => expect(rejectAdminBatch).toHaveBeenCalledWith("b2", undefined));
+    });
+
+    it("shows empty state when no batches", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+      expect(await screen.findByText("No batches found.")).toBeInTheDocument();
+    });
+
+    it("shows error state on fetch failure", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockRejectedValue(new Error("fail"));
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+      expect(await screen.findByText("Could not load batches.")).toBeInTheDocument();
+    });
+  });
+
+  describe("Corrections tab", () => {
+    it("lists corrections", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminCorrections).mockResolvedValue({
+        data: [{
+          id: "ec1", gameId: "g1", sequence: 5,
+          previousValues: { value: 2 }, newValues: { value: 3 },
+          correctedById: "u1", reason: "Corrected scoring",
+          correctedAt: "2026-09-01T12:00:00.000Z",
+          game: { id: "g1", gameDate: "2026-09-01", season: "2025-26", nbaGameId: "001" },
+          correctedBy: { id: "u1", name: "Admin One" },
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Corrections" }));
+
+      expect(await screen.findByText("Corrected scoring")).toBeInTheDocument();
+      expect(screen.getByText("value")).toBeInTheDocument();
+    });
+
+    it("shows empty state", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminCorrections).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Corrections" }));
+      expect(await screen.findByText("No corrections recorded yet.")).toBeInTheDocument();
+    });
+  });
+
+  describe("API Keys tab", () => {
+    it("lists consumers and generates a key", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({
+        data: [{
+          id: "c1", name: "TestApp", contactEmail: "test@example.com",
+          rateLimit: 60, dailyQuota: 1000, isActive: true,
+          createdAt: "2026-09-01T12:00:00.000Z",
+          keys: [{ id: "k1", label: "prod", isActive: true, lastUsedAt: null, createdAt: "2026-09-01" }],
+          _count: { usageLog: 42 },
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+      vi.mocked(createAdminApiKey).mockResolvedValue({
+        id: "k2", label: null, rawKey: "nba_secret_key_123", createdAt: "2026-09-01",
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+
+      expect(await screen.findByText("TestApp")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Generate Key" }));
+      await waitFor(() => expect(createAdminApiKey).toHaveBeenCalledWith("c1"));
+    });
+
+    it("creates a new consumer", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+      vi.mocked(createAdminConsumer).mockResolvedValue({
+        id: "c2", name: "NewApp", contactEmail: null,
+        rateLimit: 60, dailyQuota: 1000, isActive: true,
+        createdAt: "2026-09-01", keys: [], _count: { usageLog: 0 },
+      } as never);
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+
+      await user.type(screen.getByPlaceholderText("Consumer name"), "NewApp");
+      await user.click(screen.getByRole("button", { name: "Create" }));
+      await waitFor(() => expect(createAdminConsumer).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "NewApp" })
+      ));
+    });
+
+    it("revokes an active key", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({
+        data: [{
+          id: "c1", name: "TestApp", contactEmail: null,
+          rateLimit: 60, dailyQuota: 1000, isActive: true,
+          createdAt: "2026-09-01",
+          keys: [{ id: "k1", label: null, isActive: true, lastUsedAt: null, createdAt: "2026-09-01" }],
+          _count: { usageLog: 0 },
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+      vi.mocked(revokeAdminApiKey).mockResolvedValue({ revoked: true });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+      await screen.findByText("TestApp");
+
+      await user.click(screen.getByRole("button", { name: "Revoke" }));
+      await waitFor(() => expect(revokeAdminApiKey).toHaveBeenCalledWith("c1", "k1"));
+    });
+
+    it("shows error state", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminConsumers).mockRejectedValue(new Error("fail"));
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+      expect(await screen.findByText("Could not load API consumers.")).toBeInTheDocument();
     });
   });
 });

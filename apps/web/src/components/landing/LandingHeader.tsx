@@ -10,6 +10,7 @@ const APP_LINKS = [
   { label: "Players", to: "/players" },
   { label: "Compare", to: "/compare" },
   { label: "Teams", to: "/teams" },
+  { label: "Datasets", to: "/datasets" },
   { label: "Optimizer", to: "/optimizer" },
   { label: "Predictions", to: "/predictions" },
 ];
