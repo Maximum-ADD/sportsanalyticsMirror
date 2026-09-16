@@ -11,7 +11,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.spec.ts", "test/**/*.spec.ts", "test/**/*.e2e-spec.ts"],
+    include: [
+      "src/**/*.spec.ts",
+      "test/*.spec.ts",
+      "test/**/*.spec.ts",
+      "test/*.e2e-spec.ts",
+      "test/**/*.e2e-spec.ts",
+    ],
     globalSetup: ["./test/global-setup.ts"],
     // The e2e specs all share one physical Postgres database and truncate
     // its tables in afterEach — running spec files in parallel (Vitest's

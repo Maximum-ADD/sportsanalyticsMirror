@@ -6,6 +6,8 @@ import { renderWithProviders } from "@/test/renderWithProviders";
 import { fetchPlayer, fetchPlayerComparison, fetchPlayers, fetchPlayerStats } from "@/lib/nbaApi";
 import type { Player, SeasonAverages } from "@/types/nba";
 
+const ASYNC_ASSERTION_TIMEOUT_IN_MILLISECONDS = 5_000;
+
 vi.mock("@/lib/nbaApi", () => ({
   fetchPlayer: vi.fn(),
   fetchPlayerComparison: vi.fn(),
@@ -342,6 +344,11 @@ describe("ComparePage", () => {
     expect(await screen.findByText("Nikola Jokic")).toBeInTheDocument();
     // The compare page now states which segment it wants, so a comparison
     // opened from a postseason view compares postseason lines.
-    await waitFor(() => expect(fetchPlayerStats).toHaveBeenCalledWith("player-9", "REGULAR"));
+    // Coverage runs on the shared runner can take longer than Testing
+    // Library's one-second default to schedule the new lone-player query.
+    await waitFor(
+      () => expect(fetchPlayerStats).toHaveBeenCalledWith("player-9", "REGULAR"),
+      { timeout: ASYNC_ASSERTION_TIMEOUT_IN_MILLISECONDS }
+    );
   });
 });
