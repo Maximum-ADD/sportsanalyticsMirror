@@ -127,5 +127,111 @@ describe("Datasets API", () => {
       expect(response.status).toBe(404);
       expect(response.body.error.code).toBe("NOT_FOUND");
     });
+
+    it("returns CSV with player stats and checksum header when data exists", async () => {
+      // Create teams and a player with game stats so generateSeasonCsv
+      // exercises the percentage and per-game average branches.
+      const home = await testPrisma.team.create({
+        data: {
+          nbaTeamId: uid(),
+          name: "Lakers",
+          abbreviation: "LAL",
+          city: "Los Angeles",
+          conference: "West",
+          division: "Pacific",
+        },
+      });
+      const away = await testPrisma.team.create({
+        data: {
+          nbaTeamId: uid(),
+          name: "Celtics",
+          abbreviation: "BOS",
+          city: "Boston",
+          conference: "East",
+          division: "Atlantic",
+        },
+      });
+
+      const player = await testPrisma.player.create({
+        data: {
+          nbaPlayerId: uid(),
+          firstName: 'Le"Bron',
+          lastName: "James",
+          position: "F",
+          teamId: home.id,
+        },
+      });
+
+      // A player with no team (exercises the team abbreviation ?? "" branch).
+      await testPrisma.player.create({
+        data: {
+          nbaPlayerId: uid(),
+          firstName: "Free",
+          lastName: "Agent",
+          position: "G",
+          teamId: null,
+        },
+      });
+
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-${uid()}`,
+          gameDate: new Date("2025-10-15"),
+          season: "2025-26",
+          seasonType: "REGULAR",
+          homeTeamId: home.id,
+          awayTeamId: away.id,
+        },
+      });
+
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: player.id,
+          gameId: game.id,
+          minutes: 36,
+          points: 30,
+          rebounds: 8,
+          assists: 10,
+          steals: 2,
+          blocks: 1,
+          turnovers: 3,
+          fieldGoalsMade: 12,
+          fieldGoalsAttempted: 20,
+          threesMade: 3,
+          threesAttempted: 8,
+          freeThrowsMade: 3,
+          freeThrowsAttempted: 4,
+        },
+      });
+
+      // Create the dataset release directly so we can test the download
+      // endpoint — the publish endpoint requires admin auth.
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2025-26.1",
+          description: "Test release",
+          season: "2025-26",
+          checksum: "placeholder",
+          gamesCount: 1,
+          playersCount: 1,
+          eventsCount: 0,
+          fieldSchema: [],
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("text/csv");
+      expect(response.headers["x-checksum-sha256"]).toBeTruthy();
+
+      const csv = response.text;
+      expect(csv).toContain("playerId");
+      expect(csv).toContain("James");
+      // The name contains a double quote which must be escaped.
+      expect(csv).toContain('"Le""Bron"');
+      // Free Agent has no games in this season so should be skipped.
+      expect(csv).not.toContain("Agent");
+    });
   });
 });

@@ -19,7 +19,7 @@ import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { DatasetReleasesService, type ReleaseWithPublisher } from "./datasets.service.js";
 
-function parsePublishBody(body: unknown): { version: string; description: string; season: string } {
+export function parsePublishBody(body: unknown): { version: string; description: string; season: string } {
   if (typeof body !== "object" || body === null) {
     throw new Error("Request body must be an object");
   }

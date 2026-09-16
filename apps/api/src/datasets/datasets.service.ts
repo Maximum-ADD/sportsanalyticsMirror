@@ -42,7 +42,7 @@ const DATASET_COLUMNS: FieldDescriptor[] = [
   { column: "effectiveFieldGoalPercentage", type: "number", description: "Effective field goal percentage (0-100)" },
 ];
 
-function escapeCsvField(value: string | number | null): string {
+export function escapeCsvField(value: string | number | null): string {
   if (value === null) return "";
   const text = String(value);
   if (!/[",\r\n]/.test(text)) return text;
