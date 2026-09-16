@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { ResponseCacheService } from "../cache/response-cache.service.js";
 import type { EventCorrection } from "@prisma/client";
+import { COUNTING_STAT_FIELDS, deriveGameEventStats } from "./derive-player-game-stats.js";
 
 // Fields on GameEvent that an admin is allowed to correct — the identity
 // and relational fields (id, gameId, sequence, batchId) are locked because
@@ -135,15 +136,23 @@ export class AdminEventsService {
       }
     }
 
-    // 3. Apply the correction and write the audit row in one transaction
-    // so a partial failure can't leave the event changed without a record
-    // of why.
+    // 3. Apply the correction, re-derive every PlayerGameStat counting
+    // figure for this one game from its now-corrected events, and write the
+    // audit row — all in one transaction, so a correction can never be left
+    // half-applied (event changed but stats stale, or vice versa). This is
+    // what brings every derived stat back in line with a single correction
+    // rather than requiring a full pipeline re-run: only this game's rows
+    // are touched, not the whole season (see deriveGameEventStats's module
+    // doc comment for why this needs its own player-name index rather than
+    // reusing the Python pipeline's).
     const { reason, ...dataPatch } = patch;
     const correction = await this.prisma.$transaction(async (tx) => {
       await tx.gameEvent.update({
         where: { gameId_sequence: { gameId, sequence } },
         data: dataPatch,
       });
+
+      await this.recomputeDerivedStats(tx, gameId);
 
       return tx.eventCorrection.create({
         data: {
@@ -164,5 +173,49 @@ export class AdminEventsService {
     this.cache.invalidate("players");
 
     return correction;
+  }
+
+  // Re-derives every counting stat (points, shooting splits, rebound split,
+  // assists, steals, blocks, turnovers) for one game from its current
+  // GameEvent rows, and writes the result over the existing PlayerGameStat
+  // rows for that game. Fields this project never derives from events —
+  // minutes, plusMinus, usagePercentage, the two ratings, all sourced from
+  // the official boxscore feed instead (see PlayerGameStat's schema doc
+  // comment) — are left untouched. Only players who already have a stat row
+  // for this game are updated: a correction can shift derived figures, but
+  // it can't manufacture the boxscore-sourced fields a brand-new player row
+  // would need, so this stays a targeted recomputation rather than a
+  // from-scratch re-ingest. Returns how many players' rows were touched —
+  // both correctEvent and replayGame report it back to the caller.
+  private async recomputeDerivedStats(tx: Prisma.TransactionClient, gameId: string): Promise<number> {
+    const [events, existingStats] = await Promise.all([
+      tx.gameEvent.findMany({ where: { gameId } }),
+      tx.playerGameStat.findMany({ where: { gameId }, select: { playerId: true } }),
+    ]);
+    if (existingStats.length === 0) return 0;
+
+    const playerIds = existingStats.map((row) => row.playerId);
+    const players = await tx.player.findMany({
+      where: { id: { in: playerIds } },
+      select: { id: true, lastName: true },
+    });
+    const lastNameByPlayerId = new Map(players.map((player) => [player.id, player.lastName]));
+
+    const derivedByPlayerId = deriveGameEventStats(events, lastNameByPlayerId);
+
+    await Promise.all(
+      playerIds.map((playerId) => {
+        const derived = derivedByPlayerId.get(playerId);
+        const data: Record<(typeof COUNTING_STAT_FIELDS)[number], number> = {} as never;
+        for (const field of COUNTING_STAT_FIELDS) data[field] = derived?.[field] ?? 0;
+
+        return tx.playerGameStat.update({
+          where: { playerId_gameId: { playerId, gameId } },
+          data,
+        });
+      }),
+    );
+
+    return playerIds.length;
   }
 }
