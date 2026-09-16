@@ -87,7 +87,6 @@ describe("Saved lineups API", () => {
   });
 
   afterAll(async () => {
-    await testPrisma.$disconnect();
     await app.close();
   });
 

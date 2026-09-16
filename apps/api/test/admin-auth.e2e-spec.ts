@@ -2,7 +2,6 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "./create-test-app.js";
-import { testPrisma } from "./test-db.js";
 
 describe("Admin endpoints — unauthenticated access", () => {
   let app: INestApplication;
@@ -12,7 +11,6 @@ describe("Admin endpoints — unauthenticated access", () => {
   });
 
   afterAll(async () => {
-    await testPrisma.$disconnect();
     await app.close();
   });
 

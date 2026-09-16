@@ -77,7 +77,6 @@ describe("Admin event corrections and replay", () => {
   afterAll(async () => {
     await testPrisma.user.deleteMany({ where: { id: ADMIN_USER_ID } });
     await resetDatabase();
-    await testPrisma.$disconnect();
     await app.close();
   });
 
