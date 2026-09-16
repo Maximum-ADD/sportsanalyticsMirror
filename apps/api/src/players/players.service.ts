@@ -131,6 +131,18 @@ export class PlayersService {
     );
   }
 
+  // The same player-season rows as getPlayerSeasonStats, limited to games
+  // completed at or before a supplied timestamp. This intentionally avoids
+  // the normal cache because every distinct timestamp is a separate view of
+  // the data and would turn arbitrary analyst queries into an unbounded cache.
+  getPlayerSeasonStatsAsOf(playerId: string, seasonType: SeasonType, asOf: Date) {
+    return this.prisma.playerGameStat.findMany({
+      where: { playerId, game: { seasonType, gameDate: { lte: asOf } } },
+      include: { game: true },
+      orderBy: { game: { gameDate: "desc" } },
+    });
+  }
+
   // One query for every requested player's game stats, not one query per
   // player — added once a caller (the Predictions page's model highlights,
   // via PlayerCards.tsx's useUpcomingPlayerReliability) needed reliability

@@ -57,6 +57,7 @@ describe("StatsService", () => {
   beforeEach(() => {
     playersService = {
       getPlayerSeasonStats: vi.fn(),
+      getPlayerSeasonStatsAsOf: vi.fn(),
       getPlayerSeasonStatsBatch: vi.fn(),
       getSeasonStatTotalsBatch: vi.fn(),
       getMatchingPlayers: vi.fn(),
@@ -439,6 +440,23 @@ describe("StatsService", () => {
       await cachedStatsService.getPlayersRanked({ sort: "ppg", seasonType: "PLAYOFFS" });
 
       expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("getPlayerSeasonLineAsOf", () => {
+    it("derives the line from only the rows returned for the requested timestamp", async () => {
+      const asOf = new Date("2025-10-15T23:59:59.000Z");
+      const stat = {
+        ...makeStat({ points: 24 }),
+        game: makeGame({ gameDate: new Date("2025-10-15T19:00:00.000Z") }),
+      };
+      vi.mocked(playersService.getPlayerSeasonStatsAsOf).mockResolvedValue([stat] as never);
+
+      const line = await statsService.getPlayerSeasonLineAsOf("player-1", "REGULAR", asOf);
+
+      expect(playersService.getPlayerSeasonStatsAsOf).toHaveBeenCalledWith("player-1", "REGULAR", asOf);
+      expect(line.seasonAverages.pointsPerGame).toBe(24);
+      expect(line.gameLog).toEqual([{ gameId: "game-1", gameDate: stat.game.gameDate, points: 24, season: "2025-26" }]);
     });
   });
 
