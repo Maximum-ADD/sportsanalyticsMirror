@@ -13,8 +13,10 @@ nba_api, so this makes no calls beyond the postseason data itself.
 
 Call budget: 2 leaguewide LeagueGameLog calls for the game ids, 4 more for
 the leaguewide plus/minus and advanced figures (see player_game_logs.py),
-then one BoxScoreTraditionalV3 call per game (~90 for a full postseason).
-At RATE_LIMIT_DELAY_SECONDS plus retries, expect roughly 5 minutes.
+then one BoxScoreTraditionalV3 and one PlayByPlayV3 call per game (~180
+for a full postseason — see ingest.py's ingest_games_and_stats, which this
+reuses unchanged, and play_by_play.py). At RATE_LIMIT_DELAY_SECONDS plus
+retries, expect roughly 8-10 minutes.
 
 Idempotent - every write is an upsert keyed on nbaGameId/(playerId,
 gameId), so a failed or interrupted run can simply be run again.

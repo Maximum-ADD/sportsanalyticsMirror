@@ -135,13 +135,31 @@ status codes always go through the `HttpStatus` enum, never a bare number.
 
 ### Data model philosophy
 
-`GameEvent` rows are meant to be the source of truth (raw play-by-play),
-with `PlayerGameStat` boxscore rows and season averages derived from them.
-**Current reality**: `PlayerGameStat` rows are seeded directly and
-`statsService.ts` derives season averages from *those* at request time —
-the seed doesn't yet derive boxscores from `GameEvent` rows themselves.
-Closing that gap (real event → boxscore derivation) is still open; see
-"Known gaps" below.
+`GameEvent` rows are the source of truth (real per-play NBA `PlayByPlayV3`
+data — every made/missed shot, rebound, turnover, foul), with
+`PlayerGameStat`'s counting stats (points, shooting splits, the rebound
+split, assists, steals, blocks, turnovers) aggregated from them at
+ingestion time by `apps/ingestion/derive_player_game_stats.py`, and season
+averages derived from *those* at request time by `statsService.ts` — the
+two-stage derivation the brief's "every statistic traced back to
+events" requirement describes, not just documented as an intention.
+
+Two exceptions, both deliberate: `minutes` and `plusMinus` stay sourced
+from the boxscore/`PlayerGameLogs` endpoints rather than event-derived —
+see `PlayerGameStat`'s schema doc comment for why (on-court time needs a
+full substitution-event replay to recover correctly, for a number the
+official feed already provides). Mock seed data (`apps/api/prisma/seed.ts`)
+is a separate, always-synthetic system for local dev and hasn't changed —
+see "Mock seed data" below.
+
+Each ingestion run that writes `GameEvent` rows is itself recorded as an
+`IngestionBatch` (accepted/rejected counts, rejection reasons) — the
+platform's own "submission" a published stat traces back to, alongside the
+events themselves. Rows failing schema validation
+(`apps/ingestion/event_validation.py`) are rejected with a structured
+reason rather than silently written or silently dropped. See "Known gaps"
+below for what this does *not* attempt (a multi-human-submitter workflow,
+batch staging/resume, live feeds).
 
 ## Database schema (Prisma)
 
@@ -154,14 +172,25 @@ Closing that gap (real event → boxscore derivation) is still open; see
   `playoffRound` (1–4, null outside the playoffs). `seasonType` is the
   single discriminator every segment view filters on — see "Season
   segments" below
-- **GameEvent** — raw play-by-play row belonging to a `Game` (sequence,
-  period, clock, eventType, description) — the intended derivation source,
-  see above
+- **GameEvent** — one row per real play-by-play action belonging to a
+  `Game` (`sequence` = NBA's own actionNumber, `period`, `clock`,
+  `eventType`/`subType` = NBA's actionType/subType, `playerId`, `teamId`,
+  `success`/`value` for shots and free throws, `description`) — the actual
+  derivation source (see "Data model philosophy" above), tagged with the
+  `IngestionBatch` that wrote it
+- **IngestionBatch** — one row per play-by-play ingestion run for one game
+  (`source`, `status`, `eventsAccepted`/`eventsRejected`,
+  `rejectionSummary`) — the automated pipeline's own "submission" record; a
+  re-ingested game gets a new row rather than overwriting the last one's
+  history, same append-only precedent as `GamePredictionRun`
 - **PlayerGameStat** — one row per player per game (points, rebounds,
-  assists, shooting splits, etc.) — what `statsService.ts` actually
-  aggregates into season averages today. Also carries the offensive/
-  defensive rebound split, plus/minus, and NBA's own usage rate and
-  offensive/defensive ratings, all nullable — see "Advanced stats" below
+  assists, shooting splits, etc.), aggregated from `GameEvent` rows by
+  `apps/ingestion/derive_player_game_stats.py` — what `statsService.ts`
+  then aggregates into season averages at request time. Also carries the
+  offensive/defensive rebound split (also event-derived), plus/minus
+  (boxscore-sourced, not event-derived — see its own field comment), and
+  NBA's own usage rate and offensive/defensive ratings, all nullable — see
+  "Advanced stats" below
 - **User / Session / Account / Verification** — BetterAuth's required core
   schema (see [better-auth.com/docs/concepts/database](https://better-auth.com/docs/concepts/database)).
   `User.role` is the one project-specific addition (see RBAC above).
@@ -274,9 +303,12 @@ envelope `{ error: { code, message } }`.
 | GET | `/v1/players/compare` | Query: `ids` (comma-separated, 2–4), `seasonType`. Each player + derived season averages |
 | GET | `/v1/teams` | Query: `page`, `pageSize` |
 | GET | `/v1/teams/:id` | |
-| GET | `/v1/games` | Auth required; paginated games and predictions. Query: `seasonType` (omitted = every segment) |
-| GET | `/v1/games/:id` | Auth required; game and prediction detail |
-| GET | `/v1/games/:id/prediction` | Auth required |
+| GET | `/v1/games` | Public; paginated games and predictions. Query: `seasonType` (omitted = every segment) |
+| GET | `/v1/games/:id` | Public; game and prediction detail |
+| GET | `/v1/games/:id/prediction` | Public |
+| GET | `/v1/games/:id/prediction/history` | Public; every model version's prediction for this game |
+| GET | `/v1/games/:id/events` | Public; paginated, ordered by `sequence` — this game's raw play-by-play |
+| GET | `/v1/players/export` | CSV file. Same filters as `/v1/players` (`teamId`, `position`, `search`) |
 | GET | `/v1/optimizer/lineup` | Auth required; latest optimized lineup |
 | ALL | `*` | Catch-all → `404 NOT_FOUND` |
 
@@ -422,10 +454,8 @@ checks and review required before merging.
 
 ## Known gaps
 
-- `PlayerGameStat` is seeded directly rather than derived from `GameEvent`
-  rows — the event-sourcing story isn't fully real yet.
-- Real NBA data ingestion (`nba_api`, Python) into Postgres — not started.
-- A second external API integration (brief requirement) — not started.
+- A second external API integration (brief requirement, e.g. an
+  injury/news feed or a betting-odds comparison) — not started.
 - **Multi-season postseason history** — `Game.season` is a single string
   and nothing iterates seasons, so only the configured season's postseason
   is available. Out of scope for the postseason views.
@@ -443,10 +473,32 @@ checks and review required before merging.
   nothing reads it yet; the UI treats rounds 1–3 as one "Playoffs" segment.
 - Public documentation site (Docusaurus/MkDocs, deployed via static
   hosting) — not started. This file lives in-repo; it isn't that site.
-- Lint/typecheck aren't enforced in CI yet, only run manually.
-- Responsiveness/accessibility pass (beyond the one contrast fix already
-  made) — not done.
-- Production deployment — not done.
+- Automated accessibility checks (`axe-core`) run against a handful of
+  pages/components, not the whole app, and there's been no full manual
+  responsiveness/accessibility audit beyond that plus the one contrast fix
+  in "Theme" above.
+- Coverage thresholds are not enforced yet — CI reports API/Web coverage
+  without failing a build for falling under some minimum.
+
+Real `nba_api` ingestion, lint/typecheck enforcement in CI, and production
+deployment used to be listed here as gaps; they're done, so removed rather
+than left to go stale.
+
+**Deliberately out of scope for the event-derivation work above** — the
+brief's Intermediate/Advanced submission-pipeline requirements go well
+beyond what a single automated ingestion source needs, and weren't
+realistic to also attempt alongside making derivation itself real: a
+multi-human-submitter workflow with per-submitter approval (this project
+has one automated "submitter" — the pipeline itself, source-tagged per
+`IngestionBatch` — not many competing ones), batch staging/validation with
+resume-from-partial-failure at the scale a whole-season upload implies,
+versioned dataset releases with checksums, API keys/rate limits/quotas for
+external consumers, user-definable derived statistics evaluated over the
+event schema, a live/late-arriving event feed (this pipeline is
+batch-per-game, run after the fact, not a feed from a fixture in
+progress), point-in-time ("what was this stat as of date X") queries, and
+API contract testing/a published deprecation path. None of these are
+started; none should be assumed done because event-derivation now is.
 
 ## Personalization preferences
 

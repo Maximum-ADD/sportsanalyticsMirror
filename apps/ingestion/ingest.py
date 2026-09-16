@@ -15,6 +15,11 @@ was designed around):
     only cost one call) — in practice well under that since most of a
     team's recent 15 games are against other teams whose own recent 15
     also include that game.
+  - Play-by-play: one PlayByPlayV3 call per unique game id, alongside each
+    boxscore call above (same dedup, same ~+8-9 min at RATE_LIMIT_DELAY_
+    SECONDS) — see play_by_play.py. Its accepted GameEvent rows are what
+    derive_player_game_stats.py actually aggregates into the counting
+    stats below; minutes and plus/minus still come from the boxscore call.
   - Plus/minus and advanced figures: 2 calls for the entire regular season
     and 4 for the postseason (two measure types per segment), via
     leaguewide PlayerGameLogs — not one call per game. See
@@ -26,9 +31,10 @@ was designed around):
   - Postseason boxscores: ~90 calls (verified live for 2025-26: 6 play-in
     games and 85 playoff games, Finals included). Deduplicated against
     nothing else — postseason ids don't overlap the regular-season ones.
-  - Total: roughly 900-1050 calls. At RATE_LIMIT_DELAY_SECONDS (1s/call)
-    plus retries, expect this to take on the order of 25-35 minutes —
-    player bios remain the single largest phase by call count.
+  - Total: roughly 1400-1500 calls (900-1050 plus the new play-by-play
+    line above, ~1 extra call per boxscore). At RATE_LIMIT_DELAY_SECONDS
+    (1s/call) plus retries, expect this to take on the order of 35-45
+    minutes — player bios remain the single largest phase by call count.
 
 Must run from a real residential network, not a cloud host — see
 README.md for why (stats.nba.com blocks cloud-provider IP ranges; this is
@@ -36,6 +42,7 @@ a documented, repeated community pain point, not a guess).
 """
 
 from db import get_connection
+from derive_player_game_stats import aggregate_player_game_stats
 from games import (
     NBA_SEASON_TYPE_PLAY_IN,
     NBA_SEASON_TYPE_PLAYOFFS,
@@ -45,9 +52,9 @@ from games import (
     fetch_recent_games,
     fetch_season_segment_games,
     upsert_game,
-    upsert_period_bookend_events,
     upsert_player_game_stat,
 )
+from play_by_play import run_ingestion_batch
 from player_bios import fetch_player_bio, upsert_player_bio
 from player_game_logs import fetch_season_player_game_logs
 from rosters import fetch_team_roster, upsert_players
@@ -156,20 +163,32 @@ def ingest_games_and_stats(
     playoffs, finals) is derived from its own game id by classify_game(),
     so this runs unchanged over a regular-season or a postseason batch and
     a re-run always lands a game in the same segment. Everything below
-    classification — boxscores, period bookends, per-player stat rows — is
+    classification — boxscores, play-by-play, per-player stat rows — is
     already segment-independent.
 
-    `extra_figures_by_player_game` supplies plus/minus, the rebound split
-    and the advanced figures, keyed by (nba_game_id, nba_player_id) — see
+    `extra_figures_by_player_game` supplies plus/minus, and the advanced
+    figures, keyed by (nba_game_id, nba_player_id) — see
     player_game_logs.py. It is fetched once for the whole segment rather
     than per game, so it costs a couple of calls instead of one per game.
     A player-game missing from it is written with null figures rather than
     skipped: a missing usage rate is worth far less than a missing game,
     and a later run fills it in.
+
+    The counting stats actually written (points, shooting splits, rebound
+    split, assists, steals, blocks, turnovers) come from
+    derive_player_game_stats.aggregate_player_game_stats over this game's
+    real, just-ingested GameEvent rows (see play_by_play.run_ingestion_batch)
+    — not from the boxscore response, which now only supplies minutes and
+    plus/minus (see PlayerGameStat's schema doc comment for why those two
+    stay boxscore-sourced). A player with no derivable event data for this
+    game (the pipeline found nothing to aggregate for them — a batch that
+    failed outright, or genuinely zero recorded actions) falls back to the
+    boxscore's own counting stats rather than writing a gutted row.
     """
     extra_figures_by_player_game = extra_figures_by_player_game or {}
     skipped_unknown_players = 0
     player_games_missing_extra_figures = 0
+    player_games_missing_derived_stats = 0
     for nba_game_id, game_date in game_date_by_nba_game_id.items():
         boxscore = fetch_game_boxscore(nba_game_id)
 
@@ -192,7 +211,14 @@ def ingest_games_and_stats(
             season_type,
             playoff_round,
         )
-        upsert_period_bookend_events(cursor, game_internal_id)
+
+        batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+        if batch_summary["rejected"]:
+            print(
+                f"  {nba_game_id}: rejected {batch_summary['rejected']} play-by-play rows "
+                f"({batch_summary['rejection_counts']}) — see IngestionBatch {batch_summary['batch_id']}."
+            )
+        derived_stats_by_nba_player_id = aggregate_player_game_stats(batch_summary["accepted_events"])
 
         for player_stats in boxscore["players"]:
             player_internal_id = player_id_by_nba_id.get(player_stats["nba_player_id"])
@@ -218,17 +244,31 @@ def ingest_games_and_stats(
                 # often a DNP, which genuinely has no usage rate.
                 extra_figures = {}
                 player_games_missing_extra_figures += 1
-            upsert_player_game_stat(
-                cursor,
-                player_internal_id,
-                game_internal_id,
-                team_internal_id,
-                {**traditional_stats, **extra_figures},
-            )
+
+            merged_stats = {**traditional_stats, **extra_figures}
+            derived_stats = derived_stats_by_nba_player_id.get(player_stats["nba_player_id"])
+            if derived_stats is not None:
+                # Event-derived counting stats are authoritative when
+                # present — they overwrite both the boxscore's own values
+                # and (for offensive/defensive rebounds) the leaguewide
+                # feed's, since real per-play derivation is more honest
+                # than either "given" total. minutes/plus_minus are never
+                # in derived_stats (see module docstring), so they're
+                # untouched regardless.
+                merged_stats.update(derived_stats)
+            else:
+                player_games_missing_derived_stats += 1
+
+            upsert_player_game_stat(cursor, player_internal_id, game_internal_id, team_internal_id, merged_stats)
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
     if player_games_missing_extra_figures:
         print(f"{player_games_missing_extra_figures} player-games had no plus/minus or advanced figures (left null).")
+    if player_games_missing_derived_stats:
+        print(
+            f"{player_games_missing_derived_stats} player-games had no derivable play-by-play "
+            "(kept the boxscore's own counting stats instead)."
+        )
     if skipped_unknown_players:
         print(f"Skipped {skipped_unknown_players} stat rows for players not on any ingested roster.")
 

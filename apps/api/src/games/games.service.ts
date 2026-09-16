@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Game, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
+import type { Game, GameEvent, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
 import { DERIVED_DATA_TTL_MS, REFERENCE_DATA_TTL_MS } from "../cache/cache-ttl.js";
 import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
@@ -220,6 +220,31 @@ export class GamesService {
     return this.prisma.gamePredictionRun.findMany({
       where: { gameId },
       orderBy: { createdAt: "asc" },
+    });
+  }
+
+  // This game's raw, ordered play-by-play (see
+  // apps/ingestion/play_by_play.py) — the record every derived
+  // PlayerGameStat figure this platform publishes ultimately traces back
+  // to (see apps/ingestion/derive_player_game_stats.py). Paginated like
+  // every other list endpoint: a completed game can carry several hundred
+  // events. Ordered by `sequence` (NBA's own actionNumber), never
+  // insertion time, which an upsert-based re-ingest could reshuffle.
+  // Empty page (not 404) for a game with zero events yet — the game
+  // itself not existing is what 404s, in the controller, same
+  // "collection endpoint" convention as getGames/getPredictionHistoryForGame.
+  getGameEvents(gameId: string, page: number, pageSize: number): Promise<PagedResult<GameEvent>> {
+    return this.cache.getOrLoad(buildCacheKey("games:events", [gameId, page, pageSize]), DERIVED_DATA_TTL_MS, async () => {
+      const [data, total] = await Promise.all([
+        this.prisma.gameEvent.findMany({
+          where: { gameId },
+          orderBy: { sequence: "asc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        this.prisma.gameEvent.count({ where: { gameId } }),
+      ]);
+      return { data, page, pageSize, total };
     });
   }
 }

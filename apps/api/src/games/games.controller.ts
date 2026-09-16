@@ -1,6 +1,7 @@
 import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
+import { parsePageParams } from "../common/pagination.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
@@ -94,5 +95,26 @@ export class GamesController {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
     }
     return this.gamesService.getPredictionHistoryForGame(id);
+  }
+
+  // GET /v1/games/:id/events — this game's raw, ordered play-by-play (see
+  // apps/ingestion/play_by_play.py), the record every derived stat this
+  // platform publishes ultimately traces back to
+  // (apps/ingestion/derive_player_game_stats.py). Paginated: a completed
+  // game can carry several hundred events. Empty page, not 404, for a
+  // game with no events yet — same collection convention as
+  // :id/prediction/history; only the game itself missing 404s.
+  @Get(":id/events")
+  @ApiOperation({ summary: "Get a game's ordered play-by-play events" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Paginated game events" })
+  @ApiResponse({ status: 404, description: "Game not found" })
+  async getGameEvents(@Param("id") id: string, @Query() query: Record<string, unknown>) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    }
+    const { page, pageSize } = parsePageParams(query);
+    return this.gamesService.getGameEvents(id, page, pageSize);
   }
 }

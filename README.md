@@ -3,9 +3,11 @@
 COMS3011A Project 3 (Sport Analytics Tool), built for the NBA.
 
 An event-derived stats platform: every published statistic (points per game,
-shooting splits, etc.) is computed from per-game boxscore rows rather than
-typed in directly, satisfying the brief's core requirement that statistics
-trace back to underlying event records.
+shooting splits, etc.) is computed from per-game boxscore rows, which are
+themselves aggregated from real per-play `GameEvent` records
+(`apps/ingestion/derive_player_game_stats.py`) rather than typed in
+directly — satisfying the brief's core requirement that statistics trace
+back to underlying event records.
 
 ## Documentation
 
@@ -97,12 +99,18 @@ This is a base scaffold, not the finished product. What's wired up:
   the default `USER`.
 - **API**: versioned under `/v1/`, with pagination, a consistent JSON error
   envelope (`{ error: { code, message } }`) via a global Nest exception
-  filter, and routes for players, teams, and derived per-player season
-  stats.
+  filter, and routes for players, teams, derived per-player season stats,
+  a game's raw ordered play-by-play (`GET /v1/games/:id/events`), and a
+  CSV export of a filtered player slice (`GET /v1/players/export`) — "read
+  fixtures, events and derived statistics" and "export a filtered slice as
+  a file," the brief's own words for these two.
 - **Data**: Prisma schema models teams, players, games, raw `GameEvent`
-  rows, and per-game `PlayerGameStat` boxscores. Season averages
-  (`apps/api/src/services/statsService.ts`) are computed from those boxscore
-  rows at request time — nothing is stored as a pre-computed total.
+  rows (real per-play `PlayByPlayV3` data, tagged with the `IngestionBatch`
+  that wrote them), and per-game `PlayerGameStat` boxscores aggregated from
+  those events (`apps/ingestion/derive_player_game_stats.py`). Season
+  averages (`apps/api/src/services/statsService.ts`) are then computed from
+  those boxscore rows at request time — nothing is stored as a
+  pre-computed total.
 - **Season segments**: every `Game` carries a `seasonType` (regular season,
   play-in, playoffs, finals), and the player/game endpoints filter on it, so
   a postseason view never shows regular-season figures or vice versa. The
@@ -110,11 +118,12 @@ This is a base scaffold, not the finished product. What's wired up:
   see `docs/PROJECT_OVERVIEW.md` for why.
 - **Ingestion**: `prisma/seed.ts` still seeds a handful of mock players/games
   for local dev, but `apps/ingestion` now pulls real NBA data (all 30
-  current teams, their rosters, and each team's ~15 most recent games with
-  real boxscores) from `nba_api` into the same Postgres database — a
-  separate Python process, with the NestJS API remaining the only thing
-  that talks to the database over HTTP-facing requests. A postseason phase
-  additionally ingests the season's play-in, playoff and Finals games.
+  current teams, their rosters, and each team's ~15 most recent games, each
+  with real per-play data and boxscores derived from it) from `nba_api`
+  into the same Postgres database — a separate Python process, with the
+  NestJS API remaining the only thing that talks to the database over
+  HTTP-facing requests. A postseason phase additionally ingests the
+  season's play-in, playoff and Finals games.
 - **Frontend**: dark-themed dashboard shell — sidebar nav, players list,
   and a player profile page (stat tiles, a traits radar chart, a points
   trend line chart, and a regular-season-vs-postseason comparison) built
@@ -125,10 +134,12 @@ This is a base scaffold, not the finished product. What's wired up:
 
 - Second external API integration (brief requirement — e.g. an
   injury/news feed).
-- `axe-core` automated accessibility checks — not wired in anywhere yet,
-  despite being listed as done in an earlier draft of this file. Some
-  responsive breakpoints and keyboard/focus handling exist (`Navbar.tsx`,
-  `App.tsx`, `RecentResultWidget.tsx`) but haven't had a real audit pass.
+- `axe-core` automated accessibility checks now run against a handful of
+  pages/components (`Home`, `Optimizer`, `PlayersListPage`,
+  `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/
+  accessibility.ts`), not the whole app yet. Some responsive breakpoints
+  and keyboard/focus handling exist (`Navbar.tsx`, `App.tsx`,
+  `RecentResultWidget.tsx`) but haven't had a real full audit pass.
 - Coverage thresholds are not enforced yet. CI reports the current API and
   Web coverage without failing builds for a minimum percentage.
 
