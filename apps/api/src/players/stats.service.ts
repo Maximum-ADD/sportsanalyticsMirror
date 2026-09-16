@@ -472,6 +472,21 @@ export class StatsService {
     };
   }
 
+  // Reconstructs one season line from the games known by the given instant.
+  // The result uses the same aggregation as the live route, so an as-of
+  // response cannot silently drift from the platform's current statistics.
+  async getPlayerSeasonLineAsOf(
+    playerId: string,
+    seasonType: SeasonType,
+    asOf: Date
+  ): Promise<PlayerSeasonLine> {
+    const gameStats = await this.playersService.getPlayerSeasonStatsAsOf(playerId, seasonType, asOf);
+    return {
+      seasonAverages: this.deriveSeasonAverages(gameStats),
+      gameLog: this.deriveGameLog(gameStats),
+    };
+  }
+
   // Season averages + game log for many players in one request — see
   // PlayersService.getPlayerSeasonStatsBatch for why this exists. Every
   // requested id gets an entry (zeroed/empty for a player with no stat

@@ -239,6 +239,7 @@ export class PlayersController {
   @Get("leaders")
   @ApiOperation({ summary: "Season leaders by headline category" })
   @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
+  @ApiQuery({ name: "asOf", required: false, description: "ISO-8601 instant; only games completed by this time contribute to the response" })
   @ApiQuery({ name: "minGames", required: false, type: Number, description: "Participation floor; defaults to 15 in the regular season, 4 in postseason segments" })
   @ApiResponse({ status: 200, description: "Season leaders by category" })
   async getSeasonLeaders(
@@ -381,15 +382,25 @@ export class PlayersController {
   @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
   @ApiResponse({ status: 200, description: "Season averages and game log" })
   @ApiResponse({ status: 404, description: "Player not found" })
-  async getPlayerStats(@Param("id") id: string, @Query("seasonType") rawSeasonType: unknown) {
+  async getPlayerStats(
+    @Param("id") id: string,
+    @Query("seasonType") rawSeasonType: unknown,
+    @Query("asOf") rawAsOf: unknown
+  ) {
     const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    const asOf = typeof rawAsOf === "string" ? new Date(rawAsOf) : undefined;
+    if (asOf && Number.isNaN(asOf.getTime())) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "asOf must be an ISO-8601 timestamp");
+    }
 
     const player = await this.playersService.getPlayerById(id);
     if (!player) {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
     }
 
-    const { seasonAverages, gameLog } = await this.statsService.getPlayerSeasonLine(id, seasonType);
-    return { playerId: id, seasonType, seasonAverages, gameLog };
+    const { seasonAverages, gameLog } = asOf
+      ? await this.statsService.getPlayerSeasonLineAsOf(id, seasonType, asOf)
+      : await this.statsService.getPlayerSeasonLine(id, seasonType);
+    return { playerId: id, seasonType, asOf: asOf?.toISOString(), seasonAverages, gameLog };
   }
 }
