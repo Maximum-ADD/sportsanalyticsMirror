@@ -271,6 +271,39 @@ describe("Players API", () => {
     });
   });
 
+  describe("GET /v1/players/export", () => {
+    it("returns a CSV file with the standard export headers, filtered the same way the list endpoint is", async () => {
+      const lakers = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      await createPlayer({ teamId: lakers.id, firstName: "LeBron", lastName: "James" });
+      await createPlayer({ teamId: celtics.id, firstName: "Jayson", lastName: "Tatum" });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/export?teamId=${lakers.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toContain("text/csv");
+      expect(response.headers["content-disposition"]).toContain('attachment; filename="players.csv"');
+
+      const lines = response.text.trim().split("\r\n");
+      expect(lines[0]).toBe(
+        "id,nbaPlayerId,firstName,lastName,position,jerseyNumber,heightInches,weightLbs,teamAbbreviation,teamCity,teamName"
+      );
+      // Only the Lakers player matches ?teamId=, same filter the paginated
+      // list endpoint applies — the Celtics player must not appear.
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toContain("LeBron,James");
+      expect(lines[1]).toContain("LAL");
+      expect(response.text).not.toContain("Tatum");
+    });
+
+    it("returns just the header line for a filter that matches no one", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/players/export?teamId=does-not-exist");
+
+      expect(response.status).toBe(200);
+      expect(response.text.trim().split("\r\n")).toHaveLength(1);
+    });
+  });
+
   // The leaderboard view: once `sort` appears, the ranking runs league-wide
   // before the page slice, so the first page holds the league's best — not
   // merely that page's best.

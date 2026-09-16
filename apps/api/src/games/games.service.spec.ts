@@ -25,11 +25,16 @@ describe("GamesService", () => {
   let prisma: {
     game: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
     gamePredictionRun: { findMany: ReturnType<typeof vi.fn> };
+    gameEvent: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
   };
   let gamesService: GamesService;
 
   beforeEach(() => {
-    prisma = { game: { findMany: vi.fn(), count: vi.fn() }, gamePredictionRun: { findMany: vi.fn() } };
+    prisma = {
+      game: { findMany: vi.fn(), count: vi.fn() },
+      gamePredictionRun: { findMany: vi.fn() },
+      gameEvent: { findMany: vi.fn(), count: vi.fn() },
+    };
     // A disabled cache, so every call below reaches the mocked Prisma client.
     gamesService = new GamesService(prisma as unknown as PrismaService, new ResponseCacheService({ enabled: false }));
   });
@@ -194,5 +199,30 @@ describe("GamesService", () => {
       where: { gameId: "game-1" },
       orderBy: { createdAt: "asc" },
     });
+  });
+
+  it("getGameEvents orders by sequence, not insertion time", async () => {
+    const events = [{ id: "event-1", gameId: "game-1", sequence: 1 }];
+    prisma.gameEvent.findMany.mockResolvedValue(events);
+    prisma.gameEvent.count.mockResolvedValue(1);
+
+    const result = await gamesService.getGameEvents("game-1", 1, 25);
+
+    expect(result).toEqual({ data: events, page: 1, pageSize: 25, total: 1 });
+    expect(prisma.gameEvent.findMany).toHaveBeenCalledWith({
+      where: { gameId: "game-1" },
+      orderBy: { sequence: "asc" },
+      skip: 0,
+      take: 25,
+    });
+  });
+
+  it("getGameEvents paginates using skip/take derived from page and pageSize", async () => {
+    prisma.gameEvent.findMany.mockResolvedValue([]);
+    prisma.gameEvent.count.mockResolvedValue(0);
+
+    await gamesService.getGameEvents("game-1", 3, 10);
+
+    expect(prisma.gameEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
   });
 });
