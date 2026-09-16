@@ -27,10 +27,10 @@ def test_row_carries_the_current_model_version():
     row = _build_prediction_row(
         "game-1",
         make_elo_state(0.6, 1520.0, 1480.0),
-        home_factors={"effective_fg_pct": 0.55, "turnover_rate": 0.12, "free_throw_rate": 0.2},
-        away_factors={"effective_fg_pct": 0.50, "turnover_rate": 0.14, "free_throw_rate": 0.18},
+        home_factors={"effective_fg_pct": 0.55, "turnover_rate": 0.12, "free_throw_rate": 0.2, "offensive_rebound_pct": 0.25},
+        away_factors={"effective_fg_pct": 0.50, "turnover_rate": 0.14, "free_throw_rate": 0.18, "offensive_rebound_pct": 0.30},
         margin_method="heuristic",
-        margin_weights=np.array([1.0, 1.0, 1.0]),
+        margin_weights=np.array([1.0, 1.0, 1.0, 1.0]),
     )
 
     assert row["model_version"] == MODEL_VERSION

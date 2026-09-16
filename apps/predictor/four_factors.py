@@ -1,17 +1,28 @@
 """Predicts score margin (home minus away, in points) from Dean Oliver's
 Four Factors of basketball success (Basketball on Paper, 2004).
 
-Uses 3 of Oliver's 4 factors, offense-only:
+Uses all 4 of Oliver's factors, offense-only:
   - effective FG% ((FGM + 0.5*3PM) / FGA)
   - turnover rate (TOV / estimated possessions)
   - free throw rate (FTM / FGA)
+  - offensive rebound rate (OREB / (OREB + opponent DREB))
 
-Two factors from the original four are deliberately left out:
-  - Offensive rebound rate needs the opposing team's defensive rebounds
-    (ORB% = OREB / (OREB + opponent DREB)), and this schema's
-    PlayerGameStat only tracks total rebounds, not an offensive/defensive
-    split. Approximating a split with no real data behind it would be
-    fabricating a statistic, not modeling one — left out rather than faked.
+Offensive rebound rate was left out of an earlier version of this module:
+it needs the opposing team's defensive rebounds, and PlayerGameStat only
+tracked total rebounds, not an offensive/defensive split — approximating
+one with no real data behind it would have been fabricating a statistic,
+not modeling one. That blocker is gone now that PlayerGameStat stores
+offensiveRebounds/defensiveRebounds separately (see its schema doc
+comment, which flagged this module by name as the reason for adding
+them), so this module reads the real split instead of estimating it.
+Rows ingested before that split existed still carry a genuine null rather
+than a backfilled guess — see calculate_offensive_rebound_pct and
+compute_running_season_averages below, which degrade to "not enough data
+yet" for those rows instead of silently averaging real and assumed values
+together. Same honest-null philosophy PlayerGameStat already follows for
+plus/minus and usage rate.
+
+One factor from the original four is still deliberately left out:
   - Defensive factors add no information beyond what's already in the
     model: in a two-team game, "team A's defensive eFG% allowed" is by
     definition the same number as "team B's offensive eFG%" — so once both
@@ -48,7 +59,7 @@ import numpy as np
 
 # Below this many completed games leaguewide, a fitted regression is
 # considered too unstable to trust — see module docstring. 30 is a loose
-# rule of thumb (comfortably more observations than the 3 features being
+# rule of thumb (comfortably more observations than the 4 features being
 # fit); a freshly seeded/near-empty database is below it and exercises the
 # heuristic path, but a real season's worth of games (the common case once
 # ingestion has run) clears it and uses the fitted regression instead.
@@ -75,14 +86,16 @@ FREE_THROW_POSSESSION_WEIGHT = 0.44
 # MINIMUM_GAMES_FOR_REGRESSION), applied to each team's offensive Four
 # Factors difference (home minus away) to produce a predicted point margin.
 # Follows Oliver's own published factor-importance ranking (shooting >
-# turnovers > free throws, with turnovers working against the team that
-# commits them) rather than a project-specific fit — with this little data,
-# fitting these weights from scratch isn't possible, so borrowing the
-# literature's relative ordering is the honest move. Not claimed to be
-# precisely calibrated; see module docstring.
+# turnovers > rebounding > free throws, with turnovers working against the
+# team that commits them) rather than a project-specific fit — with this
+# little data, fitting these weights from scratch isn't possible, so
+# borrowing the literature's relative ordering is the honest move. Not
+# claimed to be precisely calibrated; see module docstring. In practice
+# this path is a cold-start fallback only — see MINIMUM_GAMES_FOR_REGRESSION.
 EFG_WEIGHT = 100.0
 TURNOVER_WEIGHT = -80.0
 FREE_THROW_RATE_WEIGHT = 20.0
+OFFENSIVE_REBOUND_WEIGHT = 40.0
 
 MARGIN_DECIMAL_PLACES = 2
 
@@ -109,6 +122,28 @@ def calculate_free_throw_rate(free_throws_made: int, field_goals_attempted: int)
     return free_throws_made / field_goals_attempted
 
 
+def calculate_offensive_rebound_pct(
+    offensive_rebounds: int | None, opponent_defensive_rebounds: int | None
+) -> float | None:
+    """Oliver's ORB% = OREB / (OREB + opponent DREB).
+
+    Returns None (not 0.0) when either side's rebound split is missing —
+    a row ingested before PlayerGameStat tracked offensive/defensive
+    rebounds separately, or one only partially backfilled. That's a
+    genuine "not recorded" distinct from the 0.0 returned when both
+    sides' rebound counts are real but a team simply had no rebound
+    chances in the game (see the other calculate_* functions' 0-attempt
+    convention above) — the same real-zero-vs-missing distinction
+    PlayerGameStat's nullable advanced-stat columns already draw.
+    """
+    if offensive_rebounds is None or opponent_defensive_rebounds is None:
+        return None
+    total_rebound_chances = offensive_rebounds + opponent_defensive_rebounds
+    if total_rebound_chances == 0:
+        return 0.0
+    return offensive_rebounds / total_rebound_chances
+
+
 def fetch_team_game_boxscores(cursor) -> list[dict]:
     """Aggregates PlayerGameStat rows to team-game level, oldest game first.
 
@@ -119,6 +154,19 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
     matchup. Ordering by date is load-bearing here, not cosmetic — every
     chronological computation downstream (running averages, regression
     training rows) depends on processing games oldest-first.
+
+    Also returns oreb (this team's summed offensive rebounds) and
+    opponent_dreb (the other team's summed defensive rebounds, fetched via
+    a LATERAL join keyed off whichever of homeTeamId/awayTeamId isn't this
+    row's own team_id) — together the two halves of Oliver's ORB% for this
+    team-game. Both are guarded with bool_and(... IS NOT NULL) rather than
+    a bare SUM: PlayerGameStat's rebound-split columns are nullable per
+    player-row, and Postgres's SUM silently ignores NULLs, which would
+    turn "half this team's rows are missing the split" into a real-looking
+    (but wrong) total instead of surfacing it as missing. bool_and forces
+    the whole team-game to NULL unless every contributing row actually has
+    the column, matching calculate_offensive_rebound_pct's None handling
+    below.
 
     Joins on PlayerGameStat.teamId (the team a player suited up for IN
     THAT GAME), not Player.teamId (a player's current team) — an earlier
@@ -139,24 +187,6 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
     write-up.
 
     Postseason games are excluded — see REGULAR_SEASON_TYPE.
-
-    Joins on PlayerGameStat.teamId (the team a player suited up for IN
-    THAT GAME), not Player.teamId (a player's current team) — an earlier
-    version of this query joined on Player.teamId, which silently
-    misattributed every traded player's past games to whichever team they
-    play for now. Confirmed live before the fix: ~7.7% of PlayerGameStat
-    rows had a Player.teamId that didn't match either team in that row's
-    own game. See PlayerGameStat.teamId's schema doc comment.
-
-    Backtested impact of this fix on this project's single-season dataset:
-    MAE 12.52 -> 12.51 (walk-forward 12.65 -> 12.62) — a real but small
-    change, since only ~7.7% of rows were affected and correcting them
-    redistributes stats between two teams' season averages rather than
-    adding new signal. This was still worth fixing on correctness grounds
-    alone (a team's Four Factors average should reflect the players who
-    actually played for them), and matters more as more seasons of data
-    with more real trades are added — see docs/reports for the full
-    write-up.
     """
     cursor.execute(
         """
@@ -164,11 +194,21 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
                SUM(pgs."fieldGoalsMade") AS fgm, SUM(pgs."fieldGoalsAttempted") AS fga,
                SUM(pgs."threesMade") AS tpm, SUM(pgs."freeThrowsMade") AS ftm,
                SUM(pgs."freeThrowsAttempted") AS fta, SUM(pgs."turnovers") AS tov,
+               CASE WHEN bool_and(pgs."offensiveRebounds" IS NOT NULL)
+                    THEN SUM(pgs."offensiveRebounds") END AS oreb,
+               MAX(opp.opponent_dreb) AS opponent_dreb,
                CASE WHEN g."homeTeamId" = t."id" THEN g."homeScore" ELSE g."awayScore" END AS team_score,
                CASE WHEN g."homeTeamId" = t."id" THEN g."awayScore" ELSE g."homeScore" END AS opponent_score
         FROM "Game" g
         JOIN "Team" t ON t."id" = g."homeTeamId" OR t."id" = g."awayTeamId"
         JOIN "PlayerGameStat" pgs ON pgs."gameId" = g."id" AND pgs."teamId" = t."id"
+        JOIN LATERAL (
+            SELECT CASE WHEN bool_and(pgs2."defensiveRebounds" IS NOT NULL)
+                        THEN SUM(pgs2."defensiveRebounds") END AS opponent_dreb
+            FROM "PlayerGameStat" pgs2
+            WHERE pgs2."gameId" = g."id"
+              AND pgs2."teamId" = (CASE WHEN g."homeTeamId" = t."id" THEN g."awayTeamId" ELSE g."homeTeamId" END)
+        ) opp ON true
         WHERE g."homeScore" IS NOT NULL AND g."awayScore" IS NOT NULL
           AND g."seasonType" = %(season_type)s
         GROUP BY g."id", g."gameDate", t."id", g."homeTeamId", g."awayTeamId", g."homeScore", g."awayScore"
@@ -180,7 +220,7 @@ def fetch_team_game_boxscores(cursor) -> list[dict]:
 
 
 def compute_team_game_four_factors(boxscore_row: dict) -> dict:
-    """Computes the 3 offensive Four Factors (see module docstring) for one team-game row."""
+    """Computes the 4 offensive Four Factors (see module docstring) for one team-game row."""
     return {
         "game_id": boxscore_row["game_id"],
         "game_date": boxscore_row["game_date"],
@@ -190,8 +230,28 @@ def compute_team_game_four_factors(boxscore_row: dict) -> dict:
         ),
         "turnover_rate": calculate_turnover_rate(boxscore_row["tov"], boxscore_row["fga"], boxscore_row["fta"]),
         "free_throw_rate": calculate_free_throw_rate(boxscore_row["ftm"], boxscore_row["fga"]),
+        "offensive_rebound_pct": calculate_offensive_rebound_pct(
+            boxscore_row["oreb"], boxscore_row["opponent_dreb"]
+        ),
         "margin": boxscore_row["team_score"] - boxscore_row["opponent_score"],
     }
+
+
+def _average_or_none(values: list[float | None]) -> float | None:
+    """Mean of the non-None values, or None if every one of them is None.
+
+    Used for offensive_rebound_pct, which — unlike the other three factors
+    — can be None on a per-game basis (see calculate_offensive_rebound_pct)
+    when that game's rebound split wasn't recorded. Averaging over only the
+    games that do have it means one team-game with a genuine null doesn't
+    poison every later snapshot with a ZeroDivisionError or a fabricated
+    value; a team only loses its ORB% snapshot entirely once none of its
+    games so far have the data.
+    """
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    return sum(present) / len(present)
 
 
 def compute_running_season_averages(team_game_factors: list[dict]) -> dict[str, dict[str, dict]]:
@@ -204,9 +264,11 @@ def compute_running_season_averages(team_game_factors: list[dict]) -> dict[str, 
     ever reflects games 1-41 — never game 42 itself, and never game 43+.
 
     Returns teamId -> gameId -> {effective_fg_pct, turnover_rate,
-    free_throw_rate} (the pre-game running average), plus a special
-    "_final" gameId per team holding the average across all of that team's
-    games, for predicting a team's next (not-yet-played) game.
+    free_throw_rate, offensive_rebound_pct} (the pre-game running average),
+    plus a special "_final" gameId per team holding the average across all
+    of that team's games, for predicting a team's next (not-yet-played)
+    game. offensive_rebound_pct is averaged via _average_or_none rather
+    than a bare mean, since individual games can carry a None for it.
     """
     running_by_team: dict[str, list[dict]] = {}
     snapshots: dict[str, dict[str, dict]] = {}
@@ -222,6 +284,7 @@ def compute_running_season_averages(team_game_factors: list[dict]) -> dict[str, 
                 "effective_fg_pct": sum(r["effective_fg_pct"] for r in history) / game_count,
                 "turnover_rate": sum(r["turnover_rate"] for r in history) / game_count,
                 "free_throw_rate": sum(r["free_throw_rate"] for r in history) / game_count,
+                "offensive_rebound_pct": _average_or_none([r["offensive_rebound_pct"] for r in history]),
             }
         # else: this is the team's first game in the dataset — no prior
         # games to average, so it gets no pre-game snapshot at all (not a
@@ -237,6 +300,7 @@ def compute_running_season_averages(team_game_factors: list[dict]) -> dict[str, 
             "effective_fg_pct": sum(r["effective_fg_pct"] for r in history) / game_count,
             "turnover_rate": sum(r["turnover_rate"] for r in history) / game_count,
             "free_throw_rate": sum(r["free_throw_rate"] for r in history) / game_count,
+            "offensive_rebound_pct": _average_or_none([r["offensive_rebound_pct"] for r in history]),
         }
 
     return snapshots
@@ -251,7 +315,10 @@ def build_regression_training_data(
     the target game. The current game's team rows supply only team identity
     and the realized margin target; their Four Factors must never enter the
     feature matrix. Games where either team has no pre-game history are
-    skipped because they cannot produce a leak-free feature row.
+    skipped because they cannot produce a leak-free feature row — likewise
+    when a team has history but none of it has a usable offensive rebound
+    split yet (offensive_rebound_pct is None), since that would leave a NaN
+    in the feature matrix rather than a real 4th feature.
     """
     games_by_id: dict[str, list[dict]] = {}
     for row in team_game_factors:
@@ -267,11 +334,14 @@ def build_regression_training_data(
         opponent_pre_game = running_averages.get(opponent_row["team_id"], {}).get(opponent_row["game_id"])
         if team_pre_game is None or opponent_pre_game is None:
             continue
+        if team_pre_game["offensive_rebound_pct"] is None or opponent_pre_game["offensive_rebound_pct"] is None:
+            continue
         feature_rows.append(
             [
                 team_pre_game["effective_fg_pct"] - opponent_pre_game["effective_fg_pct"],
                 team_pre_game["turnover_rate"] - opponent_pre_game["turnover_rate"],
                 team_pre_game["free_throw_rate"] - opponent_pre_game["free_throw_rate"],
+                team_pre_game["offensive_rebound_pct"] - opponent_pre_game["offensive_rebound_pct"],
             ]
         )
         margins.append(team_row["margin"])
@@ -279,38 +349,52 @@ def build_regression_training_data(
     return np.array(feature_rows), np.array(margins)
 
 
-def fit_regression_weights(team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]) -> np.ndarray:
+def fit_regression_weights(feature_rows: np.ndarray, margins: np.ndarray) -> np.ndarray:
     """Fits margin from leak-free pre-game feature differences via ordinary least squares."""
-    feature_rows, margins = build_regression_training_data(team_game_factors, running_averages)
-    weights, _residuals, _rank, _singular_values = np.linalg.lstsq(
-        feature_rows, margins, rcond=None
-    )
+    weights, _residuals, _rank, _singular_values = np.linalg.lstsq(feature_rows, margins, rcond=None)
     return weights
 
 
 def fit_or_fallback_margin_model(
     team_game_factors: list[dict], running_averages: dict[str, dict[str, dict]]
 ) -> tuple[str, np.ndarray]:
-    """Picks regression vs. heuristic based on MINIMUM_GAMES_FOR_REGRESSION.
+    """Picks regression vs. heuristic based on how many leak-free training rows are actually usable.
 
-    Returns (method_name, weights) where weights is a 3-element array in
-    (effective_fg_pct, turnover_rate, free_throw_rate) order — either fitted
-    via OLS or the fixed heuristic constants, so predict_margin can apply
-    either the same way regardless of which path produced them.
+    Gated on build_regression_training_data's actual output rather than the
+    raw team_game_factors count: a team-game row without a pre-game
+    snapshot, or (since offensive rebound rate was wired in) one whose
+    pre-game snapshot has no offensive-rebound history yet, produces no
+    trainable row at all. Counting raw rows instead would overstate how
+    much the regression actually has to fit on — e.g. a database with
+    plenty of games but no offensive-rebound backfill would otherwise
+    attempt a 4-feature regression on zero real rows instead of falling
+    back to the heuristic the way a genuinely low-data database does.
+
+    Returns (method_name, weights) where weights is a 4-element array in
+    (effective_fg_pct, turnover_rate, free_throw_rate, offensive_rebound_pct)
+    order — either fitted via OLS or the fixed heuristic constants, so
+    predict_margin can apply either the same way regardless of which path
+    produced them.
     """
-    if len(team_game_factors) >= MINIMUM_GAMES_FOR_REGRESSION:
-        return "regression", fit_regression_weights(team_game_factors, running_averages)
-    return "heuristic", np.array([EFG_WEIGHT, TURNOVER_WEIGHT, FREE_THROW_RATE_WEIGHT])
+    feature_rows, margins = build_regression_training_data(team_game_factors, running_averages)
+    if len(feature_rows) >= MINIMUM_GAMES_FOR_REGRESSION:
+        return "regression", fit_regression_weights(feature_rows, margins)
+    return "heuristic", np.array([EFG_WEIGHT, TURNOVER_WEIGHT, FREE_THROW_RATE_WEIGHT, OFFENSIVE_REBOUND_WEIGHT])
 
 
 def predict_margin(home_factors: dict | None, away_factors: dict | None, weights: np.ndarray) -> float | None:
     """Predicts home-minus-away margin from each team's pre-game Four Factors snapshot.
 
     Returns None if either team has no qualifying history yet (their first
-    game in the dataset has no prior games to average) — matches
-    GamePrediction.predictedMarginHome's nullable field.
+    game in the dataset has no prior games to average), or if either team's
+    history so far has no usable offensive rebound split yet
+    (offensive_rebound_pct is None — see compute_running_season_averages) —
+    matches GamePrediction.predictedMarginHome's nullable field rather than
+    silently dropping the 4th factor for that one prediction only.
     """
     if home_factors is None or away_factors is None:
+        return None
+    if home_factors["offensive_rebound_pct"] is None or away_factors["offensive_rebound_pct"] is None:
         return None
 
     feature_diff = np.array(
@@ -318,6 +402,7 @@ def predict_margin(home_factors: dict | None, away_factors: dict | None, weights
             home_factors["effective_fg_pct"] - away_factors["effective_fg_pct"],
             home_factors["turnover_rate"] - away_factors["turnover_rate"],
             home_factors["free_throw_rate"] - away_factors["free_throw_rate"],
+            home_factors["offensive_rebound_pct"] - away_factors["offensive_rebound_pct"],
         ]
     )
     return round(float(np.dot(weights, feature_diff)), MARGIN_DECIMAL_PLACES)

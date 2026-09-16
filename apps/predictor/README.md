@@ -10,13 +10,15 @@ game outcomes:
    standard logistic Elo formula. Needs only game results and scores — no
    boxscore data.
 2. **`four_factors.py`** — predicts point margin (home minus away) from
-   Dean Oliver's Four Factors methodology (*Basketball on Paper*), using 3
-   of the 4 factors (effective FG%, turnover rate, free throw rate — see
-   the module docstring for why offensive rebound rate and the defensive
-   factors are left out). Fits an OLS regression once there's enough game
-   history (`MINIMUM_GAMES_FOR_REGRESSION`), otherwise falls back to fixed,
-   literature-informed weights rather than presenting an overfit
-   regression as reliable.
+   Dean Oliver's Four Factors methodology (*Basketball on Paper*), using
+   all 4 offensive factors (effective FG%, turnover rate, free throw rate,
+   offensive rebound rate — see the module docstring for why the
+   *defensive* factors are still left out, and for offensive rebound
+   rate's own history: excluded until `PlayerGameStat` gained a real
+   offensive/defensive rebound split). Fits an OLS regression once there's
+   enough leak-free training rows (`MINIMUM_GAMES_FOR_REGRESSION`),
+   otherwise falls back to fixed, literature-informed weights rather than
+   presenting an overfit regression as reliable.
 3. **`predict_games.py`** — the orchestrator. Runs both models and writes
    one `GamePrediction` row per game (both completed and upcoming), into
    the same Postgres database Prisma/NestJS manages. NestJS only ever
@@ -72,7 +74,13 @@ database, not stale copy):
   modest edge (statistically real, permutation-tested), improved slightly
   from the single-season number but not transformed by more data the way
   Elo was. Frontend surfaces label this "low confidence" and visually
-  de-emphasize it relative to win probability.
+  de-emphasize it relative to win probability. **Predates offensive
+  rebound rate being added as a 4th feature** (see above) — re-run
+  `check_accuracy.py` against the live database for a current number
+  rather than trusting this one; a fresh permutation test and, if the
+  edge moves meaningfully, a new `docs/reports` write-up are still owed
+  for the 4-factor model the same way `-v3`/`-v4` covered earlier
+  methodology changes.
 - **Player-point predictors** (`apps/optimizer/predict.py`'s fantasy
   points, `game-detail.service.ts`'s scorer points): recency-weighting's
   edge over a naive running mean roughly *doubled* with more data (fantasy
