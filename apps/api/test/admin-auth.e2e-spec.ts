@@ -58,6 +58,11 @@ describe("Admin endpoints — unauthenticated access", () => {
     expect(response.status).toBe(401);
   });
 
+  it("GET /v1/admin/games/:gameId/anomalies returns 401 without session", async () => {
+    const response = await request(app.getHttpServer()).get("/v1/admin/games/fake-id/anomalies");
+    expect(response.status).toBe(401);
+  });
+
   it("GET /v1/admin/consumers returns 401 without session", async () => {
     const response = await request(app.getHttpServer()).get("/v1/admin/consumers");
     expect(response.status).toBe(401);

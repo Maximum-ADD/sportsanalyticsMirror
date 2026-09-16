@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
+import { AdminAnomaliesController } from "./admin-anomalies.controller.js";
+import { AdminAnomaliesService } from "./admin-anomalies.service.js";
 import { AdminBatchesController } from "./admin-batches.controller.js";
 import { AdminBatchesService } from "./admin-batches.service.js";
 import { AdminConsumersController } from "./admin-consumers.controller.js";
@@ -27,6 +29,7 @@ import { AdminUsersService } from "./admin-users.service.js";
     AdminBatchesController,
     AdminConsumersController,
     AdminIngestionController,
+    AdminAnomaliesController,
   ],
   providers: [
     AdminTeamsService,
@@ -36,6 +39,7 @@ import { AdminUsersService } from "./admin-users.service.js";
     AdminBatchesService,
     AdminConsumersService,
     AdminIngestionService,
+    AdminAnomaliesService,
     SessionAuthGuard,
     RolesGuard,
   ],
