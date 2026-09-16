@@ -117,4 +117,22 @@ export class AdminConsumersController {
     }
     return { revoked: true };
   }
+
+  // DELETE /v1/admin/consumers/:id/keys/:keyId/purge — permanently delete a key.
+  @Delete(":id/keys/:keyId/purge")
+  @ApiOperation({ summary: "Permanently delete an API key (admin only)" })
+  @ApiParam({ name: "id", description: "Consumer UUID" })
+  @ApiParam({ name: "keyId", description: "API key UUID" })
+  @ApiResponse({ status: 200, description: "Key deleted" })
+  @ApiResponse({ status: 404, description: "Consumer or key not found" })
+  async deleteApiKey(
+    @Param("id") consumerId: string,
+    @Param("keyId") keyId: string,
+  ) {
+    const deleted = await this.adminConsumersService.deleteApiKey(consumerId, keyId);
+    if (!deleted) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Consumer or key not found");
+    }
+    return { deleted: true };
+  }
 }

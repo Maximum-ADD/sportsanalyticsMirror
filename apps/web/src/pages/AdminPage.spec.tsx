@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminPage } from "./AdminPage";
@@ -21,6 +21,7 @@ import {
   createAdminApiKey,
   revokeAdminApiKey,
   deleteAdminConsumer,
+  deleteAdminApiKey,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
@@ -51,6 +52,7 @@ vi.mock("@/lib/adminApi", () => ({
   createAdminApiKey: vi.fn(),
   revokeAdminApiKey: vi.fn(),
   deleteAdminConsumer: vi.fn(),
+  deleteAdminApiKey: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -444,6 +446,31 @@ describe("AdminPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Revoke" }));
       await waitFor(() => expect(revokeAdminApiKey).toHaveBeenCalledWith("c1", "k1"));
+    });
+
+    it("deletes a key after confirming", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({
+        data: [{
+          id: "c1", name: "TestApp", contactEmail: null,
+          rateLimit: 60, dailyQuota: 1000, isActive: true,
+          createdAt: "2026-09-01",
+          keys: [{ id: "k1", label: "prod", isActive: true, lastUsedAt: null, createdAt: "2026-09-01" }],
+          _count: { usageLog: 0 },
+        }],
+        page: 1, pageSize: 10, total: 1,
+      });
+      vi.mocked(deleteAdminApiKey).mockResolvedValue({ deleted: true });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+      await screen.findByText("TestApp");
+
+      const keyRow = screen.getByText("prod").closest("div")!;
+      await user.click(within(keyRow).getByRole("button", { name: "Delete" }));
+      await waitFor(() => expect(deleteAdminApiKey).toHaveBeenCalledWith("c1", "k1"));
     });
 
     it("deletes a consumer after confirming", async () => {

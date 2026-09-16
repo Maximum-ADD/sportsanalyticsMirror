@@ -15,6 +15,7 @@ function createMockPrisma() {
       create: vi.fn().mockResolvedValue({ id: "k1", label: null, createdAt: new Date() }),
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue({}),
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
   } as any;
@@ -128,6 +129,22 @@ describe("AdminConsumersService", () => {
           data: { isActive: false },
         })
       );
+    });
+  });
+
+  describe("deleteApiKey", () => {
+    it("returns false when key does not exist", async () => {
+      prisma.apiKey.findFirst.mockResolvedValue(null);
+      const result = await service.deleteApiKey("c1", "nonexistent");
+      expect(result).toBe(false);
+      expect(prisma.apiKey.delete).not.toHaveBeenCalled();
+    });
+
+    it("deletes the key and returns true", async () => {
+      prisma.apiKey.findFirst.mockResolvedValue({ id: "k1" });
+      const result = await service.deleteApiKey("c1", "k1");
+      expect(result).toBe(true);
+      expect(prisma.apiKey.delete).toHaveBeenCalledWith({ where: { id: "k1" } });
     });
   });
 
