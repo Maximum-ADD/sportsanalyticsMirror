@@ -170,6 +170,37 @@ describe("deriveGameEventStats", () => {
     expect(deriveGameEventStats(events, LAST_NAMES).size).toBe(0);
   });
 
+  it("credits no one a steal on a turnover with no steal", () => {
+    const events: DerivableGameEvent[] = [
+      { eventType: "turnover", subType: null, playerId: MORANT, success: null, value: null, description: "Morant Lost Ball Turnover" },
+    ];
+
+    const result = deriveGameEventStats(events, LAST_NAMES);
+
+    expect(result.get(MORANT)?.turnovers).toBe(1);
+    expect(result.get(MORANT)?.steals).toBe(0);
+  });
+
+  it("excludes a team-attributed free throw entirely", () => {
+    const events: DerivableGameEvent[] = [
+      { eventType: "freethrow", subType: null, playerId: null, success: true, value: null, description: "Team Free Throw" },
+    ];
+
+    expect(deriveGameEventStats(events, LAST_NAMES).size).toBe(0);
+  });
+
+  it("leaves a rebound with an unrecognised subType uncounted rather than guessing", () => {
+    const events: DerivableGameEvent[] = [
+      { eventType: "rebound", subType: "team", playerId: CURRY, success: null, value: null, description: "Curry REBOUND" },
+    ];
+
+    const result = deriveGameEventStats(events, LAST_NAMES);
+
+    expect(result.get(CURRY)?.offensiveRebounds).toBe(0);
+    expect(result.get(CURRY)?.defensiveRebounds).toBe(0);
+    expect(result.get(CURRY)?.rebounds).toBe(0);
+  });
+
   it("resolves an ambiguous surname to no one rather than guessing", () => {
     const williamsA = "williams-a";
     const williamsB = "williams-b";
@@ -196,6 +227,36 @@ describe("buildRosterNameIndex", () => {
     ];
 
     expect(buildRosterNameIndex(events, LAST_NAMES)).toEqual(new Map([["Curry", [CURRY]]]));
+  });
+
+  it("excludes a player missing from the lastName lookup", () => {
+    const unknownPlayerId = "unknown-id";
+    const events: DerivableGameEvent[] = [
+      { eventType: "foul", subType: null, playerId: unknownPlayerId, success: null, value: null, description: "" },
+    ];
+
+    expect(buildRosterNameIndex(events, LAST_NAMES).size).toBe(0);
+  });
+});
+
+describe("deriveGameEventStats — team-attributed and default-value branches", () => {
+  it("excludes a team-attributed made shot entirely", () => {
+    const events: DerivableGameEvent[] = [
+      { eventType: "2pt", subType: null, playerId: null, success: true, value: 2, description: "Team Putback" },
+    ];
+
+    expect(deriveGameEventStats(events, LAST_NAMES).size).toBe(0);
+  });
+
+  it("defaults a made shot's point value from its eventType when value is missing", () => {
+    const events: DerivableGameEvent[] = [
+      { eventType: "3pt", subType: null, playerId: CURRY, success: true, value: null, description: "Curry 26' 3PT Jump Shot" },
+      { eventType: "2pt", subType: null, playerId: CURRY, success: true, value: null, description: "Curry 12' Jump Shot" },
+    ];
+
+    const result = deriveGameEventStats(events, LAST_NAMES);
+
+    expect(result.get(CURRY)?.points).toBe(5);
   });
 });
 
