@@ -828,8 +828,11 @@ function AdminBatchesSection() {
             Last run: {new Date(scheduleData.lastRunAt).toLocaleString()}
           </span>
         )}
-        {pullMutation.isSuccess && (
+        {pullMutation.isSuccess && pullMutation.data.started && (
           <span className="text-[11px] text-green-600">{pullMutation.data.message}</span>
+        )}
+        {pullMutation.isSuccess && !pullMutation.data.started && (
+          <span className="text-[11px] text-yellow-600">{pullMutation.data.message}</span>
         )}
         {pullMutation.isError && (
           <span className="text-[11px] text-locker-bad">Failed to trigger pull</span>

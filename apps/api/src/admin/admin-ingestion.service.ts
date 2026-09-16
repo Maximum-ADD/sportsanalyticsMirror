@@ -3,6 +3,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 const execFileAsync = promisify(execFile);
@@ -27,9 +28,19 @@ export class AdminIngestionService {
   private readonly ingestionDir: string;
 
   constructor(private readonly prisma: PrismaService) {
-    // Path to the Python virtual environment
-    this.pythonPath = join(process.cwd(), "..", "ingestion", ".venv", "Scripts", "python.exe");
+    // Resolve the ingestion directory relative to the API working directory.
+    // Works both locally (cwd = apps/api) and on Render (rootDir = apps/api).
     this.ingestionDir = join(process.cwd(), "..", "ingestion");
+
+    // Platform-aware Python path:
+    // Windows: .venv\Scripts\python.exe
+    // Linux/macOS: .venv/bin/python
+    const venvDir = join(this.ingestionDir, ".venv");
+    if (process.platform === "win32") {
+      this.pythonPath = join(venvDir, "Scripts", "python.exe");
+    } else {
+      this.pythonPath = join(venvDir, "bin", "python");
+    }
   }
 
   /**
@@ -90,10 +101,22 @@ export class AdminIngestionService {
    */
   async triggerPull(_userId?: string): Promise<TriggerResult> {
     try {
-      this.logger.log("Triggering manual ingestion pull...");
-
-      // Check if Python script exists
+      // Verify the ingestion environment is available before trying to spawn.
       const scriptPath = join(this.ingestionDir, "ingest.py");
+      if (!existsSync(scriptPath)) {
+        return {
+          started: false,
+          message: "Ingestion scripts not found on this server. Run ingestion from a machine with the Python environment set up.",
+        };
+      }
+      if (!existsSync(this.pythonPath)) {
+        return {
+          started: false,
+          message: "Python virtual environment not found. Run `pip install -r requirements.txt` in apps/ingestion first.",
+        };
+      }
+
+      this.logger.log("Triggering manual ingestion pull...");
 
       const { stdout, stderr } = await execFileAsync(
         this.pythonPath,
