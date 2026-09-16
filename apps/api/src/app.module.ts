@@ -4,6 +4,7 @@ import { DeprecationInterceptor } from "./common/deprecation.interceptor.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
+import { ApiVersionGuard } from "./common/api-version.guard.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
 import { DatasetsModule } from "./datasets/datasets.module.js";
 import { GamesModule } from "./games/games.module.js";
@@ -41,6 +42,7 @@ import { TeamsModule } from "./teams/teams.module.js";
   controllers: [HealthController],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: DeprecationInterceptor },
+    { provide: APP_GUARD, useClass: ApiVersionGuard },
     // Applied to every route in the app rather than per-controller: a CSRF
     // check is only worth anything if it cannot be forgotten on the one new
     // write route someone adds later. It no-ops on GET/HEAD/OPTIONS, so the
