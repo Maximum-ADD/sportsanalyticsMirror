@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { compareDatasetReleases, escapeCsvField } from "./datasets.service.js";
+import { describe, expect, it, vi } from "vitest";
+import { compareDatasetReleases, DatasetReleasesService, escapeCsvField } from "./datasets.service.js";
 
 describe("escapeCsvField", () => {
   it("returns empty string for null", () => {
@@ -35,5 +35,17 @@ describe("compareDatasetReleases", () => {
     const to = { ...from, checksum: "new", gamesCount: 11 } as never;
 
     expect(compareDatasetReleases(from, to).changedFields).toEqual(["checksum", "gamesCount"]);
+  });
+});
+
+describe("DatasetReleasesService.downloadRelease", () => {
+  it("refuses to regenerate a release marked stale by a correction", async () => {
+    const prisma = {
+      datasetRelease: { findUnique: vi.fn().mockResolvedValue({ isStale: true, checksum: "old-checksum" }) },
+    };
+    const service = new DatasetReleasesService(prisma as never);
+
+    await expect(service.downloadRelease("2025-26.1")).resolves.toEqual({ kind: "stale", checksum: "old-checksum" });
+    expect(prisma.datasetRelease.findUnique).toHaveBeenCalledWith({ where: { version: "2025-26.1" } });
   });
 });

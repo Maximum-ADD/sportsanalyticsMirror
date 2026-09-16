@@ -17,6 +17,11 @@ export interface DatasetReleaseDiff {
   changedFields: string[];
 }
 
+export type DownloadReleaseResult =
+  | { kind: "missing" }
+  | { kind: "stale"; checksum: string }
+  | { kind: "ready"; csv: string; checksum: string };
+
 const DIFFABLE_RELEASE_FIELDS: (keyof Pick<DatasetRelease, "checksum" | "season" | "gamesCount" | "playersCount" | "eventsCount" | "fieldSchema">)[] = [
   "checksum", "season", "gamesCount", "playersCount", "eventsCount", "fieldSchema",
 ];
@@ -231,11 +236,12 @@ export class DatasetReleasesService {
   // Generate the CSV for download — re-derives it so the checksum matches
   // the stored release's checksum (assuming no data changes between publish
   // and download).
-  async downloadRelease(version: string): Promise<{ csv: string; checksum: string } | null> {
+  async downloadRelease(version: string): Promise<DownloadReleaseResult> {
     const release = await this.prisma.datasetRelease.findUnique({ where: { version } });
-    if (!release) return null;
+    if (!release) return { kind: "missing" };
+    if (release.isStale) return { kind: "stale", checksum: release.checksum };
 
     const { csv, checksum } = await this.generateSeasonCsv(release.season);
-    return { csv, checksum };
+    return { kind: "ready", csv, checksum };
   }
 }
