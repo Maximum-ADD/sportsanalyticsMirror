@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpStatus, Param, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { Roles } from "../common/roles.decorator.js";
@@ -32,6 +32,7 @@ export class CustomStatisticsController {
     if (typeof playerId !== "string" || !playerId.trim()) {
       throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "playerId is required");
     }
+
     const value = await this.customStatisticsService.calculateDefinition(
       request.user.id,
       definitionId,
@@ -48,6 +49,28 @@ export class CustomStatisticsController {
     if (typeof input.name !== "string" || !input.name.trim() || typeof input.expression !== "string" || !input.expression.trim()) {
       throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "name and expression are required");
     }
-    return this.customStatisticsService.createDefinition(request.user.id, input.name.trim(), input.expression.trim());
+
+    try {
+      return await this.customStatisticsService.createDefinition(request.user.id, input.name.trim(), input.expression.trim());
+    } catch (error) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", (error as Error).message);
+    }
+  }
+
+  @Put(":id")
+  async updateDefinition(
+    @Req() request: { user: { id: string } },
+    @Param("id") definitionId: string,
+    @Body() body: { expression?: unknown }
+  ) {
+    if (typeof body.expression !== "string" || !body.expression.trim()) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "expression is required");
+    }
+
+    try {
+      return await this.customStatisticsService.updateDefinition(request.user.id, definitionId, body.expression.trim());
+    } catch (error) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", (error as Error).message);
+    }
   }
 }
