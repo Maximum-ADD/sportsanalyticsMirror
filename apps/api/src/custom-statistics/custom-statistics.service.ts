@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { SeasonType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { evaluateStatisticExpression } from "./expression-evaluator.js";
+import { validateStatisticExpression } from "./expression-validator.js";
 
 const CALCULABLE_STATISTIC_FIELDS = ["points", "rebounds", "assists", "steals", "blocks", "turnovers", "minutes"] as const;
 type CalculableStatisticField = (typeof CALCULABLE_STATISTIC_FIELDS)[number];
@@ -24,7 +25,16 @@ export class CustomStatisticsService {
   }
 
   createDefinition(authorId: string, name: string, expression: string) {
+    validateStatisticExpression(expression);
     return this.prisma.customStatistic.create({ data: { authorId, name, expression } });
+  }
+
+  updateDefinition(authorId: string, definitionId: string, expression: string) {
+    validateStatisticExpression(expression);
+    return this.prisma.customStatistic.update({
+      where: { id: definitionId, authorId },
+      data: { expression, version: { increment: 1 } },
+    });
   }
 
   async calculateDefinition(authorId: string, definitionId: string, playerId: string, seasonType?: SeasonType) {
