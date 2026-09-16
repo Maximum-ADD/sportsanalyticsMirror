@@ -109,6 +109,27 @@ export class GamesService {
     );
   }
 
+  // A bounded, unpaginated export using the same filters as the games list.
+  // This remains separate from getGames because CSV consumers need one stable
+  // snapshot rather than the list endpoint's mixed-order pagination rules.
+  getGamesForExport(query: Record<string, unknown>, maximumRows: number): Promise<GameWithTeamsAndPrediction[]> {
+    const status = parseStatusFilter(query);
+    const season = parseSeasonFilter(query);
+    const seasonType = parseSeasonType(query.seasonType);
+    const where: Prisma.GameWhereInput = {
+      ...(season ? { season } : {}),
+      ...(seasonType ? { seasonType } : {}),
+      ...(status === "upcoming" ? { homeScore: null } : {}),
+      ...(status === "completed" ? { homeScore: { not: null } } : {}),
+    };
+    return this.prisma.game.findMany({
+      where,
+      include: INCLUDE_TEAMS_PREDICTION_AND_MARKET_ODDS,
+      take: maximumRows,
+      orderBy: [{ gameDate: "desc" }, { id: "asc" }],
+    });
+  }
+
   // The uncached read behind getGames, with its query parameters already parsed.
   private async readGamesPage(
     status: GameStatusFilter,

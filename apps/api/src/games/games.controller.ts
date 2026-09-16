@@ -1,7 +1,9 @@
-import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Param, Query, Res } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { parsePageParams } from "../common/pagination.js";
+import { toCsv, type ColumnSpec } from "../common/csv.js";
+import type { Response } from "express";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
@@ -22,6 +24,27 @@ export class GamesController {
   @ApiResponse({ status: 200, description: "Paginated game list with predictions" })
   listGames(@Query() query: Record<string, unknown>) {
     return this.gamesService.getGames(query);
+  }
+
+  @Get("export")
+  @ApiOperation({ summary: "Export a filtered game slice as CSV" })
+  async exportGames(@Query() query: Record<string, unknown>, @Res() response: Response): Promise<void> {
+    const games = await this.gamesService.getGamesForExport(query, 5_000);
+    const columns: ColumnSpec<(typeof games)[number]>[] = [
+      { header: "id", value: (game) => game.id },
+      { header: "nbaGameId", value: (game) => game.nbaGameId },
+      { header: "gameDate", value: (game) => game.gameDate.toISOString() },
+      { header: "season", value: (game) => game.season },
+      { header: "seasonType", value: (game) => game.seasonType },
+      { header: "homeTeam", value: (game) => game.homeTeam.name },
+      { header: "awayTeam", value: (game) => game.awayTeam.name },
+      { header: "homeScore", value: (game) => game.homeScore },
+      { header: "awayScore", value: (game) => game.awayScore },
+    ];
+    response.status(HttpStatus.OK).set({
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="games.csv"',
+    }).send(toCsv(games, columns));
   }
 
   // GET /v1/games/seasons — every season with at least one ingested game,
