@@ -11,6 +11,21 @@ export interface ReleaseWithPublisher extends DatasetRelease {
   publishedBy: { id: string; name: string } | null;
 }
 
+export interface DatasetReleaseDiff {
+  from: DatasetRelease;
+  to: DatasetRelease;
+  changedFields: string[];
+}
+
+const DIFFABLE_RELEASE_FIELDS: (keyof Pick<DatasetRelease, "checksum" | "season" | "gamesCount" | "playersCount" | "eventsCount" | "fieldSchema">)[] = [
+  "checksum", "season", "gamesCount", "playersCount", "eventsCount", "fieldSchema",
+];
+
+export function compareDatasetReleases(from: DatasetRelease, to: DatasetRelease): DatasetReleaseDiff {
+  const changedFields = DIFFABLE_RELEASE_FIELDS.filter((field) => JSON.stringify(from[field]) !== JSON.stringify(to[field]));
+  return { from, to, changedFields };
+}
+
 // Every field in the CSV export, with its type — the schema description
 // the brief calls "a description of every field".
 interface FieldDescriptor {
@@ -78,6 +93,15 @@ export class DatasetReleasesService {
       where: { version },
       include: { publishedBy: { select: { id: true, name: true } } },
     });
+  }
+
+  async diffReleases(fromVersion: string, toVersion: string): Promise<DatasetReleaseDiff | null> {
+    const [from, to] = await Promise.all([
+      this.prisma.datasetRelease.findUnique({ where: { version: fromVersion } }),
+      this.prisma.datasetRelease.findUnique({ where: { version: toVersion } }),
+    ]);
+    if (!from || !to) return null;
+    return compareDatasetReleases(from, to);
   }
 
   // Generate the CSV content for a given season — one row per player

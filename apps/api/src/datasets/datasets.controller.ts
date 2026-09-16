@@ -57,6 +57,18 @@ export class DatasetReleasesController {
     return this.datasetsService.listReleases(query);
   }
 
+  @Get("diff")
+  @ApiOperation({ summary: "Compare release metadata and schema" })
+  @ApiQuery({ name: "from", required: true, description: "Earlier release version" })
+  @ApiQuery({ name: "to", required: true, description: "Later release version" })
+  @ApiResponse({ status: 200, description: "Release metadata differences" })
+  @ApiResponse({ status: 404, description: "One or both releases not found" })
+  async diffReleases(@Query("from") fromVersion: string, @Query("to") toVersion: string) {
+    const result = await this.datasetsService.diffReleases(fromVersion, toVersion);
+    if (!result) throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "One or both dataset releases were not found");
+    return result;
+  }
+
   // GET /v1/datasets/:version — single release with field schema and checksum.
   @Get(":version")
   @ApiOperation({ summary: "Get a single dataset release by version" })
