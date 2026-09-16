@@ -1,6 +1,12 @@
 import { Module } from "@nestjs/common";
 import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
+import { AdminBatchesController } from "./admin-batches.controller.js";
+import { AdminBatchesService } from "./admin-batches.service.js";
+import { AdminConsumersController } from "./admin-consumers.controller.js";
+import { AdminConsumersService } from "./admin-consumers.service.js";
+import { AdminEventsController } from "./admin-events.controller.js";
+import { AdminEventsService } from "./admin-events.service.js";
 import { AdminPlayersController } from "./admin-players.controller.js";
 import { AdminPlayersService } from "./admin-players.service.js";
 import { AdminTeamsController } from "./admin-teams.controller.js";
@@ -9,7 +15,23 @@ import { AdminUsersController } from "./admin-users.controller.js";
 import { AdminUsersService } from "./admin-users.service.js";
 
 @Module({
-  controllers: [AdminTeamsController, AdminPlayersController, AdminUsersController],
-  providers: [AdminTeamsService, AdminPlayersService, AdminUsersService, SessionAuthGuard, RolesGuard],
+  controllers: [
+    AdminTeamsController,
+    AdminPlayersController,
+    AdminUsersController,
+    AdminEventsController,
+    AdminBatchesController,
+    AdminConsumersController,
+  ],
+  providers: [
+    AdminTeamsService,
+    AdminPlayersService,
+    AdminUsersService,
+    AdminEventsService,
+    AdminBatchesService,
+    AdminConsumersService,
+    SessionAuthGuard,
+    RolesGuard,
+  ],
 })
 export class AdminModule {}

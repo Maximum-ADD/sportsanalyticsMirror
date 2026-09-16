@@ -13,6 +13,7 @@ import { GameDetailPage } from "./pages/GameDetailPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { AdminPage } from "./pages/AdminPage";
+import { DatasetsPage } from "./pages/DatasetsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProfileGate } from "./components/ProfileGate";
 import { AdminGate } from "./components/AdminGate";
@@ -43,6 +44,7 @@ function App() {
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/teams" element={<TeamsListPage />} />
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
+          <Route path="/datasets" element={<DatasetsPage />} />
           <Route
             path="/optimizer"
             element={<ProtectedRoute><ProfileGate><OptimizerPage /></ProfileGate></ProtectedRoute>}

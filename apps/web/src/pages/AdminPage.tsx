@@ -8,6 +8,14 @@ import {
   updateAdminTeam,
   updateAdminUserRole,
   deleteAdminUser,
+  fetchAdminBatches,
+  approveAdminBatch,
+  rejectAdminBatch,
+  fetchAdminCorrections,
+  fetchAdminConsumers,
+  createAdminConsumer,
+  createAdminApiKey,
+  revokeAdminApiKey,
   type UpdatePlayerParams,
   type UpdateTeamParams,
 } from "@/lib/adminApi";
@@ -30,11 +38,14 @@ const BUTTON_CLASS =
 const PANEL_CLASS = "border border-landing-light bg-locker-surface p-4";
 const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
 
-type AdminTab = "teams" | "players" | "users";
+type AdminTab = "teams" | "players" | "users" | "batches" | "corrections" | "consumers";
 const TABS: { value: AdminTab; label: string }[] = [
   { value: "teams", label: "Teams" },
   { value: "players", label: "Players" },
   { value: "users", label: "Users" },
+  { value: "batches", label: "Batches" },
+  { value: "corrections", label: "Corrections" },
+  { value: "consumers", label: "API Keys" },
 ];
 
 export function AdminPage() {
@@ -73,6 +84,9 @@ export function AdminPage() {
         {tab === "teams" && <AdminTeamsSection />}
         {tab === "players" && <AdminPlayersSection />}
         {tab === "users" && <AdminUsersSection />}
+        {tab === "batches" && <AdminBatchesSection />}
+        {tab === "corrections" && <AdminCorrectionsSection />}
+        {tab === "consumers" && <AdminConsumersSection />}
       </div>
     </div>
   );
@@ -711,5 +725,393 @@ function UserRow({
         )}
       </td>
     </tr>
+  );
+}
+
+// ── Batches (Submission Review) ───────────────────────────────────────
+
+function AdminBatchesSection() {
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<string>("PENDING_REVIEW");
+  const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm.trim(), SEARCH_DEBOUNCE_IN_MILLISECONDS);
+
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: ["adminBatches", { page, status: statusFilter, search: debouncedSearchTerm }],
+    queryFn: () =>
+      fetchAdminBatches({
+        page,
+        pageSize: PAGE_SIZE,
+        status: statusFilter || undefined,
+        search: debouncedSearchTerm || undefined,
+      }),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes?: string }) => approveAdminBatch(id, notes),
+    onSuccess: () => refetch(),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes?: string }) => rejectAdminBatch(id, notes),
+    onSuccess: () => refetch(),
+  });
+
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+
+  function changeSearch(value: string) {
+    setSearchTerm(value);
+    setPage(1);
+  }
+
+  if (isError) {
+    return <ErrorState message="Could not load batches." onRetry={() => refetch()} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <input
+          aria-label="Search batches"
+          className={INPUT_CLASS}
+          type="search"
+          placeholder="Search by game ID or team"
+          value={searchTerm}
+          onChange={(event) => changeSearch(event.target.value)}
+        />
+        <select
+          aria-label="Filter by status"
+          className={INPUT_CLASS}
+          value={statusFilter}
+          onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}
+        >
+          <option value="">All statuses</option>
+          <option value="PENDING_REVIEW">Pending Review</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="REJECTED">Rejected</option>
+          <option value="RUNNING">Running</option>
+          <option value="FAILED">Failed</option>
+        </select>
+      </div>
+
+      {isPending ? (
+        <div className="flex min-h-64 items-center justify-center">
+          <BasketballSpinner size="lg" label="Loading batches" />
+        </div>
+      ) : (
+        <div className="overflow-hidden border border-landing-light bg-locker-surface">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-landing-light bg-landing-hero">
+                {["Game", "Date", "Status", "Accepted", "Rejected", "Reviewer", ""].map((header) => (
+                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data?.data.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
+                    No batches found.
+                  </td>
+                </tr>
+              ) : (
+                data?.data.map((batch) => (
+                  <tr key={batch.id} className="border-b border-landing-light last:border-b-0">
+                    <td className="px-3 py-2.5">
+                      <div className="text-[13px] text-landing-ink">
+                        {batch.game.awayTeam.name} @ {batch.game.homeTeam.name}
+                      </div>
+                      <div className="font-mono text-[10px] text-locker-ink-muted">{batch.game.nbaGameId}</div>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
+                      {new Date(batch.game.gameDate).toLocaleDateString()}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-block rounded px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase ${
+                        batch.status === "PENDING_REVIEW" ? "bg-yellow-100 text-yellow-800" :
+                        batch.status === "COMPLETED" ? "bg-green-100 text-green-800" :
+                        batch.status === "REJECTED" ? "bg-red-100 text-red-800" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        {batch.status.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{batch.eventsAccepted}</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{batch.eventsRejected}</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
+                      {batch.reviewedBy?.name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {batch.status === "PENDING_REVIEW" && (
+                        <span className="inline-flex items-center gap-2">
+                          <input
+                            className={`${INPUT_CLASS} w-32`}
+                            placeholder="Notes"
+                            value={reviewNotes[batch.id] ?? ""}
+                            onChange={(e) => setReviewNotes((prev) => ({ ...prev, [batch.id]: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            className={`${BUTTON_CLASS} border-green-300 text-green-700`}
+                            onClick={() => approveMutation.mutate({ id: batch.id, notes: reviewNotes[batch.id] })}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            className={`${BUTTON_CLASS} border-red-300 text-locker-bad`}
+                            onClick={() => rejectMutation.mutate({ id: batch.id, notes: reviewNotes[batch.id] })}
+                          >
+                            Reject
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && <Pagination tone="locker" page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}
+    </div>
+  );
+}
+
+// ── Corrections ──────────────────────────────────────────────────────
+
+function AdminCorrectionsSection() {
+  const [page, setPage] = useState(1);
+
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: ["adminCorrections", { page }],
+    queryFn: () => fetchAdminCorrections({ page, pageSize: PAGE_SIZE }),
+  });
+
+  if (isError) {
+    return <ErrorState message="Could not load corrections." onRetry={() => refetch()} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[12.5px] text-locker-ink-muted">
+        Audit trail of all event corrections. Each row shows what changed, who corrected it, and when.
+      </p>
+
+      {isPending ? (
+        <div className="flex min-h-64 items-center justify-center">
+          <BasketballSpinner size="lg" label="Loading corrections" />
+        </div>
+      ) : (
+        <div className="overflow-hidden border border-landing-light bg-locker-surface">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-landing-light bg-landing-hero">
+                {["Game", "Seq", "Changed Fields", "Reason", "Corrected By", "When"].map((header) => (
+                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data?.data.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
+                    No corrections recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                data?.data.map((correction) => (
+                  <tr key={correction.id} className="border-b border-landing-light last:border-b-0">
+                    <td className="px-3 py-2.5">
+                      <div className="font-mono text-[11px] text-locker-ink-muted">{correction.game.nbaGameId}</div>
+                      <div className="text-[10px] text-locker-ink-muted">{correction.game.season}</div>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{correction.sequence}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="max-w-64 overflow-hidden text-ellipsis text-[11px] text-locker-ink-muted">
+                        {Object.keys(correction.newValues).join(", ")}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-[11px] text-locker-ink-muted">
+                      {correction.reason ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
+                      {correction.correctedBy?.name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
+                      {new Date(correction.correctedAt).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && <Pagination tone="locker" page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}
+    </div>
+  );
+}
+
+// ── API Consumers (API Keys) ──────────────────────────────────────
+
+function AdminConsumersSection() {
+  const [page, setPage] = useState(1);
+  const [newConsumerName, setNewConsumerName] = useState("");
+  const [newConsumerEmail, setNewConsumerEmail] = useState("");
+  const [newKeyConsumerId, setNewKeyConsumerId] = useState<string | null>(null);
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: ["adminConsumers", { page }],
+    queryFn: () => fetchAdminConsumers({ page, pageSize: PAGE_SIZE }),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => createAdminConsumer({ name: newConsumerName, contactEmail: newConsumerEmail || undefined }),
+    onSuccess: () => {
+      refetch();
+      setNewConsumerName("");
+      setNewConsumerEmail("");
+    },
+  });
+
+  const keyMutation = useMutation({
+    mutationFn: (consumerId: string) => createAdminApiKey(consumerId),
+    onSuccess: (result) => {
+      setCreatedKey(result.rawKey);
+      refetch();
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: ({ consumerId, keyId }: { consumerId: string; keyId: string }) =>
+      revokeAdminApiKey(consumerId, keyId),
+    onSuccess: () => refetch(),
+  });
+
+  if (isError) {
+    return <ErrorState message="Could not load API consumers." onRetry={() => refetch()} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Create new consumer */}
+      <div className={PANEL_CLASS}>
+        <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">New Consumer</h2>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <input
+            className={INPUT_CLASS}
+            placeholder="Consumer name"
+            value={newConsumerName}
+            onChange={(e) => setNewConsumerName(e.target.value)}
+          />
+          <input
+            className={INPUT_CLASS}
+            placeholder="Contact email (optional)"
+            value={newConsumerEmail}
+            onChange={(e) => setNewConsumerEmail(e.target.value)}
+          />
+          <button
+            type="button"
+            className={BUTTON_CLASS}
+            disabled={!newConsumerName.trim() || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            {createMutation.isPending ? "Creating…" : "Create"}
+          </button>
+        </div>
+      </div>
+
+      {/* One-time key display */}
+      {createdKey && (
+        <div className="border border-yellow-300 bg-yellow-50 p-4">
+          <p className="font-mono text-[11px] text-yellow-800 uppercase tracking-[0.1em]">New API Key (copy now — shown only once)</p>
+          <code className="mt-2 block break-all font-mono text-[13px] text-yellow-900">{createdKey}</code>
+          <button type="button" className={`${BUTTON_CLASS} mt-2`} onClick={() => setCreatedKey(null)}>Dismiss</button>
+        </div>
+      )}
+
+      {isPending ? (
+        <div className="flex min-h-64 items-center justify-center">
+          <BasketballSpinner size="lg" label="Loading consumers" />
+        </div>
+      ) : (
+        <div className="overflow-hidden border border-landing-light bg-locker-surface">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-landing-light bg-landing-hero">
+                {["Consumer", "Rate Limit", "Daily Quota", "Usage", "Keys", ""].map((header) => (
+                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data?.data.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
+                    No consumers yet.
+                  </td>
+                </tr>
+              ) : (
+                data?.data.map((consumer) => (
+                  <tr key={consumer.id} className="border-b border-landing-light last:border-b-0">
+                    <td className="px-3 py-2.5">
+                      <div className="text-[13px] text-landing-ink">{consumer.name}</div>
+                      <div className="text-[10px] text-locker-ink-muted">{consumer.contactEmail ?? "—"}</div>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{consumer.rateLimit}/min</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{consumer.dailyQuota}/day</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{consumer._count.usageLog}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="space-y-1">
+                        {consumer.keys.map((key) => (
+                          <div key={key.id} className="flex items-center gap-2 font-mono text-[10px] text-locker-ink-muted">
+                            <span className={key.isActive ? "text-green-600" : "text-locker-bad"}>
+                              {key.isActive ? "●" : "○"}
+                            </span>
+                            <span>{key.label ?? key.id.slice(0, 8)}</span>
+                            {key.isActive && (
+                              <button
+                                type="button"
+                                className={`${BUTTON_CLASS} px-1.5 py-0.5 text-[8px]`}
+                                onClick={() => revokeMutation.mutate({ consumerId: consumer.id, keyId: key.id })}
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        className={BUTTON_CLASS}
+                        onClick={() => keyMutation.mutate(consumer.id)}
+                      >
+                        Generate Key
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && <Pagination tone="locker" page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}
+    </div>
   );
 }

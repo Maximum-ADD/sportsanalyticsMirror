@@ -92,7 +92,7 @@ def collect_season_game_dates(season: str, team_id_by_nba_id: dict[int, str]) ->
     return game_date_by_nba_game_id
 
 
-def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id):
+def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id, final_status="COMPLETED"):
     """One game's worth of writes (Game + real play-by-play + every
     PlayerGameStat row, event-derived exactly like ingest.py's current-
     season path — see its module docstring for the merge/fallback rules)
@@ -103,7 +103,7 @@ def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_
     game_internal_id = upsert_game(
         cursor, nba_game_id, game_date, season, home_team_id, away_team_id, boxscore["home_score"], boxscore["away_score"]
     )
-    batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+    batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status)
     derived_stats_by_nba_player_id = aggregate_player_game_stats(batch_summary["accepted_events"])
 
     skipped_unknown_players = 0
@@ -125,7 +125,7 @@ def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_
     return skipped_unknown_players, skipped_unknown_teams
 
 
-def _write_one_game_with_fresh_connection(season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id):
+def _write_one_game_with_fresh_connection(season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id, final_status="COMPLETED"):
     """Opens a connection, writes+commits this one game, closes it —
     called fresh for every game rather than reusing one connection across
     the whole loop. Confirmed live (not assumed): this project's Supabase
@@ -146,7 +146,7 @@ def _write_one_game_with_fresh_connection(season, nba_game_id, game_date, boxsco
             try:
                 with connection.cursor() as cursor:
                     result = _write_one_game(
-                        cursor, season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id
+                        cursor, season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status
                     )
                 connection.commit()
                 return result
@@ -163,6 +163,7 @@ def ingest_season_games_and_stats(
     game_date_by_nba_game_id: dict[str, str],
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
+    final_status: str = "COMPLETED",
 ) -> None:
     """One fresh connection per game, committed immediately — see
     _write_one_game_with_fresh_connection's docstring for why a single
@@ -193,7 +194,7 @@ def ingest_season_games_and_stats(
 
         try:
             game_skipped_players, game_skipped_teams = _write_one_game_with_fresh_connection(
-                season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id
+                season, nba_game_id, game_date, boxscore, home_team_id, away_team_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status
             )
             skipped_unknown_players += game_skipped_players
             skipped_unknown_teams += game_skipped_teams
@@ -214,10 +215,21 @@ def ingest_season_games_and_stats(
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("Usage: python ingest_historical_season.py <season, e.g. 2024-25>")
+    # --review: sets the ingestion batch status to PENDING_REVIEW instead
+    # of COMPLETED, so the admin must approve the events in the review
+    # workflow before they count as published.
+    needs_review = "--review" in sys.argv
+    batch_status = "PENDING_REVIEW" if needs_review else "COMPLETED"
+
+    # Filter out --review from positional args before checking the season.
+    positional_args = [arg for arg in sys.argv[1:] if arg != "--review"]
+    if len(positional_args) != 1:
+        print("Usage: python ingest_historical_season.py <season, e.g. 2024-25> [--review]")
         sys.exit(1)
-    season = sys.argv[1]
+    season = positional_args[0]
+
+    if needs_review:
+        print("Running with --review: batches will be set to PENDING_REVIEW for admin approval.")
 
     # A fresh connection for this lookup, closed immediately rather than
     # held open through collect_season_game_dates below — that phase makes
@@ -240,7 +252,7 @@ def main() -> None:
 
     # No connection opened here — ingest_season_games_and_stats opens (and
     # closes) a fresh one per game itself. See its docstring for why.
-    ingest_season_games_and_stats(season, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id)
+    ingest_season_games_and_stats(season, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, final_status=batch_status)
     print(f"Ingestion of {season} complete.")
 
 

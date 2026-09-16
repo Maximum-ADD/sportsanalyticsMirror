@@ -13,6 +13,8 @@ import {
   parsePlayerStatSort,
   parseSortOrder,
   StatsService,
+  type CareerStats,
+  type LeagueAverages,
   type PlayerComparisonEntry,
   type PlayerMatchupProjection,
   type PlayerSeasonSplits,
@@ -265,6 +267,36 @@ export class PlayersController {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
     }
     return projection;
+  }
+
+  // GET /v1/players/league-averages?seasonType=REGULAR — competition-wide
+  // averages across every player in one segment, the benchmark line a
+  // career tab or leaders page can show "league average" against.
+  // Declared before ":id" so "league-averages" is never swallowed as a
+  // player id.
+  @Get("league-averages")
+  @ApiOperation({ summary: "Competition-wide averages for one season segment" })
+  @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
+  @ApiResponse({ status: 200, description: "League-wide averages" })
+  async getLeagueAverages(@Query("seasonType") rawSeasonType: unknown): Promise<LeagueAverages> {
+    const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    return this.statsService.getLeagueAverages(seasonType);
+  }
+
+  // GET /v1/players/:id/stats/career — career totals + averages + per-season
+  // breakdown, the numbers behind a "Career" tab on the player profile.
+  // Declared before ":id/stats" so "career" is never read as part of that route.
+  @Get(":id/stats/career")
+  @ApiOperation({ summary: "Career totals, averages, and per-season breakdown" })
+  @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiResponse({ status: 200, description: "Career stats" })
+  @ApiResponse({ status: 404, description: "Player not found" })
+  async getCareerStats(@Param("id") id: string): Promise<{ playerId: string; career: CareerStats }> {
+    const career = await this.statsService.getCareerStats(id);
+    if (!career) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
+    }
+    return { playerId: id, career };
   }
 
   @Get(":id")
