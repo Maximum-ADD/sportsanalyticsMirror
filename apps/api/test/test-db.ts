@@ -23,6 +23,15 @@ export async function resetDatabase() {
   await testPrisma.playerPrediction.deleteMany();
   await testPrisma.gamePrediction.deleteMany();
   await testPrisma.gamePredictionRun.deleteMany();
+
+  // Brief-feature tables — must go before Game/User because of FK refs.
+  await testPrisma.eventCorrection.deleteMany();
+  await testPrisma.apiUsageLog.deleteMany();
+  await testPrisma.apiKey.deleteMany();
+  await testPrisma.apiConsumer.deleteMany();
+  await testPrisma.datasetRelease.deleteMany();
+  await testPrisma.ingestionBatch.deleteMany();
+
   await testPrisma.playerGameStat.deleteMany();
   await testPrisma.gameEvent.deleteMany();
   await testPrisma.game.deleteMany();

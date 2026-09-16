@@ -967,7 +967,6 @@ function AdminConsumersSection() {
   const [page, setPage] = useState(1);
   const [newConsumerName, setNewConsumerName] = useState("");
   const [newConsumerEmail, setNewConsumerEmail] = useState("");
-  const [newKeyConsumerId, setNewKeyConsumerId] = useState<string | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const { data, isPending, isError, refetch } = useQuery({

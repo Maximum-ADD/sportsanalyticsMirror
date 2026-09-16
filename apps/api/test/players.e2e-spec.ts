@@ -902,4 +902,97 @@ describe("Players API", () => {
       expect(response.body.error.code).toBe("BAD_REQUEST");
     });
   });
+
+  describe("GET /v1/players/:id/stats/career", () => {
+    it("derives career totals and per-season breakdown across multiple seasons", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const player = await createPlayer({ teamId: home.id, lastName: "James" });
+
+      // Season 1: 2 games, 20 PPG each.
+      for (let i = 0; i < 2; i++) {
+        const game = await testPrisma.game.create({
+          data: {
+            nbaGameId: `CAREER-S1-${uniqueId()}`,
+            gameDate: new Date(Date.UTC(2024, 9, 15 + i)),
+            season: "2024-25",
+            seasonType: "REGULAR",
+            homeTeamId: home.id,
+            awayTeamId: away.id,
+          },
+        });
+        await createGameStat(player.id, game.id, { points: 20 });
+      }
+
+      // Season 2: 3 games, 30 PPG each.
+      for (let i = 0; i < 3; i++) {
+        const game = await testPrisma.game.create({
+          data: {
+            nbaGameId: `CAREER-S2-${uniqueId()}`,
+            gameDate: new Date(Date.UTC(2025, 9, 15 + i)),
+            season: "2025-26",
+            seasonType: "REGULAR",
+            homeTeamId: home.id,
+            awayTeamId: away.id,
+          },
+        });
+        await createGameStat(player.id, game.id, { points: 30 });
+      }
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats/career`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.playerId).toBe(player.id);
+      expect(response.body.career.careerTotals.gamesPlayed).toBe(5);
+      // 2*20 + 3*30 = 130 total points / 5 games = 26 PPG.
+      expect(response.body.career.careerAverages.pointsPerGame).toBe(26);
+      expect(response.body.career.seasonBreakdown).toHaveLength(2);
+    });
+
+    it("returns zeroed career for a player with no games", async () => {
+      const player = await createPlayer({ lastName: "Rookie" });
+
+      const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats/career`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.career.careerTotals.gamesPlayed).toBe(0);
+      expect(response.body.career.seasonBreakdown).toEqual([]);
+    });
+
+    it("returns a 404 when the player doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/players/does-not-exist/stats/career");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+    });
+  });
+
+  describe("GET /v1/players/league-averages", () => {
+    it("returns league-wide averages across all players in the regular season", async () => {
+      const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+      const playerA = await createPlayer({ teamId: home.id, lastName: "Alpha" });
+      const playerB = await createPlayer({ teamId: away.id, lastName: "Bravo" });
+
+      const game = await createGame(home.id, away.id, new Date("2025-10-15"));
+      await createGameStat(playerA.id, game.id, { points: 20 });
+      await createGameStat(playerB.id, game.id, { points: 30 });
+
+      const response = await request(app.getHttpServer()).get("/v1/players/league-averages");
+
+      expect(response.status).toBe(200);
+      expect(response.body.seasonType).toBe("REGULAR");
+      expect(response.body.playerCount).toBe(2);
+      // (20 + 30) / 2 = 25 PPG.
+      expect(response.body.averages.pointsPerGame).toBe(25);
+    });
+
+    it("returns zeroed averages for a segment with no games", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/players/league-averages?seasonType=FINALS");
+
+      expect(response.status).toBe(200);
+      expect(response.body.playerCount).toBe(0);
+      expect(response.body.averages.pointsPerGame).toBe(0);
+    });
+  });
 });
