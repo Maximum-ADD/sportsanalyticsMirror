@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { DeprecationInterceptor } from "./common/deprecation.interceptor.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
@@ -39,6 +40,7 @@ import { TeamsModule } from "./teams/teams.module.js";
   ],
   controllers: [HealthController],
   providers: [
+    { provide: APP_INTERCEPTOR, useClass: DeprecationInterceptor },
     // Applied to every route in the app rather than per-controller: a CSRF
     // check is only worth anything if it cannot be forgotten on the one new
     // write route someone adds later. It no-ops on GET/HEAD/OPTIONS, so the
