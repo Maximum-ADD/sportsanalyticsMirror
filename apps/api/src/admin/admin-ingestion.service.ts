@@ -1,12 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { PrismaService } from "../prisma/prisma.service.js";
-
-const execFileAsync = promisify(execFile);
 
 export type IngestionFrequency = "NEVER" | "HOURLY" | "DAILY" | "WEEKLY";
 
@@ -118,31 +115,24 @@ export class AdminIngestionService {
 
       this.logger.log("Triggering manual ingestion pull...");
 
-      const { stdout, stderr } = await execFileAsync(
-        this.pythonPath,
-        [scriptPath, "--review"],
-        {
-          cwd: this.ingestionDir,
-          timeout: 300_000, // 5 minute timeout
-        },
-      );
-
-      this.logger.log(`Ingestion stdout: ${stdout}`);
-      if (stderr) {
-        this.logger.warn(`Ingestion stderr: ${stderr}`);
-      }
-
-      // Update lastRunAt
-      await this.prisma.ingestionSchedule.update({
-        where: { id: "singleton" },
-        data: { lastRunAt: new Date() },
-      }).catch(() => {
-        // Schedule might not exist yet, that's fine
+      const ingestionProcess = spawn(this.pythonPath, [scriptPath, "--review"], {
+        cwd: this.ingestionDir,
+        detached: true,
+        stdio: "ignore",
+      });
+      ingestionProcess.unref();
+      ingestionProcess.once("error", (error) => this.logger.error(`Ingestion process failed to start: ${error.message}`));
+      ingestionProcess.once("exit", (exitCode) => {
+        if (exitCode === 0) {
+          void this.recordCompletedRun();
+        } else {
+          this.logger.error(`Ingestion process exited with code ${exitCode ?? "unknown"}`);
+        }
       });
 
       return {
         started: true,
-        message: "Ingestion triggered successfully. Check the Batches tab for new data.",
+        message: "Ingestion queued. Check the Batches tab for progress and review.",
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -153,6 +143,13 @@ export class AdminIngestionService {
         message: `Ingestion failed: ${message}`,
       };
     }
+  }
+
+  private async recordCompletedRun(): Promise<void> {
+    await this.prisma.ingestionSchedule.update({
+      where: { id: "singleton" },
+      data: { lastRunAt: new Date() },
+    }).catch(() => undefined);
   }
 
   /**
