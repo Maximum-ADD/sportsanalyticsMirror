@@ -192,3 +192,34 @@ export function createAdminApiKey(consumerId: string, label?: string): Promise<C
 export function revokeAdminApiKey(consumerId: string, keyId: string): Promise<{ revoked: true }> {
   return sendJson<{ revoked: true }>(`/v1/admin/consumers/${consumerId}/keys/${keyId}`, "DELETE");
 }
+
+// --- Ingestion Schedule & Manual Pull ---
+
+export type IngestionFrequency = "NEVER" | "HOURLY" | "DAILY" | "WEEKLY";
+
+export interface IngestionScheduleConfig {
+  frequency: IngestionFrequency;
+  lastRunAt: string | null;
+  updatedAt: string;
+}
+
+export interface TriggerResult {
+  started: boolean;
+  message: string;
+}
+
+export function fetchIngestionSchedule(): Promise<IngestionScheduleConfig> {
+  return fetchJson<IngestionScheduleConfig>("/v1/admin/ingestion/schedule");
+}
+
+export function updateIngestionSchedule(frequency: IngestionFrequency): Promise<IngestionScheduleConfig> {
+  return sendJson<IngestionScheduleConfig>("/v1/admin/ingestion/schedule", "PUT", { frequency });
+}
+
+export function triggerIngestionPull(): Promise<TriggerResult> {
+  return sendJson<TriggerResult>("/v1/admin/ingestion/pull", "POST", {});
+}
+
+export function deleteIngestionBatch(batchId: string): Promise<{ success: boolean }> {
+  return sendJson<{ success: boolean }>(`/v1/admin/ingestion/batches/${batchId}`, "DELETE");
+}

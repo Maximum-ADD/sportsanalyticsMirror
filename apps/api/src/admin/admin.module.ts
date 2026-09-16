@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { AdminBatchesController } from "./admin-batches.controller.js";
@@ -7,6 +8,8 @@ import { AdminConsumersController } from "./admin-consumers.controller.js";
 import { AdminConsumersService } from "./admin-consumers.service.js";
 import { AdminEventsController } from "./admin-events.controller.js";
 import { AdminEventsService } from "./admin-events.service.js";
+import { AdminIngestionController } from "./admin-ingestion.controller.js";
+import { AdminIngestionService } from "./admin-ingestion.service.js";
 import { AdminPlayersController } from "./admin-players.controller.js";
 import { AdminPlayersService } from "./admin-players.service.js";
 import { AdminTeamsController } from "./admin-teams.controller.js";
@@ -15,6 +18,7 @@ import { AdminUsersController } from "./admin-users.controller.js";
 import { AdminUsersService } from "./admin-users.service.js";
 
 @Module({
+  imports: [ScheduleModule.forRoot()],
   controllers: [
     AdminTeamsController,
     AdminPlayersController,
@@ -22,6 +26,7 @@ import { AdminUsersService } from "./admin-users.service.js";
     AdminEventsController,
     AdminBatchesController,
     AdminConsumersController,
+    AdminIngestionController,
   ],
   providers: [
     AdminTeamsService,
@@ -30,6 +35,7 @@ import { AdminUsersService } from "./admin-users.service.js";
     AdminEventsService,
     AdminBatchesService,
     AdminConsumersService,
+    AdminIngestionService,
     SessionAuthGuard,
     RolesGuard,
   ],

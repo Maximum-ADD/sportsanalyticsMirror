@@ -34,7 +34,7 @@ describe("AdminBatchesService", () => {
     it("passes no filters when query is empty", async () => {
       await service.listBatches({});
       const where = prisma.ingestionBatch.findMany.mock.calls[0][0].where;
-      expect(where).toEqual({});
+      expect(where).toEqual({ deletedAt: null });
     });
 
     it("applies a valid status filter", async () => {
@@ -79,10 +79,17 @@ describe("AdminBatchesService", () => {
     });
 
     it("returns the batch when it exists", async () => {
-      const batch = { id: "b1", gameId: "g1" };
+      const batch = { id: "b1", gameId: "g1", deletedAt: null };
       prisma.ingestionBatch.findUnique.mockResolvedValue(batch);
       const result = await service.getBatchById("b1");
       expect(result).toEqual(batch);
+    });
+
+    it("returns null when batch is soft-deleted", async () => {
+      const batch = { id: "b1", gameId: "g1", deletedAt: new Date() };
+      prisma.ingestionBatch.findUnique.mockResolvedValue(batch);
+      const result = await service.getBatchById("b1");
+      expect(result).toBeNull();
     });
   });
 
@@ -93,7 +100,7 @@ describe("AdminBatchesService", () => {
 
       expect(prisma.ingestionBatch.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "b1" },
+          where: { id: "b1", deletedAt: null },
           data: expect.objectContaining({
             status: "COMPLETED",
             reviewedById: userId,
@@ -117,7 +124,7 @@ describe("AdminBatchesService", () => {
       await service.rejectBatch("b1", "u1", "bad data");
       expect(prisma.ingestionBatch.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "b1" },
+          where: { id: "b1", deletedAt: null },
           data: expect.objectContaining({
             status: "REJECTED",
             reviewedById: "u1",

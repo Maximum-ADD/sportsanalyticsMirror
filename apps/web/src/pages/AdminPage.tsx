@@ -16,8 +16,13 @@ import {
   createAdminConsumer,
   createAdminApiKey,
   revokeAdminApiKey,
+  fetchIngestionSchedule,
+  updateIngestionSchedule,
+  triggerIngestionPull,
+  deleteIngestionBatch,
   type UpdatePlayerParams,
   type UpdateTeamParams,
+  type IngestionFrequency,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
@@ -747,6 +752,11 @@ function AdminBatchesSection() {
       }),
   });
 
+  const { data: scheduleData, refetch: refetchSchedule } = useQuery({
+    queryKey: ["ingestionSchedule"],
+    queryFn: () => fetchIngestionSchedule(),
+  });
+
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) => approveAdminBatch(id, notes),
     onSuccess: () => refetch(),
@@ -754,6 +764,24 @@ function AdminBatchesSection() {
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) => rejectAdminBatch(id, notes),
+    onSuccess: () => refetch(),
+  });
+
+  const pullMutation = useMutation({
+    mutationFn: () => triggerIngestionPull(),
+    onSuccess: () => {
+      refetch();
+      refetchSchedule();
+    },
+  });
+
+  const scheduleMutation = useMutation({
+    mutationFn: (frequency: IngestionFrequency) => updateIngestionSchedule(frequency),
+    onSuccess: () => refetchSchedule(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteIngestionBatch(id),
     onSuccess: () => refetch(),
   });
 
@@ -770,6 +798,44 @@ function AdminBatchesSection() {
 
   return (
     <div className="space-y-4">
+      {/* Pull Data & Schedule Controls */}
+      <div className="flex flex-wrap items-center gap-3 rounded border border-landing-light bg-landing-hero px-3 py-2.5">
+        <button
+          type="button"
+          className={`${BUTTON_CLASS} border-orange-400 text-orange-700`}
+          disabled={pullMutation.isPending}
+          onClick={() => pullMutation.mutate()}
+        >
+          {pullMutation.isPending ? "Pulling..." : "Pull Data"}
+        </button>
+        <div className="flex items-center gap-2">
+          <label className="font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase">
+            Schedule:
+          </label>
+          <select
+            className={INPUT_CLASS}
+            value={scheduleData?.frequency ?? "NEVER"}
+            onChange={(e) => scheduleMutation.mutate(e.target.value as IngestionFrequency)}
+          >
+            <option value="NEVER">Never (manual only)</option>
+            <option value="HOURLY">Hourly</option>
+            <option value="DAILY">Daily</option>
+            <option value="WEEKLY">Weekly</option>
+          </select>
+        </div>
+        {scheduleData?.lastRunAt && (
+          <span className="font-mono text-[10px] text-locker-ink-muted">
+            Last run: {new Date(scheduleData.lastRunAt).toLocaleString()}
+          </span>
+        )}
+        {pullMutation.isSuccess && (
+          <span className="text-[11px] text-green-600">{pullMutation.data.message}</span>
+        )}
+        {pullMutation.isError && (
+          <span className="text-[11px] text-locker-bad">Failed to trigger pull</span>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-3">
         <input
           aria-label="Search batches"
@@ -845,30 +911,43 @@ function AdminBatchesSection() {
                       {batch.reviewedBy?.name ?? "—"}
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      {batch.status === "PENDING_REVIEW" && (
-                        <span className="inline-flex items-center gap-2">
-                          <input
-                            className={`${INPUT_CLASS} w-32`}
-                            placeholder="Notes"
-                            value={reviewNotes[batch.id] ?? ""}
-                            onChange={(e) => setReviewNotes((prev) => ({ ...prev, [batch.id]: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className={`${BUTTON_CLASS} border-green-300 text-green-700`}
-                            onClick={() => approveMutation.mutate({ id: batch.id, notes: reviewNotes[batch.id] })}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            className={`${BUTTON_CLASS} border-red-300 text-locker-bad`}
-                            onClick={() => rejectMutation.mutate({ id: batch.id, notes: reviewNotes[batch.id] })}
-                          >
-                            Reject
-                          </button>
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-2">
+                        {batch.status === "PENDING_REVIEW" && (
+                          <>
+                            <input
+                              className={`${INPUT_CLASS} w-32`}
+                              placeholder="Notes"
+                              value={reviewNotes[batch.id] ?? ""}
+                              onChange={(e) => setReviewNotes((prev) => ({ ...prev, [batch.id]: e.target.value }))}
+                            />
+                            <button
+                              type="button"
+                              className={`${BUTTON_CLASS} border-green-300 text-green-700`}
+                              onClick={() => approveMutation.mutate({ id: batch.id, notes: reviewNotes[batch.id] })}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className={`${BUTTON_CLASS} border-red-300 text-locker-bad`}
+                              onClick={() => rejectMutation.mutate({ id: batch.id, notes: reviewNotes[batch.id] })}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          className={`${BUTTON_CLASS} border-gray-300 text-gray-600`}
+                          onClick={() => {
+                            if (confirm("Delete this batch? The game data will be removed from the system.")) {
+                              deleteMutation.mutate(batch.id);
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </span>
                     </td>
                   </tr>
                 ))

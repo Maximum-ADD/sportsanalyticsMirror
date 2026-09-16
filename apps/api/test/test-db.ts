@@ -30,6 +30,7 @@ export async function resetDatabase() {
   await testPrisma.apiKey.deleteMany();
   await testPrisma.apiConsumer.deleteMany();
   await testPrisma.datasetRelease.deleteMany();
+  await testPrisma.ingestionSchedule.deleteMany();
   await testPrisma.ingestionBatch.deleteMany();
 
   await testPrisma.playerGameStat.deleteMany();
