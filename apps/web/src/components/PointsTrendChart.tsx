@@ -62,30 +62,43 @@ function GamePointsTooltip({ active, payload, projected }: GamePointsTooltipProp
 // this chart only renders on the player profile, which lives on the
 // locker ground.
 export function PointsTrendChart({ data, projected = false }: PointsTrendChartProps) {
+  // The line is SVG — invisible to screen readers. The wrapper speaks a
+  // compact summary (span, average, extremes) instead of narrating every
+  // point, which is what the interactive tooltip is for.
+  const values = data.map((datum) => datum.points);
+  const label = projected ? "Projected points" : "Points";
+  const gamesLabel = `${values.length} game${values.length === 1 ? "" : "s"}`;
+  const summary =
+    values.length === 0
+      ? `${label} trend: no game data yet`
+      : `${label} trend across ${gamesLabel}, average ${(values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)}, ` +
+        `high ${Math.max(...values).toFixed(1)}, low ${Math.min(...values).toFixed(1)}`;
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-        <XAxis
-          dataKey="gameLabel"
-          stroke="var(--color-landing-light)"
-          tick={{ fill: "var(--color-locker-ink-muted)", fontSize: 11 }}
-        />
-        <YAxis
-          stroke="var(--color-landing-light)"
-          tick={{ fill: "var(--color-locker-ink-muted)", fontSize: 11 }}
-        />
-        <Tooltip content={<GamePointsTooltip projected={projected} />} />
-        <Line
-          type="monotone"
-          dataKey="points"
-          name={projected ? "Projected points" : "Points"}
-          stroke="var(--color-locker-leather)"
-          strokeWidth={2}
-          strokeOpacity={projected ? 0.75 : 1}
-          strokeDasharray={projected ? "6 4" : undefined}
-          dot={projected ? false : { r: 3 }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <div role="img" aria-label={summary}>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+          <XAxis
+            dataKey="gameLabel"
+            stroke="var(--color-landing-light)"
+            tick={{ fill: "var(--color-locker-ink-muted)", fontSize: 11 }}
+          />
+          <YAxis
+            stroke="var(--color-landing-light)"
+            tick={{ fill: "var(--color-locker-ink-muted)", fontSize: 11 }}
+          />
+          <Tooltip content={<GamePointsTooltip projected={projected} />} />
+          <Line
+            type="monotone"
+            dataKey="points"
+            name={projected ? "Projected points" : "Points"}
+            stroke="var(--color-locker-leather)"
+            strokeWidth={2}
+            strokeOpacity={projected ? 0.75 : 1}
+            strokeDasharray={projected ? "6 4" : undefined}
+            dot={projected ? false : { r: 3 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

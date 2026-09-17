@@ -601,30 +601,40 @@ export function ComparePage() {
                     {STAT_GROUPS.map((group) => (
                       <section
                         key={group.title}
+                        // The grid layout stays purely visual: table roles
+                        // give screen readers real row/column structure
+                        // (header cells announce row name + column player),
+                        // and the display:contents row wrappers generate no
+                        // box so the painted grid is untouched.
+                        role="table"
+                        aria-label={group.caption ? `${group.title} (${group.caption})` : group.title}
                         className="mt-6 grid items-center gap-x-1.5 gap-y-1.5 border border-landing-light bg-locker-surface p-2.5 first:mt-0 sm:gap-x-3 sm:p-4"
                         style={columns}
                       >
-                        <div style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
-                          <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">
-                            {group.title}
-                          </h2>
-                          {group.caption && (
-                            <p className="mt-1 text-[11px] text-locker-ink-muted">{group.caption}</p>
-                          )}
+                        <div role="row" style={PLAYER_COLUMNS_SPAN} className="mb-2 text-center">
+                          <div role="columnheader" aria-colspan={slotCount}>
+                            <h2 className="font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">
+                              {group.title}
+                            </h2>
+                            {group.caption && (
+                              <p className="mt-1 text-[11px] text-locker-ink-muted">{group.caption}</p>
+                            )}
+                          </div>
                         </div>
 
                         {group.rows.map((row) => {
                           const bestIndexes = bestEntryIndexes(entries, row);
                           const barWidths = barWidthPercentages(entries, row);
                           return (
-                            <div key={row.label} className="contents">
-                              <div className="pr-1.5 text-left font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase sm:pr-3 sm:text-[10px] sm:tracking-[0.1em]">
+                            <div key={row.label} role="row" className="contents">
+                              <div role="rowheader" className="pr-1.5 text-left font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase sm:pr-3 sm:text-[10px] sm:tracking-[0.1em]">
                                 {row.label}
                               </div>
                               {slots.map((entry, index) => {
                                 const barWidth = index < barWidths.length ? barWidths[index] : null;
                                 return entry ? (
                                   <div
+                                    role="cell"
                                     key={entry.player.id}
                                     className="relative bg-landing-hero px-1 py-2 text-center sm:px-3"
                                   >
@@ -650,6 +660,7 @@ export function ComparePage() {
                                   // reads as "waiting for a player" rather than as a hole
                                   // in the table.
                                   <div
+                                    role="cell"
                                     key={`empty-${index}`}
                                     className="bg-landing-hero px-1 py-2 text-center text-[11.5px] text-locker-ink-muted sm:px-3 sm:text-[13px]"
                                   >

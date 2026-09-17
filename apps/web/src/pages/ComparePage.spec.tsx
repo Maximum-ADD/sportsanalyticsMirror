@@ -95,8 +95,8 @@ describe("ComparePage", () => {
   it("shows two empty player slots when nothing is selected", () => {
     renderWithProviders(<ComparePage />, ["/compare"]);
 
-    expect(screen.getByRole("searchbox", { name: "Select player 1" })).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "Select player 2" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Select player 1" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Select player 2" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "General" })).not.toBeInTheDocument();
   });
 
@@ -112,8 +112,8 @@ describe("ComparePage", () => {
     renderWithProviders(<ComparePage />, ["/compare?ids=player-1"]);
 
     expect(await screen.findByText("LeBron James")).toBeInTheDocument();
-    expect(screen.getAllByRole("searchbox")).toHaveLength(1);
-    expect(screen.getByRole("searchbox", { name: "Select player 2" })).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+    expect(screen.getByRole("combobox", { name: "Select player 2" })).toBeInTheDocument();
     expect(fetchPlayerComparison).not.toHaveBeenCalled();
   });
 
@@ -126,10 +126,10 @@ describe("ComparePage", () => {
     expect(screen.queryByRole("button", { name: /Cancel adding player/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Add another player/ }));
-    expect(screen.getAllByRole("searchbox")).toHaveLength(3);
+    expect(screen.getAllByRole("combobox")).toHaveLength(3);
 
     await user.click(screen.getByRole("button", { name: "Cancel adding player 3" }));
-    expect(screen.getAllByRole("searchbox")).toHaveLength(2);
+    expect(screen.getAllByRole("combobox")).toHaveLength(2);
   });
 
   it("spells positions out on the tile and keeps them out of the General rows", async () => {
@@ -338,8 +338,8 @@ describe("ComparePage", () => {
 
     renderWithProviders(<ComparePage />, ["/compare"]);
 
-    await user.type(screen.getByRole("searchbox", { name: "Select player 1" }), "jok");
-    await user.click(await screen.findByRole("button", { name: /Nikola Jokic/ }));
+    await user.type(screen.getByRole("combobox", { name: "Select player 1" }), "jok");
+    await user.click(await screen.findByRole("option", { name: /Nikola Jokic/ }));
 
     expect(await screen.findByText("Nikola Jokic")).toBeInTheDocument();
     // The compare page now states which segment it wants, so a comparison
@@ -350,5 +350,29 @@ describe("ComparePage", () => {
       () => expect(fetchPlayerStats).toHaveBeenCalledWith("player-9", "REGULAR"),
       { timeout: ASYNC_ASSERTION_TIMEOUT_IN_MILLISECONDS }
     );
+  });
+
+  it("exposes each stat group as a table with row and column headers", async () => {
+    vi.mocked(fetchPlayerComparison).mockResolvedValue({
+      seasonType: "REGULAR" as const,
+      players: [
+        { player: makePlayer({ id: "player-1" }), seasonAverages: makeAverages() },
+        {
+          player: makePlayer({ id: "player-2", firstName: "Stephen", lastName: "Curry", nbaPlayerId: 2 }),
+          seasonAverages: makeAverages(),
+        },
+      ],
+    });
+
+    renderWithProviders(<ComparePage />, ["/compare?ids=player-1,player-2"]);
+    await screen.findAllByText("LeBron James");
+
+    // The stat grid is painted with CSS grid but carries table roles, so a
+    // screen reader navigates it as rows and cells rather than a run of divs.
+    const table = screen.getByRole("table", { name: /Points/ });
+    expect(table).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("rowheader").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("cell").length).toBeGreaterThan(0);
   });
 });

@@ -37,3 +37,9 @@ vi.mock("better-auth/react", () => ({
 // Raised to sit just under vite.config.ts's 30s per-test testTimeout,
 // leaving headroom for a genuinely hung test to still fail outright.
 configure({ asyncUtilTimeout: 25_000 });
+
+// jsdom has no layout engine and never implemented scrollIntoView; the
+// player-search combobox scrolls its keyboard-active option into view at
+// runtime. A no-op keeps tests exercising that call without a polyfill
+// error masking the behaviour under test.
+Element.prototype.scrollIntoView ??= () => {};

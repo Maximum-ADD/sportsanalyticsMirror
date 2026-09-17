@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPlayers } from "@/lib/nbaApi";
 import { fetchSuggestedPlayers } from "@/lib/meApi";
@@ -24,6 +24,7 @@ const VARIANT_CLASSES = {
     list: "rounded-md border border-border-subtle bg-surface-card shadow-lg",
     status: "px-3 py-2 text-sm text-text-muted",
     item: "text-sm text-text-primary hover:bg-surface-raised",
+    activeItem: "bg-surface-raised",
   },
   locker: {
     input:
@@ -31,6 +32,7 @@ const VARIANT_CLASSES = {
     list: "border border-landing-light bg-locker-surface",
     status: "px-3 py-2 text-[12.5px] text-locker-ink-muted",
     item: "text-[13px] text-landing-ink transition-colors hover:bg-landing-hero",
+    activeItem: "bg-landing-hero",
   },
 } as const;
 
@@ -111,8 +113,17 @@ export function PlayerSearchCombobox({
   variant = "dark",
   suggestWhenEmpty = false,
 }: PlayerSearchComboboxProps) {
+  // Stable ids wiring the input to its listbox and each option to
+  // aria-activedescendant — the compare page renders several of these, so
+  // the ids must be unique per instance without the caller coordinating.
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
   const [searchTerm, setSearchTerm] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  // The keyboard-active option, tracked by index into whichever list is
+  // showing. The input keeps focus throughout; screen readers follow along
+  // through aria-activedescendant rather than real focus moves.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const debouncedSearchTerm = useDebouncedValue(searchTerm.trim(), SEARCH_DEBOUNCE_IN_MILLISECONDS);
   const isSearchable = debouncedSearchTerm.length >= MINIMUM_SEARCH_LENGTH;
   const showSuggestions = suggestWhenEmpty && isFocused && !isSearchable;
@@ -132,28 +143,83 @@ export function PlayerSearchCombobox({
   const restSuggestions = suggestions.rest.filter((player) => !excludedPlayerIds.includes(player.id));
   const hasSuggestions = followedSuggestions.length > 0 || restSuggestions.length > 0;
 
+  // Only one list renders at a time — suggestions give way to results the
+  // moment the term reaches the search threshold — so a single flattened
+  // option array drives keyboard navigation regardless of which list it is.
+  const visibleOptions = isSearchable ? results : showSuggestions ? [...followedSuggestions, ...restSuggestions] : [];
+  // The list collapses when the input loses focus — a combobox reports
+  // aria-expanded=false rather than leaving its list open over unfocused
+  // content.
+  const isListOpen = isFocused && (isSearchable || showSuggestions);
+  const activeOption = activeIndex !== null ? visibleOptions[activeIndex] : undefined;
+  // The active option's DOM id as a plain string: the scroll effect keys on
+  // it so it re-runs only when the active option actually changes, not on
+  // every render of a freshly built options array.
+  const activeOptionId = activeOption ? `${listboxId}-option-${activeOption.id}` : undefined;
+
   function selectPlayer(player: Player) {
     onSelect(player);
     setSearchTerm("");
+    setActiveIndex(null);
   }
 
-  function renderPlayerOption(player: Player) {
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (visibleOptions.length === 0) return;
+      event.preventDefault();
+      setActiveIndex((current) => {
+        if (current === null) return event.key === "ArrowDown" ? 0 : visibleOptions.length - 1;
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        return (current + step + visibleOptions.length) % visibleOptions.length;
+      });
+    } else if (event.key === "Enter") {
+      if (activeOption) {
+        event.preventDefault();
+        selectPlayer(activeOption);
+      }
+    } else if (event.key === "Escape") {
+      // Clearing the term reopens the suggestions list (the input is still
+      // focused), so Escape on an already-empty input steps out entirely.
+      if (searchTerm) {
+        setSearchTerm("");
+        setActiveIndex(null);
+      } else {
+        event.currentTarget.blur();
+      }
+    }
+  }
+
+  // Follow the keyboard-active option through the list's scrollbar.
+  useEffect(() => {
+    if (!activeOptionId) return;
+    document.getElementById(activeOptionId)?.scrollIntoView({ block: "nearest" });
+  }, [activeOptionId]);
+
+  function renderPlayerOption(player: Player, index: number) {
     return (
-      <li key={player.id}>
-        <button
-          type="button"
-          className={cn("flex w-full items-center gap-2 px-3 py-2 text-left", VARIANT_CLASSES[variant].item)}
-          // Mousedown (not click) fires before the input's blur, so the
-          // suggestion list is still mounted when the selection is made.
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => selectPlayer(player)}
-        >
-          <PlayerHeadshot player={player} size="sm" />
-          <span className="min-w-0 flex-1 truncate">
-            {player.firstName} {player.lastName}
-          </span>
-          {player.team && <TeamBadge team={player.team} size="sm" />}
-        </button>
+      <li
+        key={player.id}
+        id={`${listboxId}-option-${player.id}`}
+        role="option"
+        aria-selected={activeOption === player}
+        // Mousedown (not click) fires before the input's blur, so the
+        // suggestion list is still mounted when the selection is made.
+        // Hover also tracks the keyboard's active option, keeping the two
+        // ways of pointing at one option in sync.
+        onMouseDown={(event) => event.preventDefault()}
+        onMouseEnter={() => setActiveIndex(index)}
+        onClick={() => selectPlayer(player)}
+        className={cn(
+          "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left",
+          VARIANT_CLASSES[variant].item,
+          activeOption === player && VARIANT_CLASSES[variant].activeItem
+        )}
+      >
+        <PlayerHeadshot player={player} size="sm" />
+        <span className="min-w-0 flex-1 truncate">
+          {player.firstName} {player.lastName}
+        </span>
+        {player.team && <TeamBadge team={player.team} size="sm" />}
       </li>
     );
   }
@@ -162,21 +228,43 @@ export function PlayerSearchCombobox({
     <div className="relative w-full">
       <input
         aria-label={label}
+        role="combobox"
+        aria-expanded={isListOpen}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-activedescendant={activeOptionId}
         className={cn("w-full", VARIANT_CLASSES[variant].input)}
         type="search"
         placeholder={placeholder}
         value={searchTerm}
-        onChange={(event) => setSearchTerm(event.target.value)}
+        onChange={(event) => {
+          setSearchTerm(event.target.value);
+          setActiveIndex(null);
+        }}
         onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
+        onBlur={() => {
+          setIsFocused(false);
+          setActiveIndex(null);
+        }}
+        onKeyDown={handleKeyDown}
       />
+      {/* Polite result count for screen readers; the visible list's status
+          rows are presentational, so this is what actually announces
+          "Searching…" settling into "3 players found." */}
+      <p role="status" className="sr-only">
+        {isSearchable
+          ? resultsQuery.isPending
+            ? "Searching players."
+            : `${results.length} player${results.length === 1 ? "" : "s"} found.`
+          : ""}
+      </p>
 
-      {isSearchable && (
-        <ul className={cn("absolute z-10 mt-1 max-h-72 w-full overflow-auto", VARIANT_CLASSES[variant].list)}>
+      {isListOpen && isSearchable && (
+        <ul id={listboxId} role="listbox" aria-label={label} className={cn("absolute z-10 mt-1 max-h-72 w-full overflow-auto", VARIANT_CLASSES[variant].list)}>
           {resultsQuery.isPending ? (
-            <li className={VARIANT_CLASSES[variant].status}>Searching…</li>
+            <li role="presentation" className={VARIANT_CLASSES[variant].status}>Searching…</li>
           ) : results.length === 0 ? (
-            <li className={VARIANT_CLASSES[variant].status}>No players found.</li>
+            <li role="presentation" className={VARIANT_CLASSES[variant].status}>No players found.</li>
           ) : (
             results.map(renderPlayerOption)
           )}
@@ -184,27 +272,27 @@ export function PlayerSearchCombobox({
       )}
 
       {showSuggestions && (
-        <ul className={cn("absolute z-10 mt-1 max-h-72 w-full overflow-auto", VARIANT_CLASSES[variant].list)}>
+        <ul id={listboxId} role="listbox" aria-label={label} className={cn("absolute z-10 mt-1 max-h-72 w-full overflow-auto", VARIANT_CLASSES[variant].list)}>
           {suggestions.isPending ? (
-            <li className={VARIANT_CLASSES[variant].status}>Loading suggestions…</li>
+            <li role="presentation" className={VARIANT_CLASSES[variant].status}>Loading suggestions…</li>
           ) : !hasSuggestions ? (
-            <li className={VARIANT_CLASSES[variant].status}>Type a name to search.</li>
+            <li role="presentation" className={VARIANT_CLASSES[variant].status}>Type a name to search.</li>
           ) : (
             <>
               {followedSuggestions.length > 0 && (
                 <>
-                  <li className={cn(VARIANT_CLASSES[variant].status, "font-mono text-[9px] tracking-[0.1em] uppercase")}>
+                  <li role="presentation" className={cn(VARIANT_CLASSES[variant].status, "font-mono text-[9px] tracking-[0.1em] uppercase")}>
                     Following
                   </li>
-                  {followedSuggestions.map(renderPlayerOption)}
+                  {followedSuggestions.map((player, index) => renderPlayerOption(player, index))}
                 </>
               )}
               {restSuggestions.length > 0 && (
                 <>
-                  <li className={cn(VARIANT_CLASSES[variant].status, "font-mono text-[9px] tracking-[0.1em] uppercase")}>
+                  <li role="presentation" className={cn(VARIANT_CLASSES[variant].status, "font-mono text-[9px] tracking-[0.1em] uppercase")}>
                     {suggestions.usingFavoriteTeam ? "Your team" : "Top scorers"}
                   </li>
-                  {restSuggestions.map(renderPlayerOption)}
+                  {restSuggestions.map((player, index) => renderPlayerOption(player, followedSuggestions.length + index))}
                 </>
               )}
             </>

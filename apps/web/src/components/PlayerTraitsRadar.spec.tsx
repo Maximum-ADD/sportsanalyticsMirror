@@ -97,6 +97,16 @@ describe("PlayerTraitsRadar", () => {
     expect(screen.getByText("1.9")).toBeInTheDocument(); // STL+BLK/G
   });
 
+  it("carries the trait values as a screen-reader text summary", () => {
+    render(<PlayerTraitsRadar seasonAverages={makeAverages()} />);
+
+    // The SVG shape is invisible to screen readers and to the read-aloud
+    // control — the sr-only list is the chart's non-visual form.
+    // 27.1 PTS on a 35 ceiling ≈ 77; 7.4 REB on 15 ≈ 49.
+    expect(screen.getByText("Scoring 77 out of 100")).toBeInTheDocument();
+    expect(screen.getByText("Rebounding 49 out of 100")).toBeInTheDocument();
+  });
+
   it("renders an unrecorded figure as a dash rather than zero", async () => {
     const user = userEvent.setup();
     render(<PlayerTraitsRadar seasonAverages={makeAverages({ assistToTurnoverRatio: null })} />);
