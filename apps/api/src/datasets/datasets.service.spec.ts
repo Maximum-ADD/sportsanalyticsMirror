@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { compareDatasetReleases, DatasetReleasesService, escapeCsvField } from "./datasets.service.js";
+import { compareDatasetReleases, DatasetReleasesService, escapeCsvField, parseReleaseSort } from "./datasets.service.js";
 
 describe("escapeCsvField", () => {
   it("returns empty string for null", () => {
@@ -47,5 +47,48 @@ describe("DatasetReleasesService.downloadRelease", () => {
 
     await expect(service.downloadRelease("2025-26.1")).resolves.toEqual({ kind: "stale", checksum: "old-checksum" });
     expect(prisma.datasetRelease.findUnique).toHaveBeenCalledWith({ where: { version: "2025-26.1" } });
+  });
+});
+
+describe("parseReleaseSort", () => {
+  it("defaults to newest published first", () => {
+    expect(parseReleaseSort({})).toEqual({ field: "date", direction: "desc" });
+  });
+
+  it("reads season and ascending order off the query", () => {
+    expect(parseReleaseSort({ sort: "season", order: "asc" })).toEqual({ field: "season", direction: "asc" });
+  });
+
+  it("falls back to the default for unrecognised values rather than erroring", () => {
+    expect(parseReleaseSort({ sort: "checksum", order: "sideways" })).toEqual({ field: "date", direction: "desc" });
+  });
+});
+
+describe("DatasetReleasesService.listReleases", () => {
+  function makePrisma() {
+    return {
+      datasetRelease: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+    };
+  }
+
+  it("orders by publish date with season as the tiebreaker by default", async () => {
+    const prisma = makePrisma();
+    await new DatasetReleasesService(prisma as never).listReleases({});
+
+    expect(prisma.datasetRelease.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ publishedAt: "desc" }, { season: "desc" }] }),
+    );
+  });
+
+  it("orders by season with publish date as the tiebreaker when asked", async () => {
+    const prisma = makePrisma();
+    await new DatasetReleasesService(prisma as never).listReleases({ sort: "season", order: "asc" });
+
+    expect(prisma.datasetRelease.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ season: "asc" }, { publishedAt: "desc" }] }),
+    );
   });
 });

@@ -10,6 +10,27 @@ function uid() {
   return nextId;
 }
 
+/**
+ * Creates a release with only the fields the ordering tests care about.
+ * The remaining columns are non-null in the schema but irrelevant here,
+ * so they get fixed placeholder values.
+ */
+async function createRelease(params: { version: string; season: string; publishedAt: Date }) {
+  return testPrisma.datasetRelease.create({
+    data: {
+      version: params.version,
+      description: `Release ${params.version}`,
+      season: params.season,
+      checksum: `checksum-${params.version}`,
+      gamesCount: 0,
+      playersCount: 0,
+      eventsCount: 0,
+      fieldSchema: { columns: [] },
+      publishedAt: params.publishedAt,
+    },
+  });
+}
+
 describe("Datasets API", () => {
   let app: INestApplication;
 
@@ -77,6 +98,44 @@ describe("Datasets API", () => {
       expect(response.body.total).toBe(2);
       expect(response.body.data[0].version).toBe("2025-26.1");
       expect(response.body.data[1].version).toBe("2024-25.1");
+    });
+
+    // Releases seeded in a single run share a publishedAt, which left the
+    // list in an arbitrary order that read as unsorted on the page. The
+    // season tiebreaker is what makes that case deterministic.
+    it("falls back to season order for releases published at the same instant", async () => {
+      const publishedAt = new Date("2026-09-17T12:00:00.000Z");
+      for (const season of ["2024-25", "2026-27", "2023-24", "2025-26"]) {
+        await createRelease({ version: `${season}.1`, season, publishedAt });
+      }
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((release: { version: string }) => release.version)).toEqual([
+        "2026-27.1", "2025-26.1", "2024-25.1", "2023-24.1",
+      ]);
+    });
+
+    it("orders by season ascending when asked", async () => {
+      await createRelease({ version: "2025-26.1", season: "2025-26", publishedAt: new Date("2026-01-01") });
+      await createRelease({ version: "2023-24.9", season: "2023-24", publishedAt: new Date("2026-06-01") });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets?sort=season&order=asc");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((release: { version: string }) => release.version)).toEqual([
+        "2023-24.9", "2025-26.1",
+      ]);
+    });
+
+    it("ignores an unrecognised sort field instead of erroring", async () => {
+      await createRelease({ version: "2025-26.1", season: "2025-26", publishedAt: new Date("2026-01-01") });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets?sort=checksum");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data[0].version).toBe("2025-26.1");
     });
   });
 

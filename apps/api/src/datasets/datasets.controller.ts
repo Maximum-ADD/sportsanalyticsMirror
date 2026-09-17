@@ -55,6 +55,8 @@ export class DatasetReleasesController {
   @ApiOperation({ summary: "List all published dataset releases" })
   @ApiQuery({ name: "page", required: false, type: Number })
   @ApiQuery({ name: "pageSize", required: false, type: Number })
+  @ApiQuery({ name: "sort", required: false, enum: ["date", "season"], description: "Order by publish date (default) or by the season covered" })
+  @ApiQuery({ name: "order", required: false, enum: ["asc", "desc"], description: "Sort direction (default desc)" })
   @ApiResponse({ status: 200, description: "Paginated release list" })
   listReleases(@Query() query: Record<string, unknown>) {
     return this.datasetsService.listReleases(query);

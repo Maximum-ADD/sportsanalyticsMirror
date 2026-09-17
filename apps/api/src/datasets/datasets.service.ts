@@ -17,6 +17,46 @@ export interface DatasetReleaseDiff {
   changedFields: string[];
 }
 
+// How the releases list can be ordered. "date" is when the release was
+// published; "season" is the season the data covers. They differ in
+// practice — a backfill of an old season is published late — so the list
+// offers both rather than assuming one stands in for the other.
+export type ReleaseSortField = "date" | "season";
+export type SortDirection = "asc" | "desc";
+
+const DEFAULT_SORT_FIELD: ReleaseSortField = "date";
+const DEFAULT_SORT_DIRECTION: SortDirection = "desc";
+
+export interface ReleaseSort {
+  field: ReleaseSortField;
+  direction: SortDirection;
+}
+
+/**
+ * Reads the sort field and direction off a query string, falling back to
+ * newest-published-first for anything missing or unrecognised. Unknown
+ * values are ignored rather than rejected so a stale bookmarked URL still
+ * returns a sensible list instead of a 400.
+ */
+export function parseReleaseSort(query: Record<string, unknown>): ReleaseSort {
+  const field: ReleaseSortField = query.sort === "season" ? "season" : DEFAULT_SORT_FIELD;
+  const direction: SortDirection = query.order === "asc" ? "asc" : DEFAULT_SORT_DIRECTION;
+  return { field, direction };
+}
+
+/**
+ * Builds the Prisma orderBy for a release sort, always with a tiebreaker.
+ * The tiebreaker is what actually fixes the list's ordering: every release
+ * seeded in one run shares a publishedAt to the second, so sorting on that
+ * column alone leaves rows in an arbitrary order that reads as unsorted.
+ */
+function buildReleaseOrderBy(sort: ReleaseSort) {
+  if (sort.field === "season") {
+    return [{ season: sort.direction }, { publishedAt: DEFAULT_SORT_DIRECTION }];
+  }
+  return [{ publishedAt: sort.direction }, { season: DEFAULT_SORT_DIRECTION }];
+}
+
 export type DownloadReleaseResult =
   | { kind: "missing" }
   | { kind: "stale"; checksum: string }
@@ -73,16 +113,18 @@ export function escapeCsvField(value: string | number | null): string {
 export class DatasetReleasesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Paginated list of all published releases, newest first.
+  // Paginated list of all published releases, ordered by publish date or
+  // by season (see parseReleaseSort); newest first unless asked otherwise.
   async listReleases(query: Record<string, unknown>): Promise<PagedResult<ReleaseWithPublisher>> {
     const { page, pageSize } = parsePageParams(query);
+    const sort = parseReleaseSort(query);
     const where = {};
 
     const [data, total] = await Promise.all([
       this.prisma.datasetRelease.findMany({
         where,
         include: { publishedBy: { select: { id: true, name: true } } },
-        orderBy: { publishedAt: "desc" },
+        orderBy: buildReleaseOrderBy(sort),
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -201,16 +243,12 @@ export class DatasetReleasesService {
   }): Promise<DatasetRelease> {
     const { rowCount, checksum } = await this.generateSeasonCsv(params.season);
 
-    // Count distinct games and players in the season for the metadata.
-    const [gamesCount, playersCount] = await Promise.all([
-      this.prisma.game.count({ where: { season: params.season } }),
-      this.prisma.playerGameStat.count({
-        where: { game: { season: params.season } },
-      }).then((_count) => {
-        // We want distinct players, not total stat rows.
-        return rowCount;
-      }),
-    ]);
+    // Games in the season for the metadata. The player count comes from the
+    // CSV's own row count, which is already one row per distinct player with
+    // games in this season — counting PlayerGameStat rows instead would
+    // count player-games, a much larger and quite different number.
+    const gamesCount = await this.prisma.game.count({ where: { season: params.season } });
+    const playersCount = rowCount;
 
     const fieldSchema = DATASET_COLUMNS.map((c) => ({
       column: c.column,

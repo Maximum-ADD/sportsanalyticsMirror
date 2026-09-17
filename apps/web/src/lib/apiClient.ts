@@ -23,7 +23,7 @@ export async function fetchJson<T>(path: string): Promise<T> {
 // Reads this app's { error: { code, message } } envelope (see ApiException
 // on the API) when present, falling back to a generic message for anything
 // that isn't — a network failure or an unrelated 5xx won't have that shape.
-async function errorMessageFrom(response: Response, fallbackPath: string): Promise<string> {
+export async function errorMessageFrom(response: Response, fallbackPath: string): Promise<string> {
   try {
     const body = await response.json();
     if (body?.error?.message) return body.error.message as string;
