@@ -22,9 +22,10 @@ export interface ApiKeyAuthenticatedRequest {
 // Authenticates a request by its X-API-Key header, checks rate limits
 // and daily quotas, and logs the request for usage tracking. Applied
 // at the class level on the public read controllers (players, games,
-// teams, analytics, datasets): anonymous requests pass through
-// unchanged, and a valid key additionally stamps the consumer identity
-// for downstream use.
+// teams, analytics, datasets), behind OptionalSessionGuard: a request
+// with a valid session passes as the signed-in user, a valid key passes
+// with the consumer identity stamped for downstream use, and anything
+// else — no session, no key — is rejected with 401.
 //
 // Deliberately NOT applied to session-gated controllers (/v1/me/**,
 // /v1/admin/**, optimizer, custom-statistics): the guard never sets
@@ -32,8 +33,8 @@ export interface ApiKeyAuthenticatedRequest {
 // key alone can never reach anything restricted.
 //
 // The guard never rejects a request that already has a session user
-// (set by SessionAuthGuard), so a dual-auth endpoint lets either
-// mechanism succeed.
+// (set by OptionalSessionGuard or SessionAuthGuard), so a dual-auth
+// endpoint lets either mechanism succeed.
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
@@ -50,10 +51,14 @@ export class ApiKeyGuard implements CanActivate {
 
     const rawKey = request.headers["x-api-key"];
     if (typeof rawKey !== "string" || rawKey.trim().length === 0) {
-      // No API key and no session — let the request through without
-      // a consumer identity. The endpoint itself can decide whether
-      // anonymous access is allowed.
-      return true;
+      // No API key and no session (OptionalSessionGuard already had the
+      // chance to attach one): these endpoints still require one or the
+      // other, so anonymous callers are turned away here.
+      throw new ApiException(
+        HttpStatus.UNAUTHORIZED,
+        "API_KEY_REQUIRED",
+        "An API key or a signed-in session is required",
+      );
     }
 
     // Hash the raw key and look up the matching row.

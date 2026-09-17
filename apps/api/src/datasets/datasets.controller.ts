@@ -15,6 +15,7 @@ import type { Response } from "express";
 import { Role } from "@prisma/client";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
+import { OptionalSessionGuard } from "../common/optional-session.guard.js";
 import { Roles } from "../common/roles.decorator.js";
 import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
@@ -44,7 +45,7 @@ export function parsePublishBody(body: unknown): { version: string; description:
 }
 
 @ApiTags("datasets")
-@UseGuards(ApiKeyGuard)
+@UseGuards(OptionalSessionGuard, ApiKeyGuard)
 @Controller("v1/datasets")
 export class DatasetReleasesController {
   constructor(private readonly datasetsService: DatasetReleasesService) {}

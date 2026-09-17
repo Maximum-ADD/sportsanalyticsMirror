@@ -1,13 +1,15 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
+import { OptionalSessionGuard } from "../common/optional-session.guard.js";
 import { EvaluatedGamesService } from "./evaluated-games.service.js";
 import { LeaderboardService, type Leaderboard } from "./leaderboard.service.js";
 import { ModelAccuracyService, type ModelAccuracyReport } from "./model-accuracy.service.js";
 
-// Anonymous requests pass through the API-key guard untouched; a valid
-// X-API-Key additionally stamps the consumer identity and counts toward
-// its rate limit and daily quota.
-@UseGuards(ApiKeyGuard)
+// Signed-in visitors pass via their session (OptionalSessionGuard); every
+// other caller must present a valid X-API-Key — the first-party site proxy
+// attaches its own key for signed-out browsers, so requests with neither
+// are rejected with 401.
+@UseGuards(OptionalSessionGuard, ApiKeyGuard)
 @Controller("v1/analytics")
 export class AnalyticsController {
   constructor(
@@ -18,10 +20,10 @@ export class AnalyticsController {
 
   // GET /v1/analytics/model-accuracy — how the Elo model has actually scored
   // on games that are both finished and predicted. Deliberately public: it
-  // describes the model, not a user, so it is identical for every account,
-  // every API key, and signed-out visitors. The class-level API-key guard
-  // passes anonymous requests through untouched. Not paginated either — it
-  // is a fixed-size summary, not a list.
+  // describes the model, not a user, so it is identical for every account
+  // and key that can reach it — but a caller still needs a session or an
+  // API key; plain anonymous requests are rejected. Not paginated either —
+  // it is a fixed-size summary, not a list.
   @Get("model-accuracy")
   async getModelAccuracy(): Promise<ModelAccuracyReport> {
     const evaluatedGames = await this.evaluatedGamesService.getEvaluatedGames();
