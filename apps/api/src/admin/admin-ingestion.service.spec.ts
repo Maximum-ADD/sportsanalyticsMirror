@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { AdminIngestionService } from "./admin-ingestion.service.js";
+
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn(),
+}));
+
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+}));
 
 function createMockPrisma() {
   return {
@@ -21,9 +33,11 @@ describe("AdminIngestionService", () => {
   let mockPrisma: any;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockPrisma = createMockPrisma();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     service = new AdminIngestionService(mockPrisma as any);
+    vi.mocked(existsSync).mockReturnValue(true);
   });
 
   describe("getSchedule", () => {
@@ -112,6 +126,82 @@ describe("AdminIngestionService", () => {
           deletedById: "user-1",
         },
       });
+    });
+  });
+
+  describe("triggerPull", () => {
+    function fakeRunningChild() {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void };
+      child.unref = vi.fn();
+      return child;
+    }
+
+    it("queues a pull when scripts and venv are present", async () => {
+      vi.mocked(spawn).mockReturnValue(fakeRunningChild() as unknown as ChildProcess);
+
+      const result = await service.triggerPull();
+
+      expect(result.started).toBe(true);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a second pull while one is running", async () => {
+      vi.mocked(spawn).mockReturnValue(fakeRunningChild() as unknown as ChildProcess);
+
+      const first = await service.triggerPull();
+      const second = await service.triggerPull();
+
+      expect(first.started).toBe(true);
+      expect(second.started).toBe(false);
+      expect(second.message).toMatch(/already running/i);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it("allows a new pull after the previous one exits", async () => {
+      mockPrisma.ingestionSchedule.update.mockResolvedValue({});
+      const firstChild = fakeRunningChild();
+      vi.mocked(spawn)
+        .mockReturnValueOnce(firstChild as unknown as ChildProcess)
+        .mockReturnValueOnce(fakeRunningChild() as unknown as ChildProcess);
+
+      await service.triggerPull();
+      firstChild.emit("exit", 0);
+      const second = await service.triggerPull();
+
+      expect(second.started).toBe(true);
+      expect(spawn).toHaveBeenCalledTimes(2);
+    });
+
+    it("clears the in-flight flag when the process fails to start", async () => {
+      const child = fakeRunningChild();
+      vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcess);
+
+      await service.triggerPull();
+      child.emit("error", new Error("spawn failed"));
+      const second = await service.triggerPull();
+
+      expect(second.started).toBe(true);
+      expect(spawn).toHaveBeenCalledTimes(2);
+    });
+
+    it("reports when the ingestion scripts are missing", async () => {
+      vi.mocked(existsSync).mockImplementation((path: unknown) => !String(path).endsWith("ingest.py"));
+
+      const result = await service.triggerPull();
+
+      expect(result.started).toBe(false);
+      expect(result.message).toMatch(/scripts not found/i);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it("reports when the Python virtual environment is missing", async () => {
+      vi.mocked(existsSync).mockImplementation((path: unknown) => !String(path).includes(".venv"));
+
+      const result = await service.triggerPull();
+
+      expect(result.started).toBe(false);
+      expect(result.message).toMatch(/virtual environment not found/i);
+      expect(spawn).not.toHaveBeenCalled();
     });
   });
 });
