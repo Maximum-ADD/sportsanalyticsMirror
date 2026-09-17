@@ -45,6 +45,11 @@ def fetch_game_actions(nba_game_id: str) -> list[dict]:
     return [dict(zip(headers, row)) for row in raw["data"]]
 
 
+def order_actions_by_sequence(actions: list[dict]) -> list[dict]:
+    """Buffers numeric action numbers into order while retaining malformed rows for validation."""
+    return sorted(actions, key=lambda action: (not isinstance(action.get("actionNumber"), int), action.get("actionNumber", 0) if isinstance(action.get("actionNumber"), int) else 0))
+
+
 def upsert_ingestion_batch(cursor, game_internal_id: str, source: str = SOURCE) -> tuple[str, int | None]:
     """Opens a new RUNNING IngestionBatch row for this game, returns its id.
 
@@ -185,7 +190,7 @@ def run_ingestion_batch(
         complete_ingestion_batch(cursor, batch_id, "FAILED", accepted=0, rejected=0, rejection_summary={})
         raise
 
-    for action in actions:
+    for action in order_actions_by_sequence(actions):
         if resume_after_sequence is not None and action.get("actionNumber", -1) <= resume_after_sequence:
             continue
         result = validate_raw_event(action, previous_sequence=previous_sequence, known_player_ids=known_player_ids)
