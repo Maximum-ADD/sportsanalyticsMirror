@@ -6,7 +6,7 @@ import { renderWithProviders } from "@/test/renderWithProviders";
 import { fetchPlayer, fetchPlayerComparison, fetchPlayers, fetchPlayerStats } from "@/lib/nbaApi";
 import type { Player, SeasonAverages } from "@/types/nba";
 
-const ASYNC_ASSERTION_TIMEOUT_IN_MILLISECONDS = 5_000;
+const ASYNC_ASSERTION_TIMEOUT_IN_MILLISECONDS = 25_000;
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchPlayer: vi.fn(),

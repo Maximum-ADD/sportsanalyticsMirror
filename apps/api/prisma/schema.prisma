@@ -919,6 +919,10 @@ model DatasetRelease {
   publishedById String?
   publishedBy   User?    @relation(fields: [publishedById], references: [id])
   publishedAt   DateTime @default(now())
+  // A correction can change figures represented by this immutable snapshot.
+  // Keep the release downloadable for reproducibility, but make its status
+  // explicit until an administrator publishes a replacement version.
+  isStale       Boolean  @default(false)
 
   @@index([season])
 }

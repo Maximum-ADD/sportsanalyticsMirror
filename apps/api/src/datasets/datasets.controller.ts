@@ -101,10 +101,14 @@ export class DatasetReleasesController {
   @ApiParam({ name: "version", description: "Release version" })
   @ApiResponse({ status: 200, description: "CSV file" })
   @ApiResponse({ status: 404, description: "Release not found" })
+  @ApiResponse({ status: 409, description: "Release is stale after a source correction" })
   async downloadRelease(@Param("version") version: string, @Res() res: Response): Promise<void> {
     const result = await this.datasetsService.downloadRelease(version);
-    if (!result) {
+    if (result.kind === "missing") {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Release not found");
+    }
+    if (result.kind === "stale") {
+      throw new ApiException(HttpStatus.CONFLICT, "STALE_DATASET_RELEASE", "Release is stale after a correction; publish a replacement release before downloading");
     }
 
     res

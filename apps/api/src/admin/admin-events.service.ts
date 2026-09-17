@@ -123,6 +123,7 @@ export class AdminEventsService {
     // 1. Read the current event row.
     const current = await this.prisma.gameEvent.findUnique({
       where: { gameId_sequence: { gameId, sequence } },
+      include: { game: { select: { season: true } } },
     });
     if (!current) return null as unknown as EventCorrection;
 
@@ -153,6 +154,14 @@ export class AdminEventsService {
       });
 
       await this.recomputeDerivedStats(tx, gameId);
+
+      // A release is an immutable snapshot, so recomputing it in place would
+      // break reproducibility. Mark releases for this game's season stale so
+      // consumers are never silently served figures predating this correction.
+      await tx.datasetRelease.updateMany({
+        where: { season: current.game.season },
+        data: { isStale: true },
+      });
 
       return tx.eventCorrection.create({
         data: {

@@ -10,6 +10,7 @@ function createMockPrisma() {
     // exercise real recomputation, only the correction/audit-trail path.
     playerGameStat: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
     player: { findMany: vi.fn().mockResolvedValue([]) },
+    datasetRelease: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     eventCorrection: { create: vi.fn().mockResolvedValue({ id: "ec1" }) },
   };
   return {
@@ -81,6 +82,7 @@ describe("AdminEventsService", () => {
         success: true,
         value: 2,
         description: "Made shot",
+        game: { season: "2024-25" },
       };
       prisma.gameEvent.findUnique.mockResolvedValue(currentEvent);
 
@@ -93,6 +95,10 @@ describe("AdminEventsService", () => {
       // Cache should be invalidated for both games and players
       expect(cache.invalidate).toHaveBeenCalledWith("games");
       expect(cache.invalidate).toHaveBeenCalledWith("players");
+      expect(prisma._tx.datasetRelease.updateMany).toHaveBeenCalledWith({
+        where: { season: "2024-25" },
+        data: { isStale: true },
+      });
     });
 
     it("records previousValues and newValues for corrected fields", async () => {
@@ -108,6 +114,7 @@ describe("AdminEventsService", () => {
         success: true,
         value: 2,
         description: "Made shot",
+        game: { season: "2024-25" },
       };
       prisma.gameEvent.findUnique.mockResolvedValue(currentEvent);
 
