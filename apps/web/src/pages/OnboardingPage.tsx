@@ -7,6 +7,7 @@ import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
+import { Reveal } from "@/components/landing/Reveal";
 import { updateMe, followPlayer, unfollowPlayer, fetchSuggestedPlayers } from "@/lib/meApi";
 import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
 import { useMe } from "@/lib/useMe";
@@ -314,20 +315,22 @@ export function OnboardingPage() {
   return (
     <div className="min-h-full bg-landing-hero">
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-        <div className="border border-landing-light bg-locker-surface p-4 sm:p-6">
-          <StepHeader step={step} stepNumber={stepNumber} />
+        <Reveal>
+          <div className="border border-landing-light bg-locker-surface p-4 sm:p-6">
+            <StepHeader step={step} stepNumber={stepNumber} />
 
-          {step === "username" && <UsernameStep onNext={() => setStep("team")} />}
-          {step === "team" && (
-            <TeamStep
-              onNext={(selectedTeam) => {
-                setTeam(selectedTeam);
-                setStep("players");
-              }}
-            />
-          )}
-          {step === "players" && team && <PlayersStep team={team} onFinish={finish} />}
-        </div>
+            {step === "username" && <UsernameStep onNext={() => setStep("team")} />}
+            {step === "team" && (
+              <TeamStep
+                onNext={(selectedTeam) => {
+                  setTeam(selectedTeam);
+                  setStep("players");
+                }}
+              />
+            )}
+            {step === "players" && team && <PlayersStep team={team} onFinish={finish} />}
+          </div>
+        </Reveal>
       </div>
     </div>
   );

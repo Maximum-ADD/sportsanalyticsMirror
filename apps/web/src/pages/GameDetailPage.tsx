@@ -10,6 +10,7 @@ import { CourtView } from "@/components/CourtView";
 import { PlayerCardsDisplay, usePlayerReliability } from "@/components/PlayerCards";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
+import { Reveal } from "@/components/landing/Reveal";
 import {
   computeReliability,
   reliabilityToneClass,
@@ -441,7 +442,8 @@ export function GameDetailPage() {
           ← Back
         </button>
 
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+        <Reveal>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
           {/* Wraps: two full club names ("Portland Trail Blazers" at
               "Oklahoma City Thunder") set at text-lg are far wider than a
               phone, and without this the row pushed the whole page into a
@@ -462,9 +464,9 @@ export function GameDetailPage() {
               Final: {game.awayTeam.abbreviation} {game.awayScore} — {game.homeScore} {game.homeTeam.abbreviation}
             </div>
           )}
-        </div>
+          </div>
 
-        <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           <div className="border border-landing-light bg-landing-hero px-4 py-3">
             <div className="font-mono text-[10.5px] tracking-[0.1em] text-locker-ink-muted uppercase">
               Win probability
@@ -520,9 +522,9 @@ export function GameDetailPage() {
               </div>
             )}
           </div>
-        </div>
+          </div>
 
-        {!prediction && (
+          {!prediction && (
           <p className="mb-6 text-[12.5px] text-locker-ink-muted">
             No win probability has been generated for this game yet — run{" "}
             <code className="border border-landing-light bg-locker-surface px-1.5 py-0.5 text-landing-ink">
@@ -534,9 +536,11 @@ export function GameDetailPage() {
             </code>
             .
           </p>
-        )}
+          )}
+        </Reveal>
 
-        <div className="mb-3 flex flex-wrap items-center gap-3.5">
+        <Reveal delay={1}>
+          <div className="mb-3 flex flex-wrap items-center gap-3.5">
           <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
             Predicted top scorers
           </h2>
@@ -550,13 +554,13 @@ export function GameDetailPage() {
               Reset edited points
             </button>
           )}
-        </div>
+          </div>
 
-        {predictedScorers.length === 0 ? (
+          {predictedScorers.length === 0 ? (
           <div className="border border-landing-light bg-locker-surface p-4 sm:p-6 text-[12.5px] text-locker-ink-muted">
             Not enough game history yet for either roster to predict scoring for this matchup.
           </div>
-        ) : (
+          ) : (
           <div className="flex flex-col gap-3.5">
             {/* Court on the left, a player-profile panel on the right that
                 opens when a headshot is clicked — the court stays on its
@@ -612,7 +616,8 @@ export function GameDetailPage() {
               isPending={reliability.isPending}
             />
           </div>
-        )}
+          )}
+        </Reveal>
       </div>
     </div>
   );
