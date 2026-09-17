@@ -24,6 +24,12 @@ vi.mock("@/lib/meApi", () => ({
   followPlayer: vi.fn(),
   fetchSavedLineups: vi.fn(),
   deleteSavedLineup: vi.fn(),
+  // Used by the API keys section — its own behaviour is covered in
+  // ApiKeysSection.spec.tsx, so here it only needs to resolve to nothing.
+  fetchMyApiKeys: vi.fn().mockResolvedValue({ consumer: null, keys: [] }),
+  createMyApiKey: vi.fn(),
+  revokeMyApiKey: vi.fn(),
+  deleteMyApiKey: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({

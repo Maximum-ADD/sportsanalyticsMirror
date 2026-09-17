@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { LandingPage } from "./pages/LandingPage";
 import { HomePage } from "./pages/HomePage";
@@ -12,7 +12,6 @@ import { PredictionsPage } from "./pages/PredictionsPage";
 import { GameDetailPage } from "./pages/GameDetailPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
-import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { AdminPage } from "./pages/AdminPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -36,10 +35,9 @@ function App() {
             path="/profile"
             element={<ProtectedRoute><ProfileGate><ProfilePage /></ProfileGate></ProtectedRoute>}
           />
-          <Route
-            path="/api-keys"
-            element={<ProtectedRoute><ProfileGate><ApiKeysPage /></ProfileGate></ProtectedRoute>}
-          />
+          {/* API key management moved into Profile — kept as a redirect so
+              existing links and bookmarks still land somewhere useful. */}
+          <Route path="/api-keys" element={<Navigate to="/profile" replace />} />
           <Route
             path="/home"
             element={<ProtectedRoute><ProfileGate><HomePage /></ProfileGate></ProtectedRoute>}
