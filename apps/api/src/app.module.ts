@@ -10,6 +10,7 @@ import { DatasetsModule } from "./datasets/datasets.module.js";
 import { GamesModule } from "./games/games.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { FollowsModule } from "./me/follows/follows.module.js";
+import { MeApiKeysModule } from "./me/api-keys/me-api-keys.module.js";
 import { MeModule } from "./me/me.module.js";
 import { PicksModule } from "./me/picks/picks.module.js";
 import { SavedModule } from "./me/saved/saved.module.js";
@@ -30,6 +31,7 @@ import { CustomStatisticsModule } from "./custom-statistics/custom-statistics.mo
     OptimizerModule,
     AnalyticsModule,
     MeModule,
+    MeApiKeysModule,
     PicksModule,
     FollowsModule,
     SavedModule,

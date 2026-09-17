@@ -162,6 +162,12 @@ export interface ApiConsumer {
   dailyQuota: number;
   isActive: boolean;
   createdAt: string;
+  // USER — a consumer auto-provisioned for a signed-in user's own API
+  // access (user is the owner); EXTERNAL — an admin-created third-party
+  // consumer. This is how the admin list tells user keys apart from
+  // external integration keys.
+  kind: "USER" | "EXTERNAL";
+  user: { id: string; name: string; email: string } | null;
   keys: { id: string; label: string | null; isActive: boolean; lastUsedAt: string | null; createdAt: string }[];
   _count: { usageLog: number };
 }

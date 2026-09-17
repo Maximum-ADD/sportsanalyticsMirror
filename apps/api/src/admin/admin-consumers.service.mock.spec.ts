@@ -36,6 +36,44 @@ describe("AdminConsumersService", () => {
       expect(result.data).toEqual([]);
       expect(result.page).toBe(1);
     });
+
+    it("includes the owner and marks user-owned consumers as USER kind", async () => {
+      prisma.apiConsumer.findMany.mockResolvedValue([
+        {
+          id: "c-user",
+          name: "Owen",
+          contactEmail: "owen@example.com",
+          rateLimit: 60,
+          dailyQuota: 5000,
+          isActive: true,
+          createdAt: new Date("2026-09-17T00:00:00.000Z"),
+          userId: "u1",
+          user: { id: "u1", name: "Owen", email: "owen@example.com" },
+          keys: [],
+          _count: { usageLog: 3 },
+        },
+        {
+          id: "c-external",
+          name: "ESPN Integration",
+          contactEmail: "api@espn.com",
+          rateLimit: 100,
+          dailyQuota: 10000,
+          isActive: true,
+          createdAt: new Date("2026-09-01T00:00:00.000Z"),
+          userId: null,
+          user: null,
+          keys: [],
+          _count: { usageLog: 900 },
+        },
+      ]);
+
+      const result = await service.listConsumers({});
+
+      expect(result.data[0].kind).toBe("USER");
+      expect(result.data[0].user).toEqual({ id: "u1", name: "Owen", email: "owen@example.com" });
+      expect(result.data[1].kind).toBe("EXTERNAL");
+      expect(result.data[1].user).toBeNull();
+    });
   });
 
   describe("createConsumer", () => {

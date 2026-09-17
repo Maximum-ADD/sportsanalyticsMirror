@@ -36,9 +36,15 @@ interface LandingHeaderProps {
 export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHeaderProps) {
   // Admin is the one link that isn't always in the row — it only appears
   // for a signed-in admin, appended rather than spliced in anywhere else so
-  // it doesn't shift every other link's position for everyone else.
+  // it doesn't shift every other link's position for everyone else. API
+  // Keys similarly only appears for a signed-in user (any role — it's the
+  // user's own key management page), sitting before Admin.
   const { data: me } = useMe();
-  const links = me?.role === "ADMIN" ? [...APP_LINKS, { label: "Admin", to: "/admin" }] : APP_LINKS;
+  const links = [
+    ...APP_LINKS,
+    ...(me ? [{ label: "API Keys", to: "/api-keys" }] : []),
+    ...(me?.role === "ADMIN" ? [{ label: "Admin", to: "/admin" }] : []),
+  ];
 
   // Below lg the links live in a drawer behind a menu button instead of in
   // the row: seven nowrap links cannot fit a phone width, and the previous
