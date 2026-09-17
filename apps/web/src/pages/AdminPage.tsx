@@ -1173,7 +1173,7 @@ function AdminConsumersSection() {
                               : "bg-landing-hero text-locker-ink-muted"
                           }`}
                         >
-                          {consumer.kind === "USER" ? "User key" : "External"}
+                          {consumer.kind === "USER" ? "User key" : "Admin key"}
                         </span>
                       </div>
                       {/* For user-owned consumers the account relation is the live

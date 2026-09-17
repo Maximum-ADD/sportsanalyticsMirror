@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/
 import type { Response } from "express";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
+import { OptionalSessionGuard } from "../common/optional-session.guard.js";
 import { toCsv } from "../common/csv.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService, type PlayerWithTeam } from "./players.service.js";
@@ -99,7 +100,7 @@ function parseBatchStatsIds(ids: unknown): string[] {
 }
 
 @ApiTags("players")
-@UseGuards(ApiKeyGuard)
+@UseGuards(OptionalSessionGuard, ApiKeyGuard)
 @Controller("v1/players")
 export class PlayersController {
   constructor(

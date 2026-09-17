@@ -15,14 +15,23 @@
 // (and the Set-Cookie that matters) would be consumed here instead.
 const DEFAULT_API_ORIGIN = "https://sportsanalytics-api.onrender.com";
 
-export async function proxyToApi(request: Request, apiOrigin: string | undefined, rewrittenPath: string): Promise<Response> {
+export async function proxyToApi(request: Request, apiOrigin: string | undefined, rewrittenPath: string, siteApiKey?: string): Promise<Response> {
   const origin = apiOrigin?.trim() || DEFAULT_API_ORIGIN;
   const incomingUrl = new URL(request.url);
   const target = new URL(`${rewrittenPath}${incomingUrl.search}`, origin);
 
+  // The API requires an API key or session on its data endpoints. The site
+  // carries a first-party key (Pages env SITE_PROXY_API_KEY) so signed-out
+  // browsers keep working; a caller's own X-API-Key always takes precedence.
+  // Headers are copied because a Request's headers are immutable in place.
+  const headers = new Headers(request.headers);
+  if (siteApiKey && !headers.has("x-api-key")) {
+    headers.set("x-api-key", siteApiKey);
+  }
+
   return fetch(target, {
     method: request.method,
-    headers: request.headers,
+    headers,
     body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
     redirect: "manual",
   });

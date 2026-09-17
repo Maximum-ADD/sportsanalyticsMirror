@@ -55,12 +55,12 @@ describe("ApiKeyGuard", () => {
     expect(await guard.canActivate(ctx)).toBe(true);
   });
 
-  it("passes through when no API key header and no session (anonymous)", async () => {
+  it("rejects when there is no API key and no session (anonymous)", async () => {
     const prisma = createMockPrisma({ key: null });
     const guard = new ApiKeyGuard(prisma);
     const ctx = createContext({});
 
-    expect(await guard.canActivate(ctx)).toBe(true);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ApiException);
   });
 
   it("rejects when the API key hash doesn't match any row", async () => {

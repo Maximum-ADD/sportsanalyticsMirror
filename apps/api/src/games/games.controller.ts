@@ -2,6 +2,7 @@ import { Controller, Get, HttpStatus, Param, Query, Res, UseGuards } from "@nest
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
+import { OptionalSessionGuard } from "../common/optional-session.guard.js";
 import { parsePageParams } from "../common/pagination.js";
 import { toCsv, type ColumnSpec } from "../common/csv.js";
 import type { Response } from "express";
@@ -10,11 +11,12 @@ import { GamesService } from "./games.service.js";
 
 // Public, like TeamsController/PlayersController — games/schedules/scores
 // are the same kind of read-only, non-personal data those already expose.
-// The class-level API-key guard still lets anonymous requests through, so
-// the landing page's live-match widget (rendered for signed-out visitors)
-// can call this endpoint at all.
+// Callers need a signed-in session or an API key: the first-party site
+// proxy attaches its own key, so the landing page's live-match widget
+// (rendered for signed-out visitors) still reaches this endpoint while
+// plain anonymous requests get a 401.
 @ApiTags("games")
-@UseGuards(ApiKeyGuard)
+@UseGuards(OptionalSessionGuard, ApiKeyGuard)
 @Controller("v1/games")
 export class GamesController {
   constructor(
