@@ -4,7 +4,6 @@ import { ApiError } from "@/lib/apiClient";
 import { fetchTeamResults } from "@/lib/nbaApi";
 import { useMe } from "@/lib/useMe";
 import { TeamBadge } from "@/components/TeamBadge";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { LockerSection } from "./LockerSection";
 import type { OrientedModelCall, TeamResult } from "@/types/nba";
 
@@ -41,8 +40,10 @@ export function YourTeamsList() {
   if (resultsQuery.isPending) {
     return (
       <LockerSection title={title}>
-        <div className="flex min-h-24 items-center justify-center border border-landing-light bg-locker-surface">
-          <BasketballSpinner label="Loading recent results" />
+        <div role="status" aria-label="Loading recent results" className="animate-pulse space-y-2">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="h-11 border border-landing-light bg-locker-surface" />
+          ))}
         </div>
       </LockerSection>
     );

@@ -12,6 +12,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { TeamBadge } from "@/components/TeamBadge";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { SectionLoading } from "@/components/ui/loading-overlay";
+import { Reveal } from "@/components/landing/Reveal";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMe } from "@/lib/useMe";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
@@ -306,7 +307,8 @@ export function PlayersListPage() {
       <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
         {/* Header — the page's title and its method note, the same job the
             predictions page's opening band does. */}
-        <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
+        <Reveal>
+          <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Players</h1>
             {(playersQuery.data || isFollowingView) && (
@@ -330,10 +332,12 @@ export function PlayersListPage() {
                   : "All players"}
             </span>
           </div>
-        </div>
+          </div>
+        </Reveal>
 
         {/* League leaders — one card per headline category, with the
             participation floor the API applied stated on the right. */}
+        <Reveal delay={1}>
         <section className="mb-6">
           <div className="mb-3 flex items-center gap-3.5">
             <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
@@ -411,7 +415,9 @@ export function PlayersListPage() {
             </SectionLoading>
           )}
         </section>
+        </Reveal>
 
+        <Reveal delay={2}>
         <PlayersFilterBar
           teams={teamsQuery.data?.data ?? []}
           searchTerm={searchTerm}
@@ -572,6 +578,7 @@ export function PlayersListPage() {
             onPageChange={setPage}
           />
         )}
+        </Reveal>
       </div>
     </div>
   );

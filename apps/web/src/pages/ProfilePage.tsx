@@ -7,6 +7,7 @@ import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
+import { Reveal } from "@/components/landing/Reveal";
 import { authClient } from "@/lib/authClient";
 import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
 import { deleteSavedLineup, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
@@ -500,50 +501,64 @@ export function ProfilePage() {
   return (
     <div className="min-h-full bg-landing-hero">
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-        <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
-          <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Profile</h1>
-          <p className="mt-2 text-[12.5px] text-locker-ink-muted">{me.email}</p>
-        </div>
-
-        <div className="mb-6">
-          <SectionHeading>Avatar</SectionHeading>
-          <AvatarEditor avatarUrl={me.avatarUrl} username={me.username} name={me.name} />
-        </div>
-
-        <div className="mb-6">
-          <SectionHeading>Username</SectionHeading>
-          {me.username && <UsernameEditor currentUsername={me.username} />}
-        </div>
-
-        <div className="mb-6">
-          <SectionHeading>Favorite team</SectionHeading>
-          <FavoriteTeamEditor favoriteTeam={me.favoriteTeam} />
-        </div>
-
-        <div className="mb-6">
-          <SectionHeading>Followed players</SectionHeading>
-          <FollowedPlayersList players={me.followedPlayers} />
-        </div>
-
-        <div className="mb-6">
-          <SectionHeading>Saved lineups</SectionHeading>
-          <SavedLineupsSection />
-        </div>
-
-        <div className="border-t border-landing-light pt-6">
-          <SectionHeading>Account</SectionHeading>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <LockerButton
-              onClick={async () => {
-                await authClient.signOut();
-                navigate("/");
-              }}
-            >
-              Sign out
-            </LockerButton>
-            <DeleteAccountControl />
+        <Reveal>
+          <div className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
+            <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Profile</h1>
+            <p className="mt-2 text-[12.5px] text-locker-ink-muted">{me.email}</p>
           </div>
-        </div>
+        </Reveal>
+
+        <Reveal delay={1}>
+          <div className="mb-6">
+            <SectionHeading>Avatar</SectionHeading>
+            <AvatarEditor avatarUrl={me.avatarUrl} username={me.username} name={me.name} />
+          </div>
+        </Reveal>
+
+        <Reveal delay={1}>
+          <div className="mb-6">
+            <SectionHeading>Username</SectionHeading>
+            {me.username && <UsernameEditor currentUsername={me.username} />}
+          </div>
+        </Reveal>
+
+        <Reveal delay={2}>
+          <div className="mb-6">
+            <SectionHeading>Favorite team</SectionHeading>
+            <FavoriteTeamEditor favoriteTeam={me.favoriteTeam} />
+          </div>
+        </Reveal>
+
+        <Reveal delay={2}>
+          <div className="mb-6">
+            <SectionHeading>Followed players</SectionHeading>
+            <FollowedPlayersList players={me.followedPlayers} />
+          </div>
+        </Reveal>
+
+        <Reveal delay={3}>
+          <div className="mb-6">
+            <SectionHeading>Saved lineups</SectionHeading>
+            <SavedLineupsSection />
+          </div>
+        </Reveal>
+
+        <Reveal delay={3}>
+          <div className="border-t border-landing-light pt-6">
+            <SectionHeading>Account</SectionHeading>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <LockerButton
+                onClick={async () => {
+                  await authClient.signOut();
+                  navigate("/");
+                }}
+              >
+                Sign out
+              </LockerButton>
+              <DeleteAccountControl />
+            </div>
+          </div>
+        </Reveal>
       </div>
     </div>
   );

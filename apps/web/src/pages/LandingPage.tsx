@@ -5,8 +5,17 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LandingMatchWidget } from "@/components/landing/LandingMatchWidget";
 import { Marquee, type MarqueeItem } from "@/components/landing/Marquee";
 import { ModelExplainer } from "@/components/landing/ModelExplainer";
-import { Reveal, type RevealDelay } from "@/components/landing/Reveal";
+import { Reveal as RevealBase, type RevealDelay, type RevealProps } from "@/components/landing/Reveal";
 import { SectionPhoto } from "@/components/landing/SectionPhoto";
+
+// The pre-login landing page is the one place entrances should replay on
+// every scroll past — a marketing flourish, not the "settle in and stay"
+// behaviour every other page wants. Reveal defaults to one-shot, so this
+// page opts back into replay locally instead of passing the prop at each
+// of its ~15 call sites.
+function Reveal(props: RevealProps) {
+  return <RevealBase replay {...props} />;
+}
 
 const APP_HOME = "/home";
 
