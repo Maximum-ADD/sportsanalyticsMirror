@@ -193,6 +193,14 @@ export function revokeAdminApiKey(consumerId: string, keyId: string): Promise<{ 
   return sendJson<{ revoked: true }>(`/v1/admin/consumers/${consumerId}/keys/${keyId}`, "DELETE");
 }
 
+export function deleteAdminConsumer(consumerId: string): Promise<{ deleted: true }> {
+  return sendJson<{ deleted: true }>(`/v1/admin/consumers/${consumerId}`, "DELETE");
+}
+
+export function deleteAdminApiKey(consumerId: string, keyId: string): Promise<{ deleted: true }> {
+  return sendJson<{ deleted: true }>(`/v1/admin/consumers/${consumerId}/keys/${keyId}/purge`, "DELETE");
+}
+
 // --- Ingestion Schedule & Manual Pull ---
 
 export type IngestionFrequency = "NEVER" | "HOURLY" | "DAILY" | "WEEKLY";

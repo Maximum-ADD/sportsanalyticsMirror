@@ -16,6 +16,8 @@ import {
   createAdminConsumer,
   createAdminApiKey,
   revokeAdminApiKey,
+  deleteAdminConsumer,
+  deleteAdminApiKey,
   fetchIngestionSchedule,
   updateIngestionSchedule,
   triggerIngestionPull,
@@ -1079,6 +1081,17 @@ function AdminConsumersSection() {
     onSuccess: () => refetch(),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (consumerId: string) => deleteAdminConsumer(consumerId),
+    onSuccess: () => refetch(),
+  });
+
+  const deleteKeyMutation = useMutation({
+    mutationFn: ({ consumerId, keyId }: { consumerId: string; keyId: string }) =>
+      deleteAdminApiKey(consumerId, keyId),
+    onSuccess: () => refetch(),
+  });
+
   if (isError) {
     return <ErrorState message="Could not load API consumers." onRetry={() => refetch()} />;
   }
@@ -1171,18 +1184,45 @@ function AdminConsumersSection() {
                                 Revoke
                               </button>
                             )}
+                            <button
+                              type="button"
+                              className={`${BUTTON_CLASS} px-1.5 py-0.5 text-[8px] border-gray-300 text-gray-600`}
+                              onClick={() => {
+                                const message = key.isActive
+                                  ? "Delete this key? It's still active — this will stop it working immediately."
+                                  : "Delete this key permanently?";
+                                if (confirm(message)) {
+                                  deleteKeyMutation.mutate({ consumerId: consumer.id, keyId: key.id });
+                                }
+                              }}
+                            >
+                              Delete
+                            </button>
                           </div>
                         ))}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        className={BUTTON_CLASS}
-                        onClick={() => keyMutation.mutate(consumer.id)}
-                      >
-                        Generate Key
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className={BUTTON_CLASS}
+                          onClick={() => keyMutation.mutate(consumer.id)}
+                        >
+                          Generate Key
+                        </button>
+                        <button
+                          type="button"
+                          className={`${BUTTON_CLASS} border-gray-300 text-gray-600`}
+                          onClick={() => {
+                            if (confirm(`Delete consumer "${consumer.name}"? Their API keys will stop working immediately.`)) {
+                              deleteMutation.mutate(consumer.id);
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
