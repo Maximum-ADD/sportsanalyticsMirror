@@ -39,6 +39,8 @@ export class AdminBatchesController {
   @ApiQuery({ name: "search", required: false })
   @ApiQuery({ name: "page", required: false, type: Number })
   @ApiQuery({ name: "pageSize", required: false, type: Number })
+  @ApiQuery({ name: "sort", required: false, enum: ["date", "season", "ingested"], description: "Order by game date (default), season, or when the batch was ingested" })
+  @ApiQuery({ name: "order", required: false, enum: ["asc", "desc"], description: "Sort direction (default desc)" })
   @ApiResponse({ status: 200, description: "Paginated batch list" })
   listBatches(@Query() query: Record<string, unknown>) {
     return this.adminBatchesService.listBatches(query);

@@ -109,11 +109,18 @@ export interface IngestionBatchSummary {
   reviewedBy: { id: string; name: string } | null;
 }
 
+/** Orders the batch list by the date the game was played (the Date column),
+ * by season, or by when the pull that produced the batch ran. */
+export type BatchSortField = "date" | "season" | "ingested";
+export type SortDirection = "asc" | "desc";
+
 export interface FetchAdminBatchesParams {
   status?: string;
   search?: string;
   page?: number;
   pageSize?: number;
+  sort?: BatchSortField;
+  order?: SortDirection;
 }
 
 export function fetchAdminBatches(params: FetchAdminBatchesParams = {}): Promise<PagedResult<IngestionBatchSummary>> {
@@ -233,8 +240,17 @@ export function updateIngestionSchedule(frequency: IngestionFrequency): Promise<
   return sendJson<IngestionScheduleConfig>("/v1/admin/ingestion/schedule", "PUT", { frequency });
 }
 
-export function triggerIngestionPull(): Promise<TriggerResult> {
-  return sendJson<TriggerResult>("/v1/admin/ingestion/pull", "POST", {});
+/** Narrows what a manual pull covers. Every field is optional; an empty
+ * object pulls the current season's recent games plus the postseason, which
+ * is what the button did before the window existed. */
+export interface PullOptions {
+  season?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function triggerIngestionPull(options: PullOptions = {}): Promise<TriggerResult> {
+  return sendJson<TriggerResult>("/v1/admin/ingestion/pull", "POST", options);
 }
 
 export function deleteIngestionBatch(batchId: string): Promise<{ success: boolean }> {

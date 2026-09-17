@@ -15,6 +15,7 @@ import { Roles } from "../common/roles.decorator.js";
 import {
   AdminIngestionService,
   IngestionFrequency,
+  PullOptions,
 } from "./admin-ingestion.service.js";
 
 @Controller("v1/admin/ingestion")
@@ -47,10 +48,21 @@ export class AdminIngestionController {
   /**
    * POST /v1/admin/ingestion/pull
    * Triggers a manual ingestion pull.
+   *
+   * The optional body narrows what the pull covers: a season, and a
+   * from/to date window inside it. An empty body keeps the previous
+   * behaviour — the current season's recent games plus the postseason.
    */
   @Post("pull")
-  async triggerPull(@Req() request: { user: { id: string } }) {
-    return this.ingestionService.triggerPull(request.user.id);
+  async triggerPull(
+    @Req() request: { user: { id: string } },
+    @Body() body: PullOptions = {},
+  ) {
+    return this.ingestionService.triggerPull(request.user.id, {
+      season: body?.season,
+      fromDate: body?.fromDate,
+      toDate: body?.toDate,
+    });
   }
 
   /**

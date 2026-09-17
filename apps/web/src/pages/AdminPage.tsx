@@ -25,6 +25,8 @@ import {
   type UpdatePlayerParams,
   type UpdateTeamParams,
   type IngestionFrequency,
+  type BatchSortField,
+  type SortDirection,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
@@ -44,6 +46,13 @@ const BUTTON_CLASS =
   "min-h-10 border border-landing-light bg-locker-surface px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0";
 const PANEL_CLASS = "border border-landing-light bg-locker-surface p-4";
 const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
+const PULL_LABEL_CLASS = "font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase";
+
+// Shown wherever a pull control is disabled. stats.nba.com blocks
+// cloud-provider IP ranges, so ingestion genuinely cannot run from the
+// deployed API — see apps/ingestion/README.md.
+const INGESTION_UNAVAILABLE_HINT =
+  "Pulls only run where the Python ingestion environment is installed - not on this server.";
 
 type AdminTab = "teams" | "players" | "users" | "batches" | "corrections" | "consumers";
 const TABS: { value: AdminTab; label: string }[] = [
@@ -737,22 +746,61 @@ function UserRow({
 
 // ── Batches (Submission Review) ───────────────────────────────────────
 
+// Batch table columns. A sortField makes the header a sort toggle; the
+// rest are plain labels. Game date is sortable because one pull creates
+// hundreds of batches at once, so the list is unreadable ordered by
+// anything else.
+const BATCH_TABLE_HEADERS: { label: string; sortField?: BatchSortField }[] = [
+  { label: "Game" },
+  { label: "Date", sortField: "date" },
+  { label: "Season", sortField: "season" },
+  { label: "Status" },
+  { label: "Accepted" },
+  { label: "Rejected" },
+  { label: "Ingested", sortField: "ingested" },
+  { label: "Reviewer" },
+  { label: "" },
+];
+
 function AdminBatchesSection() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("PENDING_REVIEW");
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<BatchSortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const debouncedSearchTerm = useDebouncedValue(searchTerm.trim(), SEARCH_DEBOUNCE_IN_MILLISECONDS);
 
+  // Date window for the next manual pull. Empty means "everything the pull
+  // would have covered before" — the whole current season's recent games.
+  const [pullSeason, setPullSeason] = useState("");
+  const [pullFromDate, setPullFromDate] = useState("");
+  const [pullToDate, setPullToDate] = useState("");
+
   const { data, isPending, isError, refetch } = useQuery({
-    queryKey: ["adminBatches", { page, status: statusFilter, search: debouncedSearchTerm }],
+    queryKey: ["adminBatches", { page, status: statusFilter, search: debouncedSearchTerm, sortField, sortDirection }],
     queryFn: () =>
       fetchAdminBatches({
         page,
         pageSize: PAGE_SIZE,
         status: statusFilter || undefined,
         search: debouncedSearchTerm || undefined,
+        sort: sortField,
+        order: sortDirection,
       }),
   });
+
+  /**
+   * Toggles direction when the same column is clicked again, and starts a
+   * new column newest-first. Re-sorting reorders the whole list, so page 2
+   * of the old order is meaningless in the new one — go back to page 1.
+   */
+  function sortByColumn(field: BatchSortField) {
+    setSortDirection((previousDirection) =>
+      field === sortField && previousDirection === "desc" ? "asc" : "desc",
+    );
+    setSortField(field);
+    setPage(1);
+  }
 
   const { data: scheduleData, refetch: refetchSchedule } = useQuery({
     queryKey: ["ingestionSchedule"],
@@ -770,7 +818,12 @@ function AdminBatchesSection() {
   });
 
   const pullMutation = useMutation({
-    mutationFn: () => triggerIngestionPull(),
+    mutationFn: () =>
+      triggerIngestionPull({
+        season: pullSeason.trim() || undefined,
+        fromDate: pullFromDate || undefined,
+        toDate: pullToDate || undefined,
+      }),
     onSuccess: () => {
       refetch();
       refetchSchedule();
@@ -798,18 +851,78 @@ function AdminBatchesSection() {
     return <ErrorState message="Could not load batches." onRetry={() => refetch()} />;
   }
 
+  // Undefined while the schedule is still loading — treated as available so
+  // the controls don't flicker disabled on every page load.
+  const isIngestionUnavailable = scheduleData ? !scheduleData.ingestionAvailable : false;
+  const hasPullWindow = Boolean(pullSeason || pullFromDate || pullToDate);
+
   return (
     <div className="space-y-4">
       {/* Pull Data & Schedule Controls */}
       <div className="flex flex-wrap items-center gap-3 rounded border border-landing-light bg-landing-hero px-3 py-2.5">
+        {/* Both the button and the schedule are disabled where the Python
+            ingestion environment is absent (Render): stats.nba.com blocks
+            cloud-provider IP ranges, so a pull can only ever run from a
+            machine with that environment installed. */}
         <button
           type="button"
           className={`${BUTTON_CLASS} border-orange-400 text-orange-700`}
-          disabled={pullMutation.isPending}
+          disabled={pullMutation.isPending || isIngestionUnavailable}
+          title={isIngestionUnavailable ? INGESTION_UNAVAILABLE_HINT : undefined}
           onClick={() => pullMutation.mutate()}
         >
           {pullMutation.isPending ? "Pulling..." : "Pull Data"}
         </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="pull-season" className={PULL_LABEL_CLASS}>
+            Season
+          </label>
+          <input
+            id="pull-season"
+            className={`${INPUT_CLASS} w-28`}
+            placeholder="2025-26"
+            value={pullSeason}
+            disabled={isIngestionUnavailable}
+            onChange={(event) => setPullSeason(event.target.value)}
+          />
+          <label htmlFor="pull-from-date" className={PULL_LABEL_CLASS}>
+            From
+          </label>
+          <input
+            id="pull-from-date"
+            type="date"
+            className={INPUT_CLASS}
+            value={pullFromDate}
+            disabled={isIngestionUnavailable}
+            onChange={(event) => setPullFromDate(event.target.value)}
+          />
+          <label htmlFor="pull-to-date" className={PULL_LABEL_CLASS}>
+            To
+          </label>
+          <input
+            id="pull-to-date"
+            type="date"
+            className={INPUT_CLASS}
+            value={pullToDate}
+            disabled={isIngestionUnavailable}
+            onChange={(event) => setPullToDate(event.target.value)}
+          />
+          {hasPullWindow && (
+            <button
+              type="button"
+              className={BUTTON_CLASS}
+              onClick={() => {
+                setPullSeason("");
+                setPullFromDate("");
+                setPullToDate("");
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-2">
           <label className="font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase">
             Schedule:
@@ -818,7 +931,7 @@ function AdminBatchesSection() {
             aria-label="Pull schedule"
             className={INPUT_CLASS}
             value={scheduleData?.frequency ?? "NEVER"}
-            disabled={scheduleData ? !scheduleData.ingestionAvailable : false}
+            disabled={isIngestionUnavailable}
             onChange={(e) => scheduleMutation.mutate(e.target.value as IngestionFrequency)}
           >
             <option value="NEVER">Never (manual only)</option>
@@ -827,10 +940,8 @@ function AdminBatchesSection() {
             <option value="WEEKLY">Weekly</option>
           </select>
         </div>
-        {scheduleData && !scheduleData.ingestionAvailable && (
-          <span className="font-mono text-[10px] text-locker-ink-muted">
-            Scheduling unavailable on this server - pulls only run where the Python ingestion environment is installed.
-          </span>
+        {isIngestionUnavailable && (
+          <span className="font-mono text-[10px] text-locker-ink-muted">{INGESTION_UNAVAILABLE_HINT}</span>
         )}
         {scheduleData?.lastRunAt && (
           <span className="font-mono text-[10px] text-locker-ink-muted">
@@ -881,17 +992,46 @@ function AdminBatchesSection() {
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-landing-light bg-landing-hero">
-                {["Game", "Date", "Status", "Accepted", "Rejected", "Reviewer", ""].map((header) => (
-                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
-                    {header}
-                  </th>
-                ))}
+                {BATCH_TABLE_HEADERS.map((header) => {
+                  const columnSortField = header.sortField;
+                  const isSortedColumn = columnSortField !== undefined && columnSortField === sortField;
+                  return (
+                    <th
+                      key={header.label}
+                      className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase"
+                      aria-sort={
+                        columnSortField === undefined
+                          ? undefined
+                          : isSortedColumn
+                            ? sortDirection === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                      }
+                    >
+                      {columnSortField === undefined ? (
+                        header.label
+                      ) : (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 uppercase transition-colors hover:text-landing-ink"
+                          onClick={() => sortByColumn(columnSortField)}
+                        >
+                          {header.label}
+                          <span aria-hidden>
+                            {isSortedColumn ? (sortDirection === "asc" ? "▲" : "▼") : "↕"}
+                          </span>
+                        </button>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {data?.data.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
+                  <td colSpan={BATCH_TABLE_HEADERS.length} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
                     No batches found.
                   </td>
                 </tr>
@@ -904,8 +1044,11 @@ function AdminBatchesSection() {
                       </div>
                       <div className="font-mono text-[10px] text-locker-ink-muted">{batch.game.nbaGameId}</div>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
+                    <td className="px-3 py-2.5 font-mono text-[11px] whitespace-nowrap text-locker-ink-muted">
                       {new Date(batch.game.gameDate).toLocaleDateString()}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] whitespace-nowrap text-locker-ink-muted">
+                      {batch.game.season}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`inline-block rounded px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase ${
@@ -919,6 +1062,9 @@ function AdminBatchesSection() {
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{batch.eventsAccepted}</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{batch.eventsRejected}</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] whitespace-nowrap text-locker-ink-muted">
+                      {new Date(batch.startedAt).toLocaleDateString()}
+                    </td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
                       {batch.reviewedBy?.name ?? "—"}
                     </td>

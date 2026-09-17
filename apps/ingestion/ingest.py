@@ -41,8 +41,11 @@ README.md for why (stats.nba.com blocks cloud-provider IP ranges; this is
 a documented, repeated community pain point, not a guess).
 """
 
+import argparse
+
 from db import get_connection
 from derive_player_game_stats import aggregate_player_game_stats
+from game_window import GameWindow, build_game_window, filter_games_by_window
 from games import (
     NBA_SEASON_TYPE_PLAY_IN,
     NBA_SEASON_TYPE_PLAYOFFS,
@@ -60,7 +63,17 @@ from player_game_logs import fetch_season_player_game_logs
 from rosters import fetch_team_roster, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
+# The season a pull covers unless --season overrides it. Kept as a module
+# constant (rather than inlined) so the other ingestion scripts importing it
+# keep working unchanged.
 SEASON = "2025-26"
+
+# Per-team game fetch sizes. The default is a recency window, which is the
+# right shape for "catch up on what just happened". A date window instead
+# needs the season's games available to filter from, so it asks for a limit
+# comfortably above any real season's game count -- the same reasoning as
+# ingest_historical_season.py's GAMES_PER_TEAM_FULL_SEASON.
+GAMES_PER_TEAM_FOR_DATE_WINDOW = 100
 
 
 def ingest_teams(cursor) -> dict[int, str]:
@@ -99,19 +112,48 @@ def ingest_player_bios(cursor, player_id_by_nba_id: dict[int, str]) -> None:
     print(f"Enriched {updated} player bios.")
 
 
-def collect_recent_game_dates(team_id_by_nba_id: dict[int, str]) -> dict[str, str]:
-    """Fetches every team's recent games, returns a deduplicated nbaGameId -> game_date map."""
+def collect_recent_game_dates(
+    team_id_by_nba_id: dict[int, str],
+    season: str = SEASON,
+    window: GameWindow | None = None,
+) -> dict[str, str]:
+    """Fetches every team's games for the season, returns a deduplicated
+    nbaGameId -> game_date map.
+
+    With no window (the default) this keeps the previous behaviour: each
+    team's newest GAMES_PER_TEAM games. With a window, it asks for enough of
+    the season to filter from and then keeps only the games inside it --
+    otherwise a window older than the newest 15 games would select nothing.
+    """
+    selection_window = window or GameWindow()
+    games_per_team = (
+        None if selection_window.is_open else GAMES_PER_TEAM_FOR_DATE_WINDOW
+    )
+
     game_date_by_nba_game_id: dict[str, str] = {}
     for nba_team_id in team_id_by_nba_id:
-        games = fetch_recent_games(nba_team_id, SEASON)
+        games = (
+            fetch_recent_games(nba_team_id, season)
+            if games_per_team is None
+            else fetch_recent_games(nba_team_id, season, limit=games_per_team)
+        )
         for game in games:
             game_date_by_nba_game_id[game["nba_game_id"]] = game["game_date"]
         print(f"  Found {len(games)} recent games for team {nba_team_id}.")
-    print(f"{len(game_date_by_nba_game_id)} unique games to fetch boxscores for.")
-    return game_date_by_nba_game_id
+
+    selected = filter_games_by_window(game_date_by_nba_game_id, selection_window)
+    if not selection_window.is_open:
+        print(
+            f"  {len(selected)} of {len(game_date_by_nba_game_id)} games fall within "
+            f"{selection_window.describe()}."
+        )
+    print(f"{len(selected)} unique games to fetch boxscores for.")
+    return selected
 
 
-def collect_postseason_game_dates() -> dict[str, str]:
+def collect_postseason_game_dates(
+    season: str = SEASON, window: GameWindow | None = None
+) -> dict[str, str]:
     """Fetches every play-in and playoff game of the season in two API calls.
 
     Two leaguewide LeagueGameLog calls (one per segment) rather than the
@@ -124,17 +166,20 @@ def collect_postseason_game_dates() -> dict[str, str]:
     identically. The play-in and playoff id spaces don't overlap (different
     id prefixes), so merging the two segments into one map is safe.
     """
+    selection_window = window or GameWindow()
     game_date_by_nba_game_id: dict[str, str] = {}
     for nba_season_type in (NBA_SEASON_TYPE_PLAY_IN, NBA_SEASON_TYPE_PLAYOFFS):
-        games = fetch_season_segment_games(SEASON, nba_season_type)
+        games = fetch_season_segment_games(season, nba_season_type)
         for game in games:
             game_date_by_nba_game_id[game["nba_game_id"]] = game["game_date"]
         print(f"  Found {len(games)} {nba_season_type} games.")
-    print(f"{len(game_date_by_nba_game_id)} unique postseason games to fetch boxscores for.")
-    return game_date_by_nba_game_id
+
+    selected = filter_games_by_window(game_date_by_nba_game_id, selection_window)
+    print(f"{len(selected)} unique postseason games to fetch boxscores for.")
+    return selected
 
 
-def collect_postseason_player_figures() -> dict[tuple[str, int], dict]:
+def collect_postseason_player_figures(season: str = SEASON) -> dict[tuple[str, int], dict]:
     """Fetches plus/minus and advanced figures for both postseason segments.
 
     Four calls total (two measure types per segment) covering every
@@ -144,7 +189,7 @@ def collect_postseason_player_figures() -> dict[tuple[str, int], dict]:
     """
     figures_by_player_game: dict[tuple[str, int], dict] = {}
     for nba_season_type in (NBA_SEASON_TYPE_PLAY_IN, NBA_SEASON_TYPE_PLAYOFFS):
-        segment_figures = fetch_season_player_game_logs(SEASON, nba_season_type)
+        segment_figures = fetch_season_player_game_logs(season, nba_season_type)
         figures_by_player_game.update(segment_figures)
         print(f"  Fetched {len(segment_figures)} {nba_season_type} player-game figures.")
     return figures_by_player_game
@@ -274,15 +319,54 @@ def ingest_games_and_stats(
         print(f"Skipped {skipped_unknown_players} stat rows for players not on any ingested roster.")
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parses the pull's command line.
+
+    Split out from main so the argument contract can be tested without
+    running an ingestion. Date arguments are validated here (via
+    build_game_window in main) rather than deep in the run, so a typo fails
+    in the first second instead of after 40 minutes of API calls.
+    """
+    parser = argparse.ArgumentParser(
+        description="Ingest NBA teams, rosters, games and play-by-play into Postgres."
+    )
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="Land batches as PENDING_REVIEW for admin approval instead of COMPLETED.",
+    )
+    parser.add_argument(
+        "--season",
+        default=SEASON,
+        help=f"Season to ingest, e.g. 2025-26 (default: {SEASON}).",
+    )
+    parser.add_argument(
+        "--from-date",
+        dest="from_date",
+        help="Only ingest games on or after this date (YYYY-MM-DD).",
+    )
+    parser.add_argument(
+        "--to-date",
+        dest="to_date",
+        help="Only ingest games on or before this date (YYYY-MM-DD).",
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> None:
+    args = parse_args()
+
     # --review: sets the ingestion batch status to PENDING_REVIEW instead
     # of COMPLETED, so the admin must approve the events in the review
     # workflow before they count as published.
-    import sys
-    needs_review = "--review" in sys.argv
-    batch_status = "PENDING_REVIEW" if needs_review else "COMPLETED"
-    if needs_review:
+    batch_status = "PENDING_REVIEW" if args.review else "COMPLETED"
+    if args.review:
         print("Running with --review: batches will be set to PENDING_REVIEW for admin approval.")
+
+    # Fails fast on a malformed or inverted window, before any API call.
+    window = build_game_window(args.from_date, args.to_date)
+    season = args.season
+    print(f"Ingesting season {season}: {window.describe()}.")
 
     connection = get_connection()
     try:
@@ -298,9 +382,12 @@ def main() -> None:
             ingest_player_bios(cursor, player_id_by_nba_id)
         connection.commit()
 
-        game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id)
+        game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id, season, window)
         # Two calls for the whole regular season, rather than two per game.
-        regular_season_figures = fetch_season_player_game_logs(SEASON, NBA_SEASON_TYPE_REGULAR)
+        # Fetched leaguewide regardless of the window: it is 2 calls either
+        # way, and the figures are looked up per player-game from the games
+        # the window already selected.
+        regular_season_figures = fetch_season_player_game_logs(season, NBA_SEASON_TYPE_REGULAR)
         print(f"Fetched plus/minus and advanced figures for {len(regular_season_figures)} regular-season player-games.")
 
         with connection.cursor() as cursor:
@@ -314,8 +401,8 @@ def main() -> None:
         # leaves a complete regular season behind rather than rolling one
         # back — and, like every other phase, it's idempotent and can be
         # re-run on its own.
-        postseason_game_dates = collect_postseason_game_dates()
-        postseason_figures = collect_postseason_player_figures()
+        postseason_game_dates = collect_postseason_game_dates(season, window)
+        postseason_figures = collect_postseason_player_figures(season)
 
         with connection.cursor() as cursor:
             ingest_games_and_stats(

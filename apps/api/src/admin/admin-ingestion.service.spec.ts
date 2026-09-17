@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { AdminIngestionService } from "./admin-ingestion.service.js";
+import { AdminIngestionService, buildIngestionArgs } from "./admin-ingestion.service.js";
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
@@ -145,6 +145,30 @@ describe("AdminIngestionService", () => {
       expect(spawn).toHaveBeenCalledTimes(1);
     });
 
+    it("passes the season and date window through to the script", async () => {
+      vi.mocked(spawn).mockReturnValue(fakeRunningChild() as unknown as ChildProcess);
+
+      const result = await service.triggerPull("user-1", {
+        season: "2024-25",
+        fromDate: "2026-04-14",
+        toDate: "2026-04-18",
+      });
+
+      expect(result.started).toBe(true);
+      const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[];
+      expect(spawnArgs.slice(1)).toEqual([
+        "--review", "--season", "2024-25", "--from-date", "2026-04-14", "--to-date", "2026-04-18",
+      ]);
+    });
+
+    it("refuses a malformed window without spawning anything", async () => {
+      const result = await service.triggerPull("user-1", { fromDate: "14/04/2026" });
+
+      expect(result.started).toBe(false);
+      expect(result.message).toMatch(/YYYY-MM-DD/);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
     it("refuses a second pull while one is running", async () => {
       vi.mocked(spawn).mockReturnValue(fakeRunningChild() as unknown as ChildProcess);
 
@@ -248,5 +272,42 @@ describe("AdminIngestionService", () => {
 
       expect(spawn).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("buildIngestionArgs", () => {
+  it("always asks for review, so pulls land as PENDING_REVIEW", () => {
+    expect(buildIngestionArgs({})).toEqual(["--review"]);
+  });
+
+  it("adds only the options that were given", () => {
+    expect(buildIngestionArgs({ season: "2024-25" })).toEqual([
+      "--review", "--season", "2024-25",
+    ]);
+    expect(buildIngestionArgs({ fromDate: "2026-04-14" })).toEqual([
+      "--review", "--from-date", "2026-04-14",
+    ]);
+  });
+
+  it("builds a full window", () => {
+    expect(
+      buildIngestionArgs({ season: "2025-26", fromDate: "2026-04-14", toDate: "2026-04-18" }),
+    ).toEqual([
+      "--review", "--season", "2025-26", "--from-date", "2026-04-14", "--to-date", "2026-04-18",
+    ]);
+  });
+
+  it("rejects a malformed season", () => {
+    expect(() => buildIngestionArgs({ season: "2025" })).toThrow(/2025-26/);
+  });
+
+  it("rejects a malformed date", () => {
+    expect(() => buildIngestionArgs({ toDate: "April 18" })).toThrow(/YYYY-MM-DD/);
+  });
+
+  it("rejects an inverted window, which would silently select no games", () => {
+    expect(() =>
+      buildIngestionArgs({ fromDate: "2026-04-18", toDate: "2026-04-14" }),
+    ).toThrow(/must not be after/);
   });
 });

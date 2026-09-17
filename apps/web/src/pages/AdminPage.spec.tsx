@@ -13,6 +13,7 @@ import {
   updateAdminUserRole,
   deleteAdminUser,
   fetchAdminBatches,
+  triggerIngestionPull,
   approveAdminBatch,
   rejectAdminBatch,
   fetchAdminCorrections,
@@ -303,7 +304,120 @@ describe("AdminPage", () => {
       await waitFor(() => expect(approveAdminBatch).toHaveBeenCalledWith("b1", undefined));
     });
 
-    it("disables the schedule and explains when ingestion is unavailable on this server", async () => {
+    it("orders by game date descending by default, not by ingest time", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+
+      await waitFor(() =>
+        expect(fetchAdminBatches).toHaveBeenCalledWith(
+          expect.objectContaining({ sort: "date", order: "desc" }),
+        ),
+      );
+    });
+
+    it("toggles to ascending when the Date header is clicked again", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+      await screen.findByText("No batches found.");
+
+      await user.click(screen.getByRole("button", { name: /^Date/ }));
+
+      await waitFor(() =>
+        expect(fetchAdminBatches).toHaveBeenCalledWith(
+          expect.objectContaining({ sort: "date", order: "asc" }),
+        ),
+      );
+    });
+
+    it("sorts by a different column newest-first", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+      await screen.findByText("No batches found.");
+
+      await user.click(screen.getByRole("button", { name: /^Ingested/ }));
+
+      await waitFor(() =>
+        expect(fetchAdminBatches).toHaveBeenCalledWith(
+          expect.objectContaining({ sort: "ingested", order: "desc" }),
+        ),
+      );
+    });
+
+    it("pulls everything when no window is given", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
+        frequency: "NEVER", lastRunAt: null, updatedAt: "2026-09-17T00:00:00.000Z", ingestionAvailable: true,
+      });
+      vi.mocked(triggerIngestionPull).mockResolvedValue({ started: true, message: "Ingestion queued." });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+      await user.click(await screen.findByRole("button", { name: "Pull Data" }));
+
+      await waitFor(() =>
+        expect(triggerIngestionPull).toHaveBeenCalledWith({
+          season: undefined, fromDate: undefined, toDate: undefined,
+        }),
+      );
+    });
+
+    it("pulls only the chosen season and date window", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
+        frequency: "NEVER", lastRunAt: null, updatedAt: "2026-09-17T00:00:00.000Z", ingestionAvailable: true,
+      });
+      vi.mocked(triggerIngestionPull).mockResolvedValue({ started: true, message: "Ingestion queued." });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+
+      await user.type(await screen.findByLabelText("Season"), "2024-25");
+      await user.type(screen.getByLabelText("From"), "2026-04-14");
+      await user.type(screen.getByLabelText("To"), "2026-04-18");
+      await user.click(screen.getByRole("button", { name: "Pull Data" }));
+
+      await waitFor(() =>
+        expect(triggerIngestionPull).toHaveBeenCalledWith({
+          season: "2024-25", fromDate: "2026-04-14", toDate: "2026-04-18",
+        }),
+      );
+    });
+
+    it("clears a chosen window back to a full pull", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
+        frequency: "NEVER", lastRunAt: null, updatedAt: "2026-09-17T00:00:00.000Z", ingestionAvailable: true,
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+
+      await user.type(await screen.findByLabelText("Season"), "2024-25");
+      await user.click(screen.getByRole("button", { name: "Clear" }));
+
+      expect(screen.getByLabelText("Season")).toHaveValue("");
+      expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+    });
+
+    it("disables every pull control and explains when ingestion is unavailable on this server", async () => {
       setUp();
       const user = userEvent.setup();
       vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
@@ -317,8 +431,14 @@ describe("AdminPage", () => {
       renderWithProviders(<AdminPage />);
       await user.click(screen.getByRole("radio", { name: "Batches" }));
 
-      expect(await screen.findByText(/Scheduling unavailable on this server/)).toBeInTheDocument();
+      expect(await screen.findByText(/Pulls only run where the Python ingestion environment is installed/)).toBeInTheDocument();
       expect(screen.getByRole("combobox", { name: "Pull schedule" })).toBeDisabled();
+      // Previously only the schedule was disabled, leaving a Pull Data
+      // button that could never succeed on the deployed API.
+      expect(screen.getByRole("button", { name: "Pull Data" })).toBeDisabled();
+      expect(screen.getByLabelText("Season")).toBeDisabled();
+      expect(screen.getByLabelText("From")).toBeDisabled();
+      expect(screen.getByLabelText("To")).toBeDisabled();
     });
 
     it("keeps the schedule enabled when ingestion is available", async () => {
@@ -336,7 +456,8 @@ describe("AdminPage", () => {
       await user.click(screen.getByRole("radio", { name: "Batches" }));
 
       expect(await screen.findByRole("combobox", { name: "Pull schedule" })).toBeEnabled();
-      expect(screen.queryByText(/Scheduling unavailable on this server/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Pulls only run where the Python ingestion environment is installed/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Pull Data" })).toBeEnabled();
     });
 
     it("rejects a batch", async () => {

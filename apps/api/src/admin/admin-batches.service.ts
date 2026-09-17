@@ -37,6 +37,57 @@ export interface BatchListQuery {
   search?: string;
   page?: string;
   pageSize?: string;
+  sort?: string;
+  order?: string;
+}
+
+// How the batch list can be ordered. "date" is the date the game was
+// played, which is what the list's Date column shows; "ingested" is when
+// the pull that produced the batch ran. They are unrelated: one pull
+// creates hundreds of batches within seconds, so ordering by ingest time
+// leaves game dates in an arbitrary order that reads as unsorted.
+export type BatchSortField = "date" | "season" | "ingested";
+export type SortDirection = "asc" | "desc";
+
+const DEFAULT_SORT_FIELD: BatchSortField = "date";
+const DEFAULT_SORT_DIRECTION: SortDirection = "desc";
+const BATCH_SORT_FIELDS: BatchSortField[] = ["date", "season", "ingested"];
+
+export interface BatchSort {
+  field: BatchSortField;
+  direction: SortDirection;
+}
+
+/**
+ * Reads the sort field and direction off a query string, falling back to
+ * newest game first. Unrecognised values fall back rather than erroring, so
+ * a stale bookmarked URL still returns a sensible list.
+ */
+export function parseBatchSort(query: Record<string, unknown>): BatchSort {
+  const requestedField = typeof query.sort === "string" ? query.sort : "";
+  const field = BATCH_SORT_FIELDS.includes(requestedField as BatchSortField)
+    ? (requestedField as BatchSortField)
+    : DEFAULT_SORT_FIELD;
+  const direction: SortDirection = query.order === "asc" ? "asc" : DEFAULT_SORT_DIRECTION;
+  return { field, direction };
+}
+
+/**
+ * Builds the Prisma orderBy for a batch sort.
+ *
+ * Game date and season live on the related Game, so those sorts order
+ * through the relation. Every sort ends with startedAt as a tiebreaker:
+ * a night's games share a date, and without it their relative order would
+ * shuffle between pages of the same query.
+ */
+function buildBatchOrderBy(sort: BatchSort) {
+  if (sort.field === "ingested") {
+    return [{ startedAt: sort.direction }];
+  }
+  if (sort.field === "season") {
+    return [{ game: { season: sort.direction } }, { game: { gameDate: sort.direction } }, { startedAt: DEFAULT_SORT_DIRECTION }];
+  }
+  return [{ game: { gameDate: sort.direction } }, { startedAt: DEFAULT_SORT_DIRECTION }];
 }
 
 function getSearchTerms(search: unknown): string[] {
@@ -53,6 +104,7 @@ export class AdminBatchesService {
   // Paginated batch list with optional status and search filters.
   async listBatches(query: Record<string, unknown>): Promise<PagedResult<BatchWithDetails>> {
     const { page, pageSize } = parsePageParams(query);
+    const sort = parseBatchSort(query);
     const searchTerms = getSearchTerms(query.search);
     const statusFilter = typeof query.status === "string" ? query.status : undefined;
 
@@ -91,7 +143,7 @@ export class AdminBatchesService {
       this.prisma.ingestionBatch.findMany({
         where,
         include,
-        orderBy: { startedAt: "desc" },
+        orderBy: buildBatchOrderBy(sort),
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

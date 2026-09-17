@@ -21,6 +21,59 @@ export interface TriggerResult {
   message: string;
 }
 
+/** Which games a manual pull should cover. Every field is optional: an
+ * empty request keeps the previous behaviour — the current season's recent
+ * games plus the whole postseason. */
+export interface PullOptions {
+  season?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// Matches "2025-26". The ingestion script validates this too, but rejecting
+// it here means a typo comes back as a message in the admin UI rather than
+// as a process that exits 40 minutes later.
+const SEASON_PATTERN = /^\d{4}-\d{2}$/;
+
+/**
+ * Turns pull options into ingest.py's command-line arguments.
+ *
+ * Exported for testing: these flags are a contract with the Python script
+ * (see apps/ingestion/test_ingest_args.py), and a mismatch would only show
+ * up as a pull that silently ingests the wrong games.
+ *
+ * Throws when a value is malformed or the window is inverted, so the caller
+ * can report it instead of spawning a doomed run.
+ */
+export function buildIngestionArgs(options: PullOptions): string[] {
+  const args = ["--review"];
+
+  if (options.season) {
+    if (!SEASON_PATTERN.test(options.season)) {
+      throw new Error(`season must look like 2025-26, got "${options.season}"`);
+    }
+    args.push("--season", options.season);
+  }
+
+  for (const [flag, value] of [
+    ["--from-date", options.fromDate],
+    ["--to-date", options.toDate],
+  ] as const) {
+    if (!value) continue;
+    if (!ISO_DATE_PATTERN.test(value)) {
+      throw new Error(`${flag} must be a YYYY-MM-DD date, got "${value}"`);
+    }
+    args.push(flag, value);
+  }
+
+  if (options.fromDate && options.toDate && options.fromDate > options.toDate) {
+    throw new Error("from-date must not be after to-date");
+  }
+
+  return args;
+}
+
 @Injectable()
 export class AdminIngestionService {
   private readonly logger = new Logger(AdminIngestionService.name);
@@ -126,12 +179,21 @@ export class AdminIngestionService {
    * overlapping runs would duplicate every PENDING_REVIEW batch (safe,
    * since writes are upserts, but wasteful and noisy to review).
    */
-  async triggerPull(_userId?: string): Promise<TriggerResult> {
+  async triggerPull(_userId?: string, options: PullOptions = {}): Promise<TriggerResult> {
     if (this.runningProcess) {
       return {
         started: false,
         message: "A pull is already running. Check the Batches tab and try again once it finishes.",
       };
+    }
+
+    // Reject a malformed season or date window before anything is spawned,
+    // so the admin sees the reason rather than an empty pull.
+    let ingestionArgs: string[];
+    try {
+      ingestionArgs = buildIngestionArgs(options);
+    } catch (error) {
+      return { started: false, message: (error as Error).message };
     }
 
     try {
@@ -142,9 +204,9 @@ export class AdminIngestionService {
         return { started: false, message: unavailable };
       }
 
-      this.logger.log("Triggering manual ingestion pull...");
+      this.logger.log(`Triggering manual ingestion pull: ${ingestionArgs.join(" ")}`);
 
-      const ingestionProcess = spawn(this.pythonPath, [scriptPath, "--review"], {
+      const ingestionProcess = spawn(this.pythonPath, [scriptPath, ...ingestionArgs], {
         cwd: this.ingestionDir,
         detached: true,
         stdio: "ignore",

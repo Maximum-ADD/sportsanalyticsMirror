@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminBatchesService } from "./admin-batches.service.js";
+import { AdminBatchesService, parseBatchSort } from "./admin-batches.service.js";
 
 // Minimal mock that lets us configure return values per-call.
 function createMockPrisma() {
@@ -35,6 +35,36 @@ describe("AdminBatchesService", () => {
       await service.listBatches({});
       const where = prisma.ingestionBatch.findMany.mock.calls[0][0].where;
       expect(where).toEqual({ deletedAt: null });
+    });
+
+    it("orders by game date, not by when the batch was ingested", async () => {
+      // One pull creates hundreds of batches within seconds, so ordering on
+      // startedAt leaves the Date column in an arbitrary order.
+      await service.listBatches({});
+      const orderBy = prisma.ingestionBatch.findMany.mock.calls[0][0].orderBy;
+      expect(orderBy).toEqual([{ game: { gameDate: "desc" } }, { startedAt: "desc" }]);
+    });
+
+    it("orders by game date ascending when asked", async () => {
+      await service.listBatches({ sort: "date", order: "asc" });
+      const orderBy = prisma.ingestionBatch.findMany.mock.calls[0][0].orderBy;
+      expect(orderBy).toEqual([{ game: { gameDate: "asc" } }, { startedAt: "desc" }]);
+    });
+
+    it("orders by season through the game relation", async () => {
+      await service.listBatches({ sort: "season", order: "asc" });
+      const orderBy = prisma.ingestionBatch.findMany.mock.calls[0][0].orderBy;
+      expect(orderBy).toEqual([
+        { game: { season: "asc" } },
+        { game: { gameDate: "asc" } },
+        { startedAt: "desc" },
+      ]);
+    });
+
+    it("can still order by ingest time", async () => {
+      await service.listBatches({ sort: "ingested", order: "desc" });
+      const orderBy = prisma.ingestionBatch.findMany.mock.calls[0][0].orderBy;
+      expect(orderBy).toEqual([{ startedAt: "desc" }]);
     });
 
     it("applies a valid status filter", async () => {
@@ -138,6 +168,26 @@ describe("AdminBatchesService", () => {
       await service.rejectBatch("b1", "u1");
       const data = prisma.ingestionBatch.update.mock.calls[0][0].data;
       expect(data.reviewNotes).toBeNull();
+    });
+  });
+});
+
+describe("parseBatchSort", () => {
+  it("defaults to newest game date first", () => {
+    expect(parseBatchSort({})).toEqual({ field: "date", direction: "desc" });
+  });
+
+  it("reads a recognised field and direction", () => {
+    expect(parseBatchSort({ sort: "ingested", order: "asc" })).toEqual({
+      field: "ingested",
+      direction: "asc",
+    });
+  });
+
+  it("falls back to the default for an unrecognised field", () => {
+    expect(parseBatchSort({ sort: "reviewer", order: "sideways" })).toEqual({
+      field: "date",
+      direction: "desc",
     });
   });
 });
