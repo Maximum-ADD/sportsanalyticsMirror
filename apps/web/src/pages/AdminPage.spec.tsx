@@ -435,7 +435,7 @@ describe("AdminPage", () => {
       await user.click(screen.getByRole("radio", { name: "API Keys" }));
 
       expect(await screen.findByText("Stats LLC")).toBeInTheDocument();
-      expect(screen.getByText("External")).toBeInTheDocument();
+      expect(screen.getByText("Admin key")).toBeInTheDocument();
       expect(screen.getByText("User key")).toBeInTheDocument();
       // the owner identity comes from the live account relation, not the
       // provisioning-time contactEmail copy
