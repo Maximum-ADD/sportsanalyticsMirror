@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/apiClient";
+import { API_BASE_URL } from "@/lib/apiBase";
 import { toQueryString } from "@/lib/nbaApi";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
@@ -90,8 +91,11 @@ export function DatasetsPage() {
                       <span>{release.gamesCount} games</span>
                       <span>{new Date(release.publishedAt).toLocaleDateString()}</span>
                     </div>
+                    {/* Route through the same-origin /api proxy (see apiBase.ts):
+                        a bare /v1 path hits this app's own dev server and renders
+                        a blank page instead of downloading. */}
                     <a
-                      href={`/v1/datasets/${release.version}/download`}
+                      href={`${API_BASE_URL}/v1/datasets/${release.version}/download`}
                       className="border border-landing-light bg-locker-surface px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-landing-ink uppercase transition-colors hover:border-locker-leather"
                       onClick={(e) => e.stopPropagation()}
                     >
