@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -23,6 +23,8 @@ export class AdminIngestionService {
   private readonly logger = new Logger(AdminIngestionService.name);
   private readonly pythonPath: string;
   private readonly ingestionDir: string;
+  /** Handle of the pull process currently in flight, if any. */
+  private runningProcess: ChildProcess | null = null;
 
   constructor(private readonly prisma: PrismaService) {
     // Resolve the ingestion directory relative to the API working directory.
@@ -94,9 +96,19 @@ export class AdminIngestionService {
   /**
    * Trigger a manual ingestion pull.
    * Spawns the Python ingestion script with --review flag so batches
-   * land as PENDING_REVIEW for admin approval.
+   * land as PENDING_REVIEW for admin approval. Only one pull can run at
+   * a time — a full run is ~45 minutes of throttled NBA API calls, and
+   * overlapping runs would duplicate every PENDING_REVIEW batch (safe,
+   * since writes are upserts, but wasteful and noisy to review).
    */
   async triggerPull(_userId?: string): Promise<TriggerResult> {
+    if (this.runningProcess) {
+      return {
+        started: false,
+        message: "A pull is already running. Check the Batches tab and try again once it finishes.",
+      };
+    }
+
     try {
       // Verify the ingestion environment is available before trying to spawn.
       const scriptPath = join(this.ingestionDir, "ingest.py");
@@ -120,9 +132,14 @@ export class AdminIngestionService {
         detached: true,
         stdio: "ignore",
       });
+      this.runningProcess = ingestionProcess;
       ingestionProcess.unref();
-      ingestionProcess.once("error", (error) => this.logger.error(`Ingestion process failed to start: ${error.message}`));
+      ingestionProcess.once("error", (error) => {
+        this.runningProcess = null;
+        this.logger.error(`Ingestion process failed to start: ${error.message}`);
+      });
       ingestionProcess.once("exit", (exitCode) => {
+        this.runningProcess = null;
         if (exitCode === 0) {
           void this.recordCompletedRun();
         } else {
