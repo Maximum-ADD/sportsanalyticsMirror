@@ -4,6 +4,7 @@ import { ExpressAdapter } from "@nestjs/platform-express";
 import expressFactory from "express";
 import { AppModule } from "../src/app.module.js";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
+import { TEST_SITE_PROXY_KEY } from "./test-db.js";
 
 // Boots the real Nest routing tree (players/teams/games/health/not-found)
 // on the same Express 5 instance + ExpressAdapter setup as main.ts, rather
@@ -17,6 +18,19 @@ import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
 export async function createTestApp(): Promise<INestApplication> {
   const server = expressFactory();
   server.use(expressFactory.json());
+
+  // Stand-in for the production first-party proxy (vite dev proxy / Pages
+  // function): the API requires an API key or session on its public read
+  // endpoints, and these specs call them the way the website does — with no
+  // key of their own. Stamping the seeded test key keeps the anonymous call
+  // sites anonymous at the spec level. A request that brings its own
+  // X-API-Key still wins, exactly as in production.
+  server.use((request, _response, next) => {
+    if (!request.headers["x-api-key"]) {
+      request.headers["x-api-key"] = TEST_SITE_PROXY_KEY;
+    }
+    next();
+  });
 
   // { bodyParser: false } mirrors main.ts, and is load-bearing rather than
   // cosmetic. express.json() above comes from body-parser 2.x (Express 5),
@@ -34,7 +48,6 @@ export async function createTestApp(): Promise<INestApplication> {
     bodyParser: false,
     logger: false,
     abortOnError: false,
-    bodyParser: false,
   });
   app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();

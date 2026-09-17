@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { seedTestSiteConsumer } from "./test-db.js";
 
 // Applies every migration to the test database once before the whole suite
 // runs, the same way CI/production would via `prisma migrate deploy` (as
@@ -18,7 +19,7 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-export function setup() {
+export async function setup() {
   if (!process.env.DATABASE_URL) {
     throw new Error(
       "DATABASE_URL is not set. Copy apps/api/.env.test.example to apps/api/.env.test and point it at a disposable Postgres database before running tests."
@@ -27,6 +28,10 @@ export function setup() {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       execSync("npx prisma migrate deploy", { stdio: "inherit" });
+      // Migrations created the ApiConsumer/ApiKey tables if they were new;
+      // the test app stamps TEST_SITE_PROXY_KEY on keyless requests, so the
+      // row it resolves to has to exist before the first spec file boots.
+      await seedTestSiteConsumer();
       return;
     } catch (error) {
       if (attempt === MAX_ATTEMPTS) throw error;
