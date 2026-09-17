@@ -22,6 +22,7 @@ import {
   revokeAdminApiKey,
   deleteAdminConsumer,
   deleteAdminApiKey,
+  fetchIngestionSchedule,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
@@ -53,6 +54,10 @@ vi.mock("@/lib/adminApi", () => ({
   revokeAdminApiKey: vi.fn(),
   deleteAdminConsumer: vi.fn(),
   deleteAdminApiKey: vi.fn(),
+  fetchIngestionSchedule: vi.fn(),
+  updateIngestionSchedule: vi.fn(),
+  triggerIngestionPull: vi.fn(),
+  deleteIngestionBatch: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -296,6 +301,42 @@ describe("AdminPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Approve" }));
       await waitFor(() => expect(approveAdminBatch).toHaveBeenCalledWith("b1", undefined));
+    });
+
+    it("disables the schedule and explains when ingestion is unavailable on this server", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
+        frequency: "NEVER",
+        lastRunAt: null,
+        updatedAt: "2026-09-17T00:00:00.000Z",
+        ingestionAvailable: false,
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+
+      expect(await screen.findByText(/Scheduling unavailable on this server/)).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: "Pull schedule" })).toBeDisabled();
+    });
+
+    it("keeps the schedule enabled when ingestion is available", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
+        frequency: "HOURLY",
+        lastRunAt: "2026-09-16T10:00:00.000Z",
+        updatedAt: "2026-09-16T09:00:00.000Z",
+        ingestionAvailable: true,
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "Batches" }));
+
+      expect(await screen.findByRole("combobox", { name: "Pull schedule" })).toBeEnabled();
+      expect(screen.queryByText(/Scheduling unavailable on this server/)).not.toBeInTheDocument();
     });
 
     it("rejects a batch", async () => {

@@ -11,6 +11,9 @@ export interface ScheduleConfig {
   frequency: IngestionFrequency;
   lastRunAt: Date | null;
   updatedAt: Date;
+  /** False where the Python ingestion environment is absent (e.g. Render),
+   * so callers can explain that pulls only run on machines that have it. */
+  ingestionAvailable: boolean;
 }
 
 export interface TriggerResult {
@@ -43,6 +46,25 @@ export class AdminIngestionService {
   }
 
   /**
+   * Whether this machine can actually run a pull — the ingestion scripts
+   * and Python virtualenv must exist next to the API (true in local dev,
+   * false on Render, where apps/ingestion is not deployed).
+   */
+  isIngestionAvailable(): boolean {
+    return this.missingIngestionPrerequisite() === null;
+  }
+
+  private missingIngestionPrerequisite(): string | null {
+    if (!existsSync(join(this.ingestionDir, "ingest.py"))) {
+      return "Ingestion scripts not found on this server. Run ingestion from a machine with the Python environment set up.";
+    }
+    if (!existsSync(this.pythonPath)) {
+      return "Python virtual environment not found. Run `pip install -r requirements.txt` in apps/ingestion first.";
+    }
+    return null;
+  }
+
+  /**
    * Get the current schedule configuration.
    */
   async getSchedule(): Promise<ScheduleConfig> {
@@ -56,6 +78,7 @@ export class AdminIngestionService {
         frequency: "NEVER",
         lastRunAt: null,
         updatedAt: new Date(),
+        ingestionAvailable: this.isIngestionAvailable(),
       };
     }
 
@@ -63,6 +86,7 @@ export class AdminIngestionService {
       frequency: schedule.frequency as IngestionFrequency,
       lastRunAt: schedule.lastRunAt,
       updatedAt: schedule.updatedAt,
+      ingestionAvailable: this.isIngestionAvailable(),
     };
   }
 
@@ -90,6 +114,7 @@ export class AdminIngestionService {
       frequency: schedule.frequency as IngestionFrequency,
       lastRunAt: schedule.lastRunAt,
       updatedAt: schedule.updatedAt,
+      ingestionAvailable: this.isIngestionAvailable(),
     };
   }
 
@@ -112,17 +137,9 @@ export class AdminIngestionService {
     try {
       // Verify the ingestion environment is available before trying to spawn.
       const scriptPath = join(this.ingestionDir, "ingest.py");
-      if (!existsSync(scriptPath)) {
-        return {
-          started: false,
-          message: "Ingestion scripts not found on this server. Run ingestion from a machine with the Python environment set up.",
-        };
-      }
-      if (!existsSync(this.pythonPath)) {
-        return {
-          started: false,
-          message: "Python virtual environment not found. Run `pip install -r requirements.txt` in apps/ingestion first.",
-        };
+      const unavailable = this.missingIngestionPrerequisite();
+      if (unavailable) {
+        return { started: false, message: unavailable };
       }
 
       this.logger.log("Triggering manual ingestion pull...");
@@ -199,6 +216,13 @@ export class AdminIngestionService {
    */
   @Cron(CronExpression.EVERY_HOUR)
   async checkSchedule(): Promise<void> {
+    // The cron runs on every deployment, but only machines with the Python
+    // ingestion environment can actually pull — skip silently elsewhere
+    // instead of pointlessly re-checking the schedule every hour.
+    if (!this.isIngestionAvailable()) {
+      return;
+    }
+
     const schedule = await this.getSchedule();
 
     if (schedule.frequency === "NEVER") {
