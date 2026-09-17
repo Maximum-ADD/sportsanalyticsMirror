@@ -1,8 +1,13 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, UseGuards } from "@nestjs/common";
+import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { EvaluatedGamesService } from "./evaluated-games.service.js";
 import { LeaderboardService, type Leaderboard } from "./leaderboard.service.js";
 import { ModelAccuracyService, type ModelAccuracyReport } from "./model-accuracy.service.js";
 
+// Anonymous requests pass through the API-key guard untouched; a valid
+// X-API-Key additionally stamps the consumer identity and counts toward
+// its rate limit and daily quota.
+@UseGuards(ApiKeyGuard)
 @Controller("v1/analytics")
 export class AnalyticsController {
   constructor(
@@ -12,10 +17,11 @@ export class AnalyticsController {
   ) {}
 
   // GET /v1/analytics/model-accuracy — how the Elo model has actually scored
-  // on games that are both finished and predicted. Deliberately public and
-  // unguarded: it describes the model, not a user, so it is identical for
-  // every account and for signed-out visitors. Not paginated either — it is
-  // a fixed-size summary, not a list.
+  // on games that are both finished and predicted. Deliberately public: it
+  // describes the model, not a user, so it is identical for every account,
+  // every API key, and signed-out visitors. The class-level API-key guard
+  // passes anonymous requests through untouched. Not paginated either — it
+  // is a fixed-size summary, not a list.
   @Get("model-accuracy")
   async getModelAccuracy(): Promise<ModelAccuracyReport> {
     const evaluatedGames = await this.evaluatedGamesService.getEvaluatedGames();

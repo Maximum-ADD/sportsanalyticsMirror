@@ -1,6 +1,7 @@
-import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Param, Query, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
+import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { TeamsService, type SuggestedPlayer } from "./teams.service.js";
 
 // Upper bound on the onboarding step's "suggested players" prompt — see
@@ -9,6 +10,7 @@ import { TeamsService, type SuggestedPlayer } from "./teams.service.js";
 const MAX_SUGGESTED_PLAYERS = 20;
 
 @ApiTags("teams")
+@UseGuards(ApiKeyGuard)
 @Controller("v1/teams")
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}

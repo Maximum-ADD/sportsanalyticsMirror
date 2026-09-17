@@ -21,8 +21,15 @@ export interface ApiKeyAuthenticatedRequest {
 
 // Authenticates a request by its X-API-Key header, checks rate limits
 // and daily quotas, and logs the request for usage tracking. Applied
-// to public endpoints alongside SessionAuthGuard — API key OR session
-// cookie authenticates.
+// at the class level on the public read controllers (players, games,
+// teams, analytics, datasets): anonymous requests pass through
+// unchanged, and a valid key additionally stamps the consumer identity
+// for downstream use.
+//
+// Deliberately NOT applied to session-gated controllers (/v1/me/**,
+// /v1/admin/**, optimizer, custom-statistics): the guard never sets
+// request.user, so those routes stay session-only regardless — an API
+// key alone can never reach anything restricted.
 //
 // The guard never rejects a request that already has a session user
 // (set by SessionAuthGuard), so a dual-auth endpoint lets either
