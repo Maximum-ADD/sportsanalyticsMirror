@@ -272,6 +272,16 @@ export function PlayerTraitsRadar({ seasonAverages }: PlayerTraitsRadarProps) {
         </RadarChart>
       </ResponsiveContainer>
 
+      {/* The radar shape is SVG — invisible to screen readers and to the
+          read-aloud control. This list carries the same normalised trait
+          values as text ("Scoring 77 out of 100") so the chart's message
+          survives without sight. */}
+      <ul className="sr-only">
+        {traitData.map(({ trait, value }) => (
+          <li key={trait}>{`${TRAIT_LABELS[trait]} ${value} out of 100`}</li>
+        ))}
+      </ul>
+
       {/* Drill-down for the selected trait: the raw season figures behind
           the normalised radar shape, each with a plain-terms gloss. Reads
           the same averages the radar does, so the local "what if" edit

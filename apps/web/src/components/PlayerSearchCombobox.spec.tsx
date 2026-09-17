@@ -87,7 +87,7 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} />);
 
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
 
     expect(screen.queryByText("Top scorers")).not.toBeInTheDocument();
     expect(screen.queryByText("Your team")).not.toBeInTheDocument();
@@ -104,7 +104,7 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
 
     expect(await screen.findByText("Top scorers")).toBeInTheDocument();
     expect(screen.getByText("Nikola Jokic")).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
 
     expect(await screen.findByText("Your team")).toBeInTheDocument();
     expect(screen.getByText("LeBron James")).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
 
     expect(await screen.findByText("Following")).toBeInTheDocument();
     expect(screen.getByText("Devin Booker")).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
 
     await screen.findByText("Following");
     expect(screen.getAllByText("Devin Booker")).toHaveLength(1);
@@ -192,7 +192,7 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
 
     expect(await screen.findByText("Following")).toBeInTheDocument();
     expect(screen.getByText("Devin Booker")).toBeInTheDocument();
@@ -211,8 +211,8 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={onSelect} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
-    await user.click(await screen.findByRole("button", { name: /Nikola Jokic/ }));
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: /Nikola Jokic/ }));
 
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "player-9" }));
   });
@@ -237,12 +237,97 @@ describe("PlayerSearchCombobox", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
-    await user.click(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("combobox"));
     expect(await screen.findByText("Nikola Jokic")).toBeInTheDocument();
 
-    await user.type(screen.getByRole("searchbox"), "curry");
+    await user.type(screen.getByRole("combobox"), "curry");
 
     await waitFor(() => expect(screen.getByText("Stephen Curry")).toBeInTheDocument());
     expect(screen.queryByText("Nikola Jokic")).not.toBeInTheDocument();
+  });
+
+  it("opens a listbox wired to the combobox and moves the active option with arrow keys", async () => {
+    vi.mocked(fetchPlayers).mockResolvedValue({
+      data: [makePlayer()],
+      page: 1,
+      pageSize: 6,
+      total: 1,
+    });
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithProviders(<PlayerSearchCombobox onSelect={onSelect} suggestWhenEmpty />);
+    const input = screen.getByRole("combobox");
+    expect(input).toHaveAttribute("aria-expanded", "false");
+    await user.click(input);
+
+    const listbox = await screen.findByRole("listbox");
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    expect(input).toHaveAttribute("aria-controls", listbox.id);
+
+    await user.keyboard("{ArrowDown}");
+    const option = screen.getByRole("option", { name: /LeBron James/ });
+    expect(input).toHaveAttribute("aria-activedescendant", option.id);
+    expect(option).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "player-1" }));
+  });
+
+  it("announces the result count, then reaches the last option with ArrowUp from no selection", async () => {
+    vi.mocked(fetchPlayers).mockImplementation((params) =>
+      params?.search
+        ? Promise.resolve({
+            data: [makePlayer({ id: "player-2", firstName: "Stephen", lastName: "Curry" })],
+            page: 1,
+            pageSize: 6,
+            total: 1,
+          })
+        : Promise.resolve({ data: [], page: 1, pageSize: 6, total: 0 })
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
+    const input = screen.getByRole("combobox");
+    await user.click(input);
+    await user.type(input, "curry");
+
+    const option = await screen.findByRole("option", { name: /Stephen Curry/ });
+    expect(screen.getByRole("status")).toHaveTextContent("1 player found.");
+
+    // ArrowUp from no active option wraps to the end of the list — with a
+    // single result that lands on the same option ArrowDown would.
+    await user.keyboard("{ArrowUp}");
+    expect(input).toHaveAttribute("aria-activedescendant", option.id);
+  });
+
+  it("clears the term on Escape before stepping out of the input", async () => {
+    vi.mocked(fetchPlayers).mockImplementation((params) =>
+      params?.search
+        ? Promise.resolve({
+            data: [makePlayer({ id: "player-2", firstName: "Stephen", lastName: "Curry" })],
+            page: 1,
+            pageSize: 6,
+            total: 1,
+          })
+        : Promise.resolve({ data: [], page: 1, pageSize: 6, total: 0 })
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<PlayerSearchCombobox onSelect={vi.fn()} suggestWhenEmpty />);
+    const input = screen.getByRole("combobox");
+    await user.click(input);
+    await user.type(input, "curry");
+    await screen.findByRole("option", { name: /Stephen Curry/ });
+
+    // First Escape clears the typed term but keeps working focus in the box.
+    await user.keyboard("{Escape}");
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+
+    // Second Escape, on an already-empty box, steps out entirely.
+    await user.keyboard("{Escape}");
+    expect(input).not.toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 });

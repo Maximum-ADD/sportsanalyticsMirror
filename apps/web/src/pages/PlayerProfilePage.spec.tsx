@@ -532,7 +532,9 @@ describe("PlayerProfilePage matchup analysis", () => {
     expect(screen.getByText("36.0 PPG vs BOS over 8 games · 28.0 overall")).toBeInTheDocument();
 
     // Per-opponent bars, best matchup first, each labelled for assistive tech.
-    const bars = screen.getAllByRole("listitem");
+    // Named, not just "every listitem": the trait radar's screen-reader
+    // summary is also a list on this page.
+    const bars = screen.getAllByRole("listitem", { name: /points per game against/ });
     expect(bars).toHaveLength(2);
     expect(bars[0]).toHaveAttribute(
       "aria-label",

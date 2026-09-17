@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { LandingHeader } from "./landing/LandingHeader";
+import { ReadAloudControl } from "./ReadAloudControl";
 
 export function AppLayout() {
   return (
@@ -12,6 +13,9 @@ export function AppLayout() {
       <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto focus:outline-none">
         <Outlet />
       </main>
+      {/* Sits outside the scrollable main so it stays put while the page
+          scrolls; reads whatever main currently holds. */}
+      <ReadAloudControl />
     </div>
   );
 }

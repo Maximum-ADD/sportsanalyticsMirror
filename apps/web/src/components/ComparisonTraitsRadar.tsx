@@ -29,6 +29,16 @@ function playerLabel(entry: PlayerComparisonEntry): string {
   return `${entry.player.firstName} ${entry.player.lastName}`;
 }
 
+// One player's normalised traits as prose, for the screen-reader summary:
+// "Luka Doncic: Scoring 77, Rebounding 51, …". The overlay and the small
+// multiples render the same numbers as SVG; this text is the only non-visual
+// form, and the read-aloud control picks it up too.
+function traitSummary(entry: PlayerComparisonEntry): string {
+  const inputs = traitInputsFor(entry.seasonAverages);
+  const traits = TRAITS_IN_ORDER.map((trait) => `${TRAIT_LABELS[trait]} ${clampToPercent(inputs[trait], TRAIT_CEILINGS[trait])}`);
+  return `${playerLabel(entry)}: ${traits.join(", ")}`;
+}
+
 // One row per trait, each carrying every entry's normalised value under its
 // own key (p0, p1, ...) — the shape recharts' multi-series RadarChart wants:
 // one data array shared by every <Radar>, one dataKey per series.
@@ -230,6 +240,14 @@ export function ComparisonTraitsRadar({ entries }: ComparisonTraitsRadarProps) {
 
   return (
     <div>
+      {/* The radar polygons are SVG — invisible to screen readers. This
+          per-player list carries the same normalised values as text so the
+          comparison survives without sight. */}
+      <ul className="sr-only">
+        {entries.map((entry) => (
+          <li key={entry.player.id}>{traitSummary(entry)}</li>
+        ))}
+      </ul>
       {entries.length <= MAX_OVERLAY_PLAYERS ? (
         <OverlayRadar entries={entries} selectedTrait={selectedTrait} onSelectTrait={setSelectedTrait} />
       ) : (
