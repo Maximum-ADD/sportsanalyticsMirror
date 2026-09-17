@@ -12,6 +12,7 @@ import { PredictionsPage } from "./pages/PredictionsPage";
 import { GameDetailPage } from "./pages/GameDetailPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { AdminPage } from "./pages/AdminPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -34,6 +35,10 @@ function App() {
           <Route
             path="/profile"
             element={<ProtectedRoute><ProfileGate><ProfilePage /></ProfileGate></ProtectedRoute>}
+          />
+          <Route
+            path="/api-keys"
+            element={<ProtectedRoute><ProfileGate><ApiKeysPage /></ProfileGate></ProtectedRoute>}
           />
           <Route
             path="/home"

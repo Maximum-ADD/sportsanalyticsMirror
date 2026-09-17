@@ -52,6 +52,56 @@ export function deleteSavedLineup(lineupId: string): Promise<{ deleted: true }> 
   return sendJson<{ deleted: true }>(`/v1/me/lineups/${lineupId}`, "DELETE");
 }
 
+// --- API keys (the signed-in user's own) ---
+
+export interface MyApiKey {
+  id: string;
+  label: string | null;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+// Mirrors the API's MyApiKeysView: consumer is null until the first key
+// is created, then carries the personal consumer's limits and lifetime
+// request count.
+export interface MyApiKeysView {
+  consumer: {
+    id: string;
+    rateLimit: number;
+    dailyQuota: number;
+    usageCount: number;
+  } | null;
+  keys: MyApiKey[];
+}
+
+// The raw key is only ever returned in this creation response — the same
+// show-it-once contract the admin-side CreatedApiKey has.
+export interface CreatedMyApiKey {
+  id: string;
+  label: string | null;
+  rawKey: string;
+  createdAt: string;
+}
+
+export function fetchMyApiKeys(): Promise<MyApiKeysView> {
+  return fetchJson<MyApiKeysView>("/v1/me/api-keys");
+}
+
+export function createMyApiKey(label?: string): Promise<CreatedMyApiKey> {
+  return sendJson<CreatedMyApiKey>("/v1/me/api-keys", "POST", { label });
+}
+
+// Soft-revoke: the key stays listed, marked inactive.
+export function revokeMyApiKey(keyId: string): Promise<{ revoked: true }> {
+  return sendJson<{ revoked: true }>(`/v1/me/api-keys/${keyId}`, "DELETE");
+}
+
+// Hard delete for keys the user doesn't want on their list at all.
+export function deleteMyApiKey(keyId: string): Promise<{ deleted: true }> {
+  return sendJson<{ deleted: true }>(`/v1/me/api-keys/${keyId}/purge`, "DELETE");
+}
+
 export function fetchSuggestedPlayers(teamId: string, count?: number): Promise<{ players: SuggestedPlayer[] }> {
   const query = count !== undefined ? `?count=${count}` : "";
   return fetchJson<{ players: SuggestedPlayer[] }>(`/v1/teams/${teamId}/suggested-players${query}`);

@@ -385,6 +385,7 @@ describe("AdminPage", () => {
       vi.mocked(fetchAdminConsumers).mockResolvedValue({
         data: [{
           id: "c1", name: "TestApp", contactEmail: "test@example.com",
+          kind: "EXTERNAL", user: null,
           rateLimit: 60, dailyQuota: 1000, isActive: true,
           createdAt: "2026-09-01T12:00:00.000Z",
           keys: [{ id: "k1", label: "prod", isActive: true, lastUsedAt: null, createdAt: "2026-09-01" }],
@@ -403,6 +404,42 @@ describe("AdminPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Generate Key" }));
       await waitFor(() => expect(createAdminApiKey).toHaveBeenCalledWith("c1"));
+    });
+
+    it("differentiates user-owned consumers from external ones", async () => {
+      setUp();
+      const user = userEvent.setup();
+      vi.mocked(fetchAdminConsumers).mockResolvedValue({
+        data: [
+          {
+            id: "c1", name: "Stats LLC", contactEmail: "ops@statsllc.com",
+            kind: "EXTERNAL", user: null,
+            rateLimit: 100, dailyQuota: 10000, isActive: true,
+            createdAt: "2026-09-01",
+            keys: [],
+            _count: { usageLog: 0 },
+          },
+          {
+            id: "c2", name: "Owen Pace", contactEmail: "owen@example.com",
+            kind: "USER", user: { id: "u1", name: "Owen Pace", email: "owen@example.com" },
+            rateLimit: 60, dailyQuota: 5000, isActive: true,
+            createdAt: "2026-09-10",
+            keys: [],
+            _count: { usageLog: 3 },
+          },
+        ],
+        page: 1, pageSize: 10, total: 2,
+      });
+
+      renderWithProviders(<AdminPage />);
+      await user.click(screen.getByRole("radio", { name: "API Keys" }));
+
+      expect(await screen.findByText("Stats LLC")).toBeInTheDocument();
+      expect(screen.getByText("External")).toBeInTheDocument();
+      expect(screen.getByText("User key")).toBeInTheDocument();
+      // the owner identity comes from the live account relation, not the
+      // provisioning-time contactEmail copy
+      expect(screen.getByText("owen@example.com")).toBeInTheDocument();
     });
 
     it("creates a new consumer", async () => {
@@ -431,6 +468,7 @@ describe("AdminPage", () => {
       vi.mocked(fetchAdminConsumers).mockResolvedValue({
         data: [{
           id: "c1", name: "TestApp", contactEmail: null,
+          kind: "EXTERNAL", user: null,
           rateLimit: 60, dailyQuota: 1000, isActive: true,
           createdAt: "2026-09-01",
           keys: [{ id: "k1", label: null, isActive: true, lastUsedAt: null, createdAt: "2026-09-01" }],
@@ -455,6 +493,7 @@ describe("AdminPage", () => {
       vi.mocked(fetchAdminConsumers).mockResolvedValue({
         data: [{
           id: "c1", name: "TestApp", contactEmail: null,
+          kind: "EXTERNAL", user: null,
           rateLimit: 60, dailyQuota: 1000, isActive: true,
           createdAt: "2026-09-01",
           keys: [{ id: "k1", label: "prod", isActive: true, lastUsedAt: null, createdAt: "2026-09-01" }],
@@ -480,6 +519,7 @@ describe("AdminPage", () => {
       vi.mocked(fetchAdminConsumers).mockResolvedValue({
         data: [{
           id: "c1", name: "TestApp", contactEmail: null,
+          kind: "EXTERNAL", user: null,
           rateLimit: 60, dailyQuota: 1000, isActive: true,
           createdAt: "2026-09-01",
           keys: [],
@@ -504,6 +544,7 @@ describe("AdminPage", () => {
       vi.mocked(fetchAdminConsumers).mockResolvedValue({
         data: [{
           id: "c1", name: "TestApp", contactEmail: null,
+          kind: "EXTERNAL", user: null,
           rateLimit: 60, dailyQuota: 1000, isActive: true,
           createdAt: "2026-09-01",
           keys: [],

@@ -1161,8 +1161,28 @@ function AdminConsumersSection() {
                 data?.data.map((consumer) => (
                   <tr key={consumer.id} className="border-b border-landing-light last:border-b-0">
                     <td className="px-3 py-2.5">
-                      <div className="text-[13px] text-landing-ink">{consumer.name}</div>
-                      <div className="text-[10px] text-locker-ink-muted">{consumer.contactEmail ?? "—"}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] text-landing-ink">{consumer.name}</span>
+                        {/* kind badge: user-provisioned consumers are warm-toned so
+                            admins can tell them apart from external integrations at
+                            a glance — the word and the tone both carry the category. */}
+                        <span
+                          className={`rounded px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] uppercase ${
+                            consumer.kind === "USER"
+                              ? "bg-locker-you/15 text-locker-you"
+                              : "bg-landing-hero text-locker-ink-muted"
+                          }`}
+                        >
+                          {consumer.kind === "USER" ? "User key" : "External"}
+                        </span>
+                      </div>
+                      {/* For user-owned consumers the account relation is the live
+                          identity (contactEmail is just a provisioning-time copy). */}
+                      <div className="text-[10px] text-locker-ink-muted">
+                        {consumer.kind === "USER"
+                          ? (consumer.user?.email ?? consumer.contactEmail ?? "—")
+                          : (consumer.contactEmail ?? "—")}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{consumer.rateLimit}/min</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{consumer.dailyQuota}/day</td>

@@ -1,26 +1,27 @@
 import { Injectable } from "@nestjs/common";
-import { createHash, randomBytes } from "node:crypto";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
+import { generateApiKeyMaterial, type CreatedApiKey } from "../common/api-keys.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { ApiConsumer, ApiKey } from "@prisma/client";
 
 // One consumer with aggregated usage stats — the admin list shows
 // request counts alongside the consumer details so the admin can spot
 // heavy users without a separate query.
+//
+// kind/user differentiate the two consumer populations sharing this table:
+// USER — auto-provisioned personal consumer owned by a signed-in user
+// (ApiConsumer.userId set, user populated); EXTERNAL — admin-created
+// consumer for a third-party integration (userId null, user null).
 export interface ConsumerWithStats extends ApiConsumer {
+  kind: "USER" | "EXTERNAL";
+  user: { id: string; name: string; email: string } | null;
   keys: ApiKey[];
   _count: { usageLog: number };
 }
 
-// The raw key is only ever returned once — at creation time. The service
-// stores a SHA-256 hash, and the client must save the raw key securely
-// before the response is gone.
-export interface CreatedApiKey {
-  id: string;
-  label: string | null;
-  rawKey: string;
-  createdAt: Date;
-}
+// Re-exported so existing importers (AdminConsumersController) keep working
+// now that the interface lives beside the shared key-generation helper.
+export type { CreatedApiKey };
 
 function parseConsumerBody(body: unknown): {
   name: string;
@@ -97,9 +98,10 @@ export class AdminConsumersService {
   async listConsumers(query: Record<string, unknown>): Promise<PagedResult<ConsumerWithStats>> {
     const { page, pageSize } = parsePageParams(query);
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.apiConsumer.findMany({
         include: {
+          user: { select: { id: true, name: true, email: true } },
           keys: { orderBy: { createdAt: "desc" } },
           _count: { select: { usageLog: true } },
         },
@@ -109,6 +111,11 @@ export class AdminConsumersService {
       }),
       this.prisma.apiConsumer.count(),
     ]);
+
+    const data = rows.map((row) => ({
+      ...row,
+      kind: row.userId ? ("USER" as const) : ("EXTERNAL" as const),
+    }));
 
     return { data, page, pageSize, total };
   }
@@ -133,10 +140,7 @@ export class AdminConsumersService {
     const consumer = await this.prisma.apiConsumer.findUnique({ where: { id: consumerId } });
     if (!consumer) return null;
 
-    // 32 random bytes, base64url-encoded — 43 characters, URL-safe, no
-    // padding issues. Prefixed so a key is recognisable in logs.
-    const rawKey = `nba_${randomBytes(32).toString("base64url")}`;
-    const keyHash = createHash("sha256").update(rawKey).digest("hex");
+    const { rawKey, keyHash } = generateApiKeyMaterial();
 
     const key = await this.prisma.apiKey.create({
       data: {

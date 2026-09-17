@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { LandingHeader } from "./LandingHeader";
+import { useMe } from "@/lib/useMe";
 import { renderWithProviders } from "@/test/renderWithProviders";
 
 // The drawer's focus behaviour is the unit under test; AuthStatus's own
@@ -10,6 +11,12 @@ import { renderWithProviders } from "@/test/renderWithProviders";
 // depending on either.
 vi.mock("@/components/AuthStatus", () => ({
   AuthStatus: () => <div data-testid="auth-status" />,
+}));
+
+// Signed-out by default — the drawer tests below don't care about the
+// session, and the signed-in-link describe sets its own return per test.
+vi.mock("@/lib/useMe", () => ({
+  useMe: vi.fn(() => ({ data: null })),
 }));
 
 // The same links render twice — the in-row nav and the drawer are two
@@ -65,5 +72,32 @@ describe("LandingHeader mobile drawer", () => {
 
     // Nothing has been opened yet — focus belongs to the page, not the header.
     expect(screen.getByRole("button", { name: "Open menu" })).not.toHaveFocus();
+  });
+});
+
+describe("LandingHeader signed-in links", () => {
+  // Links render twice (in-row nav + drawer), so use getAllByRole.
+  it("adds API Keys for any signed-in user, but no Admin link", () => {
+    vi.mocked(useMe).mockReturnValue({ data: { id: "u1", role: "USER" } } as never);
+    renderWithProviders(<LandingHeader />);
+
+    expect(screen.getAllByRole("link", { name: "API Keys" }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("link", { name: "Admin" })).toHaveLength(0);
+  });
+
+  it("adds Admin on top of API Keys for admins", () => {
+    vi.mocked(useMe).mockReturnValue({ data: { id: "u1", role: "ADMIN" } } as never);
+    renderWithProviders(<LandingHeader />);
+
+    expect(screen.getAllByRole("link", { name: "API Keys" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Admin" }).length).toBeGreaterThan(0);
+  });
+
+  it("shows neither link when signed out", () => {
+    vi.mocked(useMe).mockReturnValue({ data: null } as never);
+    renderWithProviders(<LandingHeader />);
+
+    expect(screen.queryAllByRole("link", { name: "API Keys" })).toHaveLength(0);
+    expect(screen.queryAllByRole("link", { name: "Admin" })).toHaveLength(0);
   });
 });

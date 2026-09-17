@@ -106,6 +106,10 @@ model User {
   eventCorrections  EventCorrection[]
   publishedReleases DatasetRelease[]
   ingestionSchedule IngestionSchedule?
+
+  // The personal API consumer auto-provisioned the first time this user
+  // creates an API key (see ApiConsumer.userId) — null until then.
+  apiConsumer ApiConsumer?
 }
 
 model CustomStatistic {
@@ -859,6 +863,15 @@ model ApiConsumer {
   dailyQuota   Int      @default(10000) // requests per day
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
+
+  // The signed-in user this consumer was auto-provisioned for by
+  // POST /v1/me/api-keys (null for admin-created external consumers).
+  // @unique — a user has exactly one personal consumer, and this flag
+  // is what differentiates user keys from external ones in the admin
+  // list (surfaced as kind: "USER" | "EXTERNAL"). Cascade: deleting
+  // the account takes its keys and usage history with it.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   keys     ApiKey[]
   usageLog ApiUsageLog[]
