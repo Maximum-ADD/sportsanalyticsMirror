@@ -88,4 +88,18 @@ describe("DatasetsPage", () => {
     await screen.findByText("2025-26.1");
     expect(screen.queryByText(/Published by/)).not.toBeInTheDocument();
   });
+
+  it("points the download link at the same-origin API proxy", async () => {
+    vi.mocked(fetchJson).mockResolvedValue({
+      data: [makeRelease()],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+    });
+
+    renderWithProviders(<DatasetsPage />);
+
+    const download = await screen.findByRole("link", { name: "Download" });
+    expect(download).toHaveAttribute("href", "/api/v1/datasets/2025-26.1/download");
+  });
 });
