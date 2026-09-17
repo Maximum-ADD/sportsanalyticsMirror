@@ -204,4 +204,49 @@ describe("AdminIngestionService", () => {
       expect(spawn).not.toHaveBeenCalled();
     });
   });
+
+  describe("ingestion availability", () => {
+    it("reports ingestionAvailable on the default schedule config", async () => {
+      mockPrisma.ingestionSchedule.findUnique.mockResolvedValue(null);
+
+      const result = await service.getSchedule();
+
+      expect(result.frequency).toBe("NEVER");
+      expect(result.ingestionAvailable).toBe(true);
+    });
+
+    it("reports unavailable when the ingestion environment is missing", async () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      mockPrisma.ingestionSchedule.findUnique.mockResolvedValue(null);
+
+      const result = await service.getSchedule();
+
+      expect(result.ingestionAvailable).toBe(false);
+    });
+
+    it("skips the scheduled pull when ingestion is unavailable on this server", async () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      const triggerSpy = vi.spyOn(service, "triggerPull");
+
+      await service.checkSchedule();
+
+      expect(triggerSpy).not.toHaveBeenCalled();
+      expect(mockPrisma.ingestionSchedule.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("runs the scheduled pull when it is due and ingestion is available", async () => {
+      mockPrisma.ingestionSchedule.findUnique.mockResolvedValue({
+        frequency: "HOURLY",
+        lastRunAt: null,
+        updatedAt: new Date(),
+      });
+      const child = new EventEmitter() as EventEmitter & { unref: () => void };
+      child.unref = vi.fn();
+      vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcess);
+
+      await service.checkSchedule();
+
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+  });
 });

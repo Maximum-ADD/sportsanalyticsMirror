@@ -215,6 +215,9 @@ export interface IngestionScheduleConfig {
   frequency: IngestionFrequency;
   lastRunAt: string | null;
   updatedAt: string;
+  /** False where the Python ingestion environment is absent (e.g. Render) —
+   * scheduled pulls can't run there, only on machines that have it. */
+  ingestionAvailable: boolean;
 }
 
 export interface TriggerResult {

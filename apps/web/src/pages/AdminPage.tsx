@@ -815,8 +815,10 @@ function AdminBatchesSection() {
             Schedule:
           </label>
           <select
+            aria-label="Pull schedule"
             className={INPUT_CLASS}
             value={scheduleData?.frequency ?? "NEVER"}
+            disabled={scheduleData ? !scheduleData.ingestionAvailable : false}
             onChange={(e) => scheduleMutation.mutate(e.target.value as IngestionFrequency)}
           >
             <option value="NEVER">Never (manual only)</option>
@@ -825,6 +827,11 @@ function AdminBatchesSection() {
             <option value="WEEKLY">Weekly</option>
           </select>
         </div>
+        {scheduleData && !scheduleData.ingestionAvailable && (
+          <span className="font-mono text-[10px] text-locker-ink-muted">
+            Scheduling unavailable on this server - pulls only run where the Python ingestion environment is installed.
+          </span>
+        )}
         {scheduleData?.lastRunAt && (
           <span className="font-mono text-[10px] text-locker-ink-muted">
             Last run: {new Date(scheduleData.lastRunAt).toLocaleString()}
