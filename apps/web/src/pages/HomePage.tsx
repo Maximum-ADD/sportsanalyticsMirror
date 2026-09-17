@@ -4,6 +4,7 @@ import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
 import { WatchlistBoard } from "@/components/home/WatchlistBoard";
 import { YourTeamsList } from "@/components/home/YourTeamsList";
+import { Reveal } from "@/components/landing/Reveal";
 
 // "The Locker" — the signed-in home page.
 //
@@ -46,22 +47,34 @@ export function HomePage() {
 
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
           <div className="flex flex-col gap-5 lg:col-span-8">
-            <BeatTheModelCard />
-            <WatchlistBoard />
-            <YourTeamsList />
+            <Reveal>
+              <BeatTheModelCard />
+            </Reveal>
+            <Reveal delay={1}>
+              <WatchlistBoard />
+            </Reveal>
+            <Reveal delay={2}>
+              <YourTeamsList />
+            </Reveal>
           </div>
 
           <div className="flex flex-col gap-4 lg:col-span-4">
-            <LeaderboardCard />
-            <SavedShelfCard />
+            <Reveal delay={1}>
+              <LeaderboardCard />
+            </Reveal>
+            <Reveal delay={2}>
+              <SavedShelfCard />
+            </Reveal>
           </div>
         </div>
 
         <div className="border-t-2 border-landing-light pt-5">
-          <p className="mb-4 font-mono text-[10px] tracking-[0.2em] text-locker-ink-muted uppercase">
-            Published figures — identical for every account
-          </p>
-          <ModelAccuracyLedger />
+          <Reveal>
+            <p className="mb-4 font-mono text-[10px] tracking-[0.2em] text-locker-ink-muted uppercase">
+              Published figures — identical for every account
+            </p>
+            <ModelAccuracyLedger />
+          </Reveal>
         </div>
       </div>
     </div>

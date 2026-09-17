@@ -252,6 +252,37 @@
   --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Tap/click press feedback, applied globally rather than per-component: the
+   app has dozens of independently-styled clickable cards and buttons, all of
+   which previously relied on hover alone — which is silent on touch. A brief
+   scale-down on press is a cheap, consistent way to confirm "yes, that
+   registered" everywhere at once, without hunting down and restyling every
+   card. Scoped to elements that are actually clickable (buttons, links,
+   anything with an explicit button/link role, and disclosure summaries) so
+   it never fires on a plain div or on text selection. */
+button:not(:disabled):active,
+a:active,
+[role="button"]:not([aria-disabled="true"]):active,
+summary:active {
+  transform: scale(0.97);
+}
+
+button,
+a,
+[role="button"],
+summary {
+  transition: transform 0.1s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  summary:active {
+    transform: none;
+  }
+}
+
 body {
   margin: 0;
   /* Every route has moved to the light "locker" palette except the landing

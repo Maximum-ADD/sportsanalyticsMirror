@@ -17,7 +17,7 @@ export type RevealDelay = 0 | 1 | 2 | 3;
 // content appears without motion either way.
 const RISE_WAITING_CLASSES = "opacity-0 translate-y-6";
 
-interface RevealProps {
+export interface RevealProps {
   /** Stagger step — 0 rises immediately, each step adds 120ms. */
   delay?: RevealDelay;
   /** Element to render; heading-safe tags ("span", "p", "h2", "li") keep the surrounding semantics valid. */
@@ -25,22 +25,25 @@ interface RevealProps {
   className?: string;
   children: ReactNode;
   /**
-   * Replay the entrance every time the element re-enters the viewport
-   * (landing-page behaviour). Tool pages should pass false so a section
-   * stays put once revealed instead of animating in and out on every
-   * scroll past it.
+   * Replay the entrance every time the element re-enters the viewport.
+   * Default is false — a section rises in once and then stays put, which
+   * is right for every page except the pre-login landing page, where
+   * replaying on every scroll past is a deliberate marketing flourish. A
+   * section that keeps re-observing after it settles can flip back to its
+   * hidden pose from a layout shift below it (new content mounting, e.g.
+   * "View more") even without the element itself scrolling — replay=true
+   * should only be set where that replay is actually wanted.
    */
   replay?: boolean;
 }
 
 /**
- * Wraps one block of landing-page content so it rises into view when the
- * block enters the viewport — and again every time it re-enters after
- * being scrolled away. Off-screen the element holds the animation's first
- * frame rather than its finished state, which is what makes each return
- * replay the entrance from the top instead of sitting already-visible.
+ * Wraps one block of page content so it rises into view the first time the
+ * block enters the viewport, then stays visible. Off-screen the element
+ * holds the animation's first frame rather than its finished state, so the
+ * handoff into the rise never snaps between two different hidden states.
  */
-export function Reveal({ delay = 0, as = "div", className, children, replay = true }: RevealProps) {
+export function Reveal({ delay = 0, as = "div", className, children, replay = false }: RevealProps) {
   const { elementRef, isInView } = useInView<HTMLElement>({ replay });
   const RevealTag = as;
 

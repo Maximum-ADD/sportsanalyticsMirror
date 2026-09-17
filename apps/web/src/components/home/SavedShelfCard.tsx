@@ -5,7 +5,6 @@ import { fetchSavedComparisons } from "@/lib/nbaApi";
 import { fetchSavedLineups } from "@/lib/meApi";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { Card } from "@/components/ui/card";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import type { SavedComparison, SavedLineup, SavedLineupDrift } from "@/types/nba";
 
 const UNAUTHENTICATED_STATUS = 401;
@@ -67,8 +66,10 @@ export function SavedShelfCard() {
   if (comparisonsQuery.isPending || lineupsQuery.isPending) {
     return (
       <Shell>
-        <div className="flex min-h-24 items-center justify-center">
-          <BasketballSpinner label="Loading your saved shelf" />
+        <div role="status" aria-label="Loading your saved shelf" className="animate-pulse space-y-1.5">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-8 bg-landing-hero" />
+          ))}
         </div>
       </Shell>
     );

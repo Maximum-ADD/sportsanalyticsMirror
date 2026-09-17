@@ -165,8 +165,10 @@ export function BeatTheModelCard() {
   if (challengeQuery.isPending) {
     return (
       <Shell kicker="Beat the model">
-        <div className="flex min-h-48 items-center justify-center">
-          <BasketballSpinner label="Finding a game to call" />
+        <div role="status" aria-label="Finding a game to call" className="min-h-48 animate-pulse space-y-3">
+          <div className="mx-auto h-4 w-3/4 bg-landing-hero" />
+          <div className="mx-auto h-10 w-1/2 bg-landing-hero" />
+          <div className="h-20 bg-landing-hero" />
         </div>
       </Shell>
     );
@@ -291,13 +293,13 @@ function ChallengeQuestion({
 
       <div className="flex flex-wrap items-center justify-center gap-5 pb-3">
         <span className="flex items-center gap-2.5">
-          <TeamBadge team={{ abbreviation: game.awayTeam.abbreviation }} />
+          <TeamBadge team={{ abbreviation: game.awayTeam.abbreviation, logoUrl: game.awayTeam.logoUrl }} />
           <span className="font-display text-xl text-landing-ink uppercase">{game.awayTeam.city}</span>
         </span>
         <span className="text-sm text-locker-ink-muted">@</span>
         <span className="flex items-center gap-2.5">
           <span className="font-display text-xl text-landing-ink uppercase">{game.homeTeam.city}</span>
-          <TeamBadge team={{ abbreviation: game.homeTeam.abbreviation }} />
+          <TeamBadge team={{ abbreviation: game.homeTeam.abbreviation, logoUrl: game.homeTeam.logoUrl }} />
         </span>
       </div>
       <p className="mb-4 text-center text-[11.5px] text-locker-ink-muted">

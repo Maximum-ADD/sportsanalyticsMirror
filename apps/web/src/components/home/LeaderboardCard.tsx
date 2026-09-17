@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { fetchLeaderboard } from "@/lib/nbaApi";
 import type { LeaderboardEntry } from "@/types/nba";
 
@@ -39,8 +38,10 @@ export function LeaderboardCard() {
   if (isPending) {
     return (
       <Shell>
-        <div className="flex min-h-24 items-center justify-center">
-          <BasketballSpinner label="Loading leaderboard" />
+        <div role="status" aria-label="Loading leaderboard" className="animate-pulse space-y-1.5">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-6 bg-landing-hero" />
+          ))}
         </div>
       </Shell>
     );

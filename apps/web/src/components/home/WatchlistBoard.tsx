@@ -5,7 +5,6 @@ import { fetchWatchlist } from "@/lib/nbaApi";
 import { unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY } from "@/lib/useMe";
 import { signInWithGoogle } from "@/lib/authClient";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
 import { LockerSection } from "./LockerSection";
@@ -58,8 +57,14 @@ export function WatchlistBoard() {
   if (watchlistQuery.isPending) {
     return (
       <LockerSection title="Your watchlist">
-        <div className="flex min-h-32 items-center justify-center border border-landing-light bg-locker-surface">
-          <BasketballSpinner label="Loading your watchlist" />
+        <div
+          role="status"
+          aria-label="Loading your watchlist"
+          className="grid animate-pulse grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3"
+        >
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="h-32 border border-landing-light bg-locker-surface" />
+          ))}
         </div>
       </LockerSection>
     );
@@ -142,9 +147,13 @@ export function WatchlistBoard() {
 /**
  * One followed player: their numbers, their trend, and a way to drop them.
  *
- * The card is not itself a link. It carries a button, and an anchor wrapping
- * a button is invalid HTML that keyboard and screen reader users hit first —
- * so the player's name is the link and the control sits outside it.
+ * The whole card links to the player's page via the "stretched link"
+ * pattern — a full-card anchor absolutely positioned behind the rest of the
+ * content — rather than wrapping the card in an anchor directly, since an
+ * anchor wrapping the Remove button would be invalid HTML that keyboard and
+ * screen reader users hit first. The Remove button sits in normal flow
+ * above the stretched link (z-10) so it stays independently clickable and
+ * focusable in its own right, in document order before the stretched link.
  */
 function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
   const queryClient = useQueryClient();
@@ -167,19 +176,14 @@ function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
   const pointsOldestFirst = [...entry.recentPoints].reverse().map((game) => game.points);
 
   return (
-    <div className="flex h-full flex-col border border-landing-light bg-locker-surface p-3">
+    <div className="relative flex h-full flex-col border border-landing-light bg-locker-surface p-3 transition-colors hover:border-locker-leather">
       <div className="mb-2.5 flex items-center gap-2.5">
         <PlayerHeadshot
           player={entry.player}
           size="sm"
           className="size-8 bg-[#c3bfb9] text-locker-ink-muted"
         />
-        <Link
-          to={`/players/${entry.player.id}`}
-          className="text-[12.5px] leading-tight font-semibold text-landing-ink underline-offset-[3px] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
-        >
-          {fullName}
-        </Link>
+        <span className="text-[12.5px] leading-tight font-semibold text-landing-ink">{fullName}</span>
         {entry.player.team && (
           <TeamBadge
             team={{ abbreviation: entry.player.team.abbreviation, nbaTeamId: entry.player.team.nbaTeamId }}
@@ -205,7 +209,7 @@ function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
       )}
 
       {removeMutation.error instanceof Error && (
-        <p role="alert" className="mt-2 text-[11px] text-locker-bad">
+        <p role="alert" className="relative z-10 mt-2 text-[11px] text-locker-bad">
           {removeMutation.error.message}
         </p>
       )}
@@ -216,11 +220,17 @@ function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
           disabled={removeMutation.isPending}
           onClick={() => removeMutation.mutate()}
           aria-label={`Remove ${fullName} from your watchlist`}
-          className="ml-auto font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase hover:text-locker-bad disabled:opacity-50"
+          className="relative z-10 ml-auto font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase hover:text-locker-bad disabled:opacity-50"
         >
           {removeMutation.isPending ? "Removing…" : "Remove"}
         </button>
       </div>
+
+      <Link
+        to={`/players/${entry.player.id}`}
+        aria-label={fullName}
+        className="absolute inset-0 z-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-locker-leather"
+      />
     </div>
   );
 }

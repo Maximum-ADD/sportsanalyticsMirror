@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ErrorState } from "@/components/ErrorState";
 import { Card } from "@/components/ui/card";
-import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fetchModelAccuracy } from "@/lib/nbaApi";
 import { NO_VALUE } from "@/lib/playerBio";
@@ -83,8 +82,13 @@ export function ModelAccuracyLedger() {
   if (isPending) {
     return (
       <LedgerShell>
-        <div className="flex min-h-40 items-center justify-center">
-          <BasketballSpinner label="Loading model accuracy" />
+        <div role="status" aria-label="Loading model accuracy" className="animate-pulse">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="h-20 border border-landing-light bg-landing-hero" />
+            ))}
+          </div>
+          <div className="mt-3.5 h-32 bg-landing-hero" />
         </div>
       </LedgerShell>
     );
