@@ -2,22 +2,30 @@ import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchGames } from "@/lib/nbaApi";
 import { TeamBadge } from "@/components/TeamBadge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BasketballSpinner } from "@/components/ui/basketball-spinner";
+import { useSession } from "@/lib/authClient";
 
 // Deliberately labelled "Recent Result", not "Live" — there's no live game
 // tracking in this app, and the earlier UI mockup this was based on had a
 // "LIVE" ticker we don't actually have data to back honestly.
 export function RecentResultWidget() {
   const captionId = useId();
+  const { data: session, isPending: isSessionPending } = useSession();
   const { data, isPending, isError } = useQuery({
     queryKey: ["games", { pageSize: 1 }],
     queryFn: () => fetchGames({ pageSize: 1 }),
+    enabled: Boolean(session) && !isSessionPending,
   });
 
+  if (isSessionPending || !session) return null;
   if (isError) return null;
 
   if (isPending) {
-    return <Skeleton className="h-12 w-56 rounded-xl" />;
+    return (
+      <div className="flex h-12 w-56 items-center justify-center rounded-xl border border-border-subtle bg-surface-card">
+        <BasketballSpinner size="sm" label="Loading recent result" />
+      </div>
+    );
   }
 
   const game = data?.data[0];

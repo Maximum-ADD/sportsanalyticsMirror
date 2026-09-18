@@ -1,0 +1,132 @@
+name: Bug report
+about: Something in the platform is broken or behaving differently from how it should
+title: "bug: "
+# Applied to every issue filed from this template, because it is true of every
+# bug by definition. `bug` must already exist on the repo — see
+# docs/BUG_TRACKING.md. It is flat rather than scoped to match the repo's
+# existing label style (`documentation`, `testing`, `ui`, ...).
+#
+# There is deliberately no "needs triage" label here: it would be on every new
+# issue and so would say nothing, and it would need someone to remember to take
+# it off again. status/ labels mark departures from the normal path only.
+#
+# priority/ and the component labels are not here, and are not form fields
+# either: the
+# reporter picks them from the label selector in the sidebar of the New Issue
+# page (the form prompts for this at the end). That is what makes them
+# filterable and sortable — a form field's answer is only text in the issue
+# body. The rule the whole form follows: if you want to filter or group by it,
+# it is a label; anything else is a field.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please check the issue list for an existing report —
+        a duplicate costs more to triage than it does to search for.
+
+        If this is a **security** problem (leaked credential, auth bypass,
+        exposed data), don't file it here. Raise it directly with the team
+        so it isn't published in a public issue first.
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did you see it?
+      description: >-
+        The single most useful field on this form. Local and production run
+        against completely separate databases, and production data is loaded
+        by hand — so "works locally, broken on the deployed site" is usually a
+        data or deploy problem, not a code problem.
+      options:
+        - Deployed site (Cloudflare Pages + Render + Supabase)
+        - Local dev (npm run dev against Docker Postgres)
+        - Both
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit or branch
+      description: "Run `git rev-parse --short HEAD` for local bugs. For the deployed site, the branch is `main` — say so."
+      placeholder: "e.g. 7e6ed81, or main (deployed)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps someone else can follow start to finish. Include the exact page or endpoint.
+      placeholder: |
+        1. Sign in and go to /players
+        2. Open any player profile
+        3. Look at the Bio card
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Screenshots help a lot here — drag them straight into this box.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, errors or console output
+      description: >-
+        Browser console, API terminal, Render logs, or CI output. Paste the
+        text rather than a screenshot where you can — it's searchable.
+      render: shell
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Label it yourself before submitting
+
+        Both of these are yours to set, from the **sidebar on this page**. No
+        one has to grade your report first, and no one will re-label it behind
+        your back.
+
+        **`priority/` — how badly it is blocking you.** Pick exactly one.
+
+        - `priority/critical` — production is down, or the whole team is blocked
+        - `priority/high` — needed for this sprint's demo
+        - `priority/medium` — should be fixed this sprint if there is room
+        - `priority/low` — nice to have, safe to carry to a later sprint
+
+        **Component labels — which part of the system.** Pick as many as apply;
+        a bug can genuinely span two. These are the repo's existing labels:
+
+        `ui` · `backend` · `api-service` · `database` · `auth` · `models` ·
+        `ingestion` · `ci/cd` · `deployment` · `testing`
+
+        If you cannot tell on either of them, leave it off and say so in the
+        issue. That is the one case where someone else fills it in for you.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this isn't already reported
+          required: true
+        - label: I set a `priority/` label, and component labels where I could tell
+          required: true
+        - label: I can reproduce this on the current `main`, not just my own branch
+          required: false

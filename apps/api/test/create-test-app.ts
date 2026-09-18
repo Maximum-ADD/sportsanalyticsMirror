@@ -4,6 +4,7 @@ import { ExpressAdapter } from "@nestjs/platform-express";
 import expressFactory from "express";
 import { AppModule } from "../src/app.module.js";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
+import { TEST_SITE_PROXY_KEY } from "./test-db.js";
 
 // Boots the real Nest routing tree (players/teams/games/health/not-found)
 // on the same Express 5 instance + ExpressAdapter setup as main.ts, rather
@@ -11,14 +12,43 @@ import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
 // That distinction matters: NotFoundController's catch-all route uses
 // Express 5's "*splat" wildcard syntax (see its own comment for why), which
 // silently fails to match anything under Express 4 — a mismatch that only
-// showed up once these specs were actually wired into the test run. None of
-// the routes under test require a session, so BetterAuth's own HTTP
-// handlers aren't part of what these specs exercise.
+// showed up once these specs were actually wired into the test run.
+// BetterAuth's own HTTP handlers aren't needed here: protected endpoint
+// specs mock the guard's session lookup directly.
 export async function createTestApp(): Promise<INestApplication> {
   const server = expressFactory();
   server.use(expressFactory.json());
 
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { logger: false });
+  // Stand-in for the production first-party proxy (vite dev proxy / Pages
+  // function): the API requires an API key or session on its public read
+  // endpoints, and these specs call them the way the website does — with no
+  // key of their own. Stamping the seeded test key keeps the anonymous call
+  // sites anonymous at the spec level. A request that brings its own
+  // X-API-Key still wins, exactly as in production.
+  server.use((request, _response, next) => {
+    if (!request.headers["x-api-key"]) {
+      request.headers["x-api-key"] = TEST_SITE_PROXY_KEY;
+    }
+    next();
+  });
+
+  // { bodyParser: false } mirrors main.ts, and is load-bearing rather than
+  // cosmetic. express.json() above comes from body-parser 2.x (Express 5),
+  // which no longer sets the legacy `req._body` flag; Nest's own bundled
+  // body-parser is 1.x and uses exactly that flag to decide whether the body
+  // has already been read. Left on, it re-reads a stream express.json() has
+  // already consumed and every request carrying a JSON body dies with
+  // "stream is not readable" (500). Harmless while the API was read-only —
+  // fatal the moment a POST/PATCH/PUT route exists.
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    // Same bodyParser: false as main.ts — the express.json() above is the
+    // app's single JSON parser. Leaving Nest's default body parser enabled
+    // too would consume the request stream twice, and any POST with a JSON
+    // body would die in body-parser with "stream is not readable".
+    bodyParser: false,
+    logger: false,
+    abortOnError: false,
+  });
   app.useGlobalFilters(new AllExceptionsFilter());
   await app.init();
   return app;

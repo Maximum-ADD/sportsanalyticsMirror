@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Player, PlayerGameStat, Team } from "@prisma/client";
+import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
+import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { GameWithTeamsAndPrediction } from "./games.service.js";
 import { GamesService } from "./games.service.js";
@@ -22,12 +24,57 @@ export interface GameDetail extends GameWithTeamsAndPrediction {
 // Python service: this is a read-time computation over data already in
 // Postgres, not something that needs to write/persist a model output the
 // way Elo ratings or Four Factors weights do.
+//
+// Three enhancements were backtested against a full season and
+// deliberately left out — see apps/optimizer/predict.py's matching note
+// and docs/reports for the full write-up, since all three were tried on
+// that predictor too:
+//   - Opponent-defense adjustment (scale the prediction by the upcoming
+//     opponent's leak-free running points-allowed average relative to the
+//     leaguewide average): improved MAE by only 0.002 points and didn't
+//     reliably hold on a chronological validation split. Team-level
+//     points-allowed only spans about +/-9% across the whole league — too
+//     small a signal relative to a single player's game-to-game variance
+//     (RMSE ~6 points here) to move individual predictions meaningfully.
+//   - Minutes-aware prediction (predict minutes and points-per-minute
+//     separately, both via this same recency-weighting technique, then
+//     multiply, instead of averaging raw points directly): an initial
+//     backtest looked like a real win, but that number came from a bug in
+//     the backtest script's handling of DNP (0-minute) games — once
+//     corrected to match this function's actual semantics, the edge
+//     vanished and went slightly negative (-0.005 MAE full-season, -0.002
+//     on a validation split). Not shipped. Worth remembering this one
+//     specifically: it's a reminder to distrust a backtest result that
+//     looks great until it's been checked against the exact logic being
+//     validated, not an approximation of it.
+//   - Minutes-trend adjustment (a DIFFERENT minutes signal than the
+//     multiply-based one above: nudge the existing prediction by a small
+//     amount based on whether a player's recent minutes deviate from
+//     their longer-run baseline, rather than replacing the prediction).
+//     This one WAS shipped on predict.py's fantasy-point prediction
+//     (consistent MAE improvement on two validation splits, larger still
+//     on players with an actual minutes swing) but NOT here — this
+//     predictor's edge was negligible to zero on the same two splits (one
+//     split's grid search picked strength=0.0 as optimal outright).
+//     Plausibly because MOST_RECENT_GAMES_CONSIDERED (10, capped) already
+//     makes this prediction more locally responsive to a minutes change
+//     than predict.py's unbounded window, leaving less room for a
+//     separate trend signal to add.
 const RECENCY_DECAY = 0.8;
+
+// Only regular-season games feed the recency weighting below, matching the
+// same exclusion apps/predictor/elo.py and apps/optimizer/predict.py apply
+// to their own model inputs: postseason scoring comes from a different
+// distribution (shortened rotations, matchup-specific game plans), and
+// since these are the *most recent* games a player has, they would carry
+// the heaviest recency weight of all and dominate the projection.
+// Postseason games are ingested and viewable, just never modelled from.
+const MODELLED_SEASON_TYPE = "REGULAR" as const;
 const MOST_RECENT_GAMES_CONSIDERED = 10;
 const TOP_SCORERS_PER_TEAM_COUNT = 5;
 const PREDICTED_POINTS_DECIMAL_PLACES = 1;
 
-function predictPointsFromRecentGames(gameStats: PlayerGameStat[]): number {
+function predictPointsFromRecentGames(gameStats: Pick<PlayerGameStat, "points">[]): number {
   // gameStats arrives newest-first (see fetchRosterGameStats); reverse so
   // the decay weighting below runs oldest-to-newest, matching predict.py's
   // own convention of weighting backward from the most recent game.
@@ -51,10 +98,22 @@ function predictPointsFromRecentGames(gameStats: PlayerGameStat[]): number {
 export class GameDetailService {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly cache: ResponseCacheService
   ) {}
 
-  async getGameDetail(gameId: string): Promise<GameDetail | null> {
+  // Cached per game: PlayerCards and the Predictions page request one detail
+  // per upcoming game on every visit, each costing three queries uncached. A
+  // missing game (null) is never cached, so a newly ingested one isn't stuck
+  // behind a 404.
+  getGameDetail(gameId: string): Promise<GameDetail | null> {
+    return this.cache.getOrLoad(buildCacheKey("games:detail", [gameId]), DERIVED_DATA_TTL_MS, () =>
+      this.readGameDetail(gameId)
+    );
+  }
+
+  // The uncached read behind getGameDetail.
+  private async readGameDetail(gameId: string): Promise<GameDetail | null> {
     // GamesService.getGameById already joins the game's prediction in one
     // query (see GamesService.getGames' comment on why) — fetching it
     // again via PredictionsService here would be the exact N+1-flavored
@@ -86,14 +145,20 @@ export class GameDetailService {
     // "<=", so neither can inform the other. Same principle
     // apps/predictor/elo.py and four_factors.py apply via their
     // chronological forward-pass/pre-game-snapshot construction.
+    // Only playerId (to group by) and points (all predictPointsFromRecentGames
+    // reads) travel over the wire — the other ~20 boxscore columns on this
+    // table would otherwise be pulled for every roster player's entire prior
+    // game history for nothing, which is real money against Supabase's
+    // egress-metered free tier.
     const allPriorGameStats = await this.prisma.playerGameStat.findMany({
       where: {
         playerId: { in: rosterPlayers.map((player) => player.id) },
-        game: { gameDate: { lt: game.gameDate } },
+        game: { gameDate: { lt: game.gameDate }, seasonType: MODELLED_SEASON_TYPE },
       },
+      select: { playerId: true, points: true },
       orderBy: { game: { gameDate: "desc" } },
     });
-    const priorGameStatsByPlayerId = new Map<string, PlayerGameStat[]>();
+    const priorGameStatsByPlayerId = new Map<string, Pick<PlayerGameStat, "points">[]>();
     for (const stat of allPriorGameStats) {
       const existing = priorGameStatsByPlayerId.get(stat.playerId);
       if (existing) existing.push(stat);
