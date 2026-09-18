@@ -133,6 +133,109 @@ Safe to re-run: every write is an upsert keyed on the real NBA id
 existing rows (rosters change, more recent games become available) rather
 than creating duplicates.
 
+### Options
+
+```bash
+python ingest.py --review                                   # land batches as PENDING_REVIEW
+python ingest.py --season 2024-25                           # a season other than the default
+python ingest.py --from-date 2026-04-14 --to-date 2026-04-18  # only games in this window
+```
+
+| Flag | Default | Effect |
+|---|---|---|
+| `--review` | off | Batches land as `PENDING_REVIEW` for approval in the admin Batches tab, instead of `COMPLETED`. The admin **Pull Data** button always passes this. |
+| `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. |
+| `--from-date` | none | Only games on or after this date (`YYYY-MM-DD`, inclusive). |
+| `--to-date` | none | Only games on or before this date (`YYYY-MM-DD`, inclusive). |
+
+Either date bound can be given alone. Malformed or inverted dates are
+rejected at startup, before any API call. The admin Batches tab exposes the
+same three options next to **Pull Data**.
+
+**A windowed pull only pays for what it fetches.** With a date window:
+
+- Games come from **one** leaguewide `LeagueGameLog` call, filtered to the
+  window, instead of 30 per-team calls — and an older window can't miss
+  games the way a "newest 15 per team" list would.
+- Player bios are fetched **only for players who have never had one**
+  (`birthDate` is null: new call-ups and signings), instead of all
+  ~450-500 rostered players. Bios almost never change; refresh them all
+  with an unwindowed pull or `backfill_player_bios.py`.
+- Rosters (30 calls) still run in full, so traded and newly signed players
+  are attached to the right team before their games are ingested.
+
+On a database whose players already have bios, that leaves roughly 40
+fixed calls — well under a minute at the 1s rate limit — plus about 2 calls
+per game in the window (boxscore and play-by-play). That figure is an
+estimate from the call budget.
+
+The bio saving depends entirely on players already having bios. **Measured
+on a fresh local database** (only the 14 seed players): a 14–18 April 2026
+window, 10 games, took **16.9 minutes**, because rosters loaded 530 players
+with no bios and every one of them was fetched. Expect that the first time
+you pull into an empty or seed-only database; later pulls skip them.
+
+Without a window, a pull behaves exactly as before.
+
+### Pull worker (running pulls requested from the deployed site)
+
+The deployed API can't reach stats.nba.com, so on the live site **Pull
+Data** (and the admin pull schedule) don't run anything themselves — they
+*queue* a pull. `pull_worker.py` runs those queued pulls from a machine that
+can reach stats.nba.com:
+
+```bash
+python pull_worker.py            # keep running; checks for work every minute
+python pull_worker.py --once     # run whatever is queued, then exit
+python pull_worker.py --name home-pc   # how it appears on the admin page (default: hostname)
+```
+
+1. Point this folder's `.env` `DATABASE_URL` at the **same database the
+   deployed API uses** — the worker reads the queue from it, and the pull
+   writes its results there. **Only the `.env` file counts:** `db.py` loads
+   it with `override=True` (see its comment for why), so a `DATABASE_URL`
+   exported in your shell is ignored. The worker prints the database host
+   it's using when it starts — check it.
+2. Leave it running, or schedule `--once` (Windows Task Scheduler, cron) to
+   run as often as you want queued pulls picked up.
+3. Watch the **Pull queue** panel on the admin Batches tab: each request's
+   status (queued, running, succeeded, failed, cancelled), which worker ran
+   it, the tail of `ingest.py`'s output, and when a worker last checked in.
+
+How it behaves:
+
+- Each pull runs `ingest.py --review` with the request's season and dates,
+  as its own process, so batches land as `PENDING_REVIEW` exactly as a pull
+  started locally does.
+- Two workers can safely run at once: claiming uses `FOR UPDATE SKIP LOCKED`,
+  so a request is only ever taken by one.
+- Only one pull is queued or running at a time; the admin page refuses
+  another until it finishes or is cancelled. A queued pull can be cancelled
+  from the admin page; a running one can't — it's on your machine.
+- If the worker is stopped mid-pull, it marks that pull failed the next time
+  it starts. A pull still marked running after 3 hours stops blocking new
+  requests.
+
+To try the whole flow locally:
+
+1. **First point `apps/ingestion/.env` at your local database**, the same one
+   `apps/api/.env` uses. If it still points at production, the worker will
+   run production's queue, not the one you're testing — and a shell
+   `DATABASE_URL` won't redirect it (see step 1 above).
+2. Set `INGESTION_MODE="queue"` in `apps/api/.env` and restart the API; it
+   then queues pulls instead of running them itself.
+3. Queue a pull from the admin Batches tab, then run
+   `python pull_worker.py --once` and confirm the startup line names your
+   local database.
+
+`test_pull_worker.py`'s database tests run only when
+`INGESTION_TEST_DATABASE_URL` points at a disposable, migrated database —
+e.g. the API's test database:
+
+```bash
+INGESTION_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:55433/nba_analytics_test" python -m pytest test_pull_worker.py
+```
+
 ### Single-phase scripts
 
 Two phases can be run on their own against a database that already has

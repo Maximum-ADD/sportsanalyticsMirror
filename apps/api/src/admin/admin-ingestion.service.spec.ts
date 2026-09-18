@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { AdminIngestionService } from "./admin-ingestion.service.js";
+import { AdminIngestionService, buildIngestionArgs } from "./admin-ingestion.service.js";
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
@@ -23,6 +23,15 @@ function createMockPrisma() {
     ingestionBatch: {
       findUnique: vi.fn(),
       update: vi.fn(),
+    },
+    ingestionRequest: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: "request-1" }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    ingestionWorker: {
+      findFirst: vi.fn().mockResolvedValue(null),
     },
   };
 }
@@ -145,6 +154,30 @@ describe("AdminIngestionService", () => {
       expect(spawn).toHaveBeenCalledTimes(1);
     });
 
+    it("passes the season and date window through to the script", async () => {
+      vi.mocked(spawn).mockReturnValue(fakeRunningChild() as unknown as ChildProcess);
+
+      const result = await service.triggerPull("user-1", {
+        season: "2024-25",
+        fromDate: "2026-04-14",
+        toDate: "2026-04-18",
+      });
+
+      expect(result.started).toBe(true);
+      const spawnArgs = vi.mocked(spawn).mock.calls[0][1] as string[];
+      expect(spawnArgs.slice(1)).toEqual([
+        "--review", "--season", "2024-25", "--from-date", "2026-04-14", "--to-date", "2026-04-18",
+      ]);
+    });
+
+    it("refuses a malformed window without spawning anything", async () => {
+      const result = await service.triggerPull("user-1", { fromDate: "14/04/2026" });
+
+      expect(result.started).toBe(false);
+      expect(result.message).toMatch(/YYYY-MM-DD/);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
     it("refuses a second pull while one is running", async () => {
       vi.mocked(spawn).mockReturnValue(fakeRunningChild() as unknown as ChildProcess);
 
@@ -184,24 +217,121 @@ describe("AdminIngestionService", () => {
       expect(spawn).toHaveBeenCalledTimes(2);
     });
 
-    it("reports when the ingestion scripts are missing", async () => {
+    // Before the queue existed, a server without the ingestion environment
+    // could only refuse. Now it hands the pull to a pull worker instead.
+    it("queues the pull when the ingestion scripts are missing", async () => {
       vi.mocked(existsSync).mockImplementation((path: unknown) => !String(path).endsWith("ingest.py"));
 
-      const result = await service.triggerPull();
+      const result = await service.triggerPull("user-1");
 
-      expect(result.started).toBe(false);
-      expect(result.message).toMatch(/scripts not found/i);
+      expect(result).toMatchObject({ started: true, queued: true });
+      expect(mockPrisma.ingestionRequest.create).toHaveBeenCalled();
       expect(spawn).not.toHaveBeenCalled();
     });
 
-    it("reports when the Python virtual environment is missing", async () => {
+    it("queues the pull when the Python virtual environment is missing", async () => {
       vi.mocked(existsSync).mockImplementation((path: unknown) => !String(path).includes(".venv"));
 
-      const result = await service.triggerPull();
+      const result = await service.triggerPull("user-1");
+
+      expect(result).toMatchObject({ started: true, queued: true });
+      expect(spawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("queue mode", () => {
+    beforeEach(() => {
+      vi.mocked(existsSync).mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      delete process.env.INGESTION_MODE;
+    });
+
+    it("records the requester and the window for the worker to run", async () => {
+      await service.triggerPull("user-1", { season: "2024-25", fromDate: "2026-04-14", toDate: "2026-04-18" });
+
+      expect(mockPrisma.ingestionRequest.create).toHaveBeenCalledWith({
+        data: {
+          season: "2024-25",
+          fromDate: "2026-04-14",
+          toDate: "2026-04-18",
+          scheduled: false,
+          requestedById: "user-1",
+        },
+      });
+    });
+
+    it("queues even where it could run the pull itself when INGESTION_MODE=queue", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      process.env.INGESTION_MODE = "queue";
+
+      const result = await service.triggerPull("user-1");
+
+      expect(result.queued).toBe(true);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed window without queuing anything", async () => {
+      const result = await service.triggerPull("user-1", { toDate: "18/04/2026" });
 
       expect(result.started).toBe(false);
-      expect(result.message).toMatch(/virtual environment not found/i);
-      expect(spawn).not.toHaveBeenCalled();
+      expect(mockPrisma.ingestionRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a second request while one is still queued", async () => {
+      mockPrisma.ingestionRequest.findFirst.mockResolvedValue({ status: "QUEUED", claimedBy: null });
+
+      const result = await service.triggerPull("user-1");
+
+      expect(result.started).toBe(false);
+      expect(result.message).toMatch(/already queued/i);
+      expect(mockPrisma.ingestionRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("names the worker when a request is already running", async () => {
+      mockPrisma.ingestionRequest.findFirst.mockResolvedValue({ status: "RUNNING", claimedBy: "home-pc" });
+
+      const result = await service.triggerPull("user-1");
+
+      expect(result.message).toMatch(/already running on home-pc/);
+    });
+
+    it("does not let a long-dead RUNNING request block new ones forever", async () => {
+      await service.triggerPull("user-1");
+
+      const { where } = mockPrisma.ingestionRequest.findFirst.mock.calls[0][0];
+      const runningClause = where.OR.find((clause: { status: string }) => clause.status === "RUNNING");
+      const cutoffInHours = (Date.now() - runningClause.claimedAt.gte.getTime()) / (60 * 60 * 1000);
+      expect(cutoffInHours).toBeCloseTo(3, 1);
+    });
+
+    it("reports queue mode and when a worker last checked in", async () => {
+      const lastSeenAt = new Date("2026-09-18T14:02:00Z");
+      mockPrisma.ingestionWorker.findFirst.mockResolvedValue({ lastSeenAt });
+      mockPrisma.ingestionSchedule.findUnique.mockResolvedValue(null);
+
+      const schedule = await service.getSchedule();
+
+      expect(schedule).toMatchObject({ pullMode: "queue", ingestionAvailable: false, workerLastSeenAt: lastSeenAt });
+    });
+
+    it("cancels only a request no worker has claimed", async () => {
+      await expect(service.cancelPullRequest("request-1")).resolves.toBe(true);
+      expect(mockPrisma.ingestionRequest.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "request-1", status: "QUEUED" } }),
+      );
+
+      mockPrisma.ingestionRequest.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.cancelPullRequest("request-2")).resolves.toBe(false);
+    });
+
+    it("lists the most recent requests first", async () => {
+      await service.listPullRequests();
+
+      expect(mockPrisma.ingestionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { requestedAt: "desc" }, take: 10 }),
+      );
     });
   });
 
@@ -224,14 +354,29 @@ describe("AdminIngestionService", () => {
       expect(result.ingestionAvailable).toBe(false);
     });
 
-    it("skips the scheduled pull when ingestion is unavailable on this server", async () => {
+    it("queues a due scheduled pull where this server can't run it", async () => {
       vi.mocked(existsSync).mockReturnValue(false);
-      const triggerSpy = vi.spyOn(service, "triggerPull");
+      mockPrisma.ingestionSchedule.findUnique.mockResolvedValue({
+        frequency: "DAILY",
+        lastRunAt: null,
+        updatedAt: new Date(),
+      });
 
       await service.checkSchedule();
 
-      expect(triggerSpy).not.toHaveBeenCalled();
-      expect(mockPrisma.ingestionSchedule.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.ingestionRequest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ scheduled: true, requestedById: null }),
+      });
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it("queues nothing when the schedule is off", async () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      mockPrisma.ingestionSchedule.findUnique.mockResolvedValue(null);
+
+      await service.checkSchedule();
+
+      expect(mockPrisma.ingestionRequest.create).not.toHaveBeenCalled();
     });
 
     it("runs the scheduled pull when it is due and ingestion is available", async () => {
@@ -248,5 +393,42 @@ describe("AdminIngestionService", () => {
 
       expect(spawn).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("buildIngestionArgs", () => {
+  it("always asks for review, so pulls land as PENDING_REVIEW", () => {
+    expect(buildIngestionArgs({})).toEqual(["--review"]);
+  });
+
+  it("adds only the options that were given", () => {
+    expect(buildIngestionArgs({ season: "2024-25" })).toEqual([
+      "--review", "--season", "2024-25",
+    ]);
+    expect(buildIngestionArgs({ fromDate: "2026-04-14" })).toEqual([
+      "--review", "--from-date", "2026-04-14",
+    ]);
+  });
+
+  it("builds a full window", () => {
+    expect(
+      buildIngestionArgs({ season: "2025-26", fromDate: "2026-04-14", toDate: "2026-04-18" }),
+    ).toEqual([
+      "--review", "--season", "2025-26", "--from-date", "2026-04-14", "--to-date", "2026-04-18",
+    ]);
+  });
+
+  it("rejects a malformed season", () => {
+    expect(() => buildIngestionArgs({ season: "2025" })).toThrow(/2025-26/);
+  });
+
+  it("rejects a malformed date", () => {
+    expect(() => buildIngestionArgs({ toDate: "April 18" })).toThrow(/YYYY-MM-DD/);
+  });
+
+  it("rejects an inverted window, which would silently select no games", () => {
+    expect(() =>
+      buildIngestionArgs({ fromDate: "2026-04-18", toDate: "2026-04-14" }),
+    ).toThrow(/must not be after/);
   });
 });

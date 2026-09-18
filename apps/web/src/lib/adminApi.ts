@@ -109,11 +109,18 @@ export interface IngestionBatchSummary {
   reviewedBy: { id: string; name: string } | null;
 }
 
+/** Orders the batch list by the date the game was played (the Date column),
+ * by season, or by when the pull that produced the batch ran. */
+export type BatchSortField = "date" | "season" | "ingested";
+export type SortDirection = "asc" | "desc";
+
 export interface FetchAdminBatchesParams {
   status?: string;
   search?: string;
   page?: number;
   pageSize?: number;
+  sort?: BatchSortField;
+  order?: SortDirection;
 }
 
 export function fetchAdminBatches(params: FetchAdminBatchesParams = {}): Promise<PagedResult<IngestionBatchSummary>> {
@@ -211,18 +218,55 @@ export function deleteAdminApiKey(consumerId: string, keyId: string): Promise<{ 
 
 export type IngestionFrequency = "NEVER" | "HOURLY" | "DAILY" | "WEEKLY";
 
+/**
+ * How the API carries out a pull. "direct": it runs ingest.py itself (local
+ * development). "queue": it can't reach stats.nba.com (the deployed API), so
+ * it queues the pull for a pull worker running on another machine.
+ */
+export type PullMode = "direct" | "queue";
+
 export interface IngestionScheduleConfig {
   frequency: IngestionFrequency;
   lastRunAt: string | null;
   updatedAt: string;
-  /** False where the Python ingestion environment is absent (e.g. Render) —
-   * scheduled pulls can't run there, only on machines that have it. */
+  /** True only in direct mode. Kept for older callers; prefer pullMode. */
   ingestionAvailable: boolean;
+  pullMode: PullMode;
+  /** When a pull worker last checked in; null if none ever has. */
+  workerLastSeenAt: string | null;
 }
 
 export interface TriggerResult {
   started: boolean;
   message: string;
+  /** True when the pull was queued for a worker rather than run by the API. */
+  queued?: boolean;
+}
+
+export type IngestionRequestStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+
+/** One queued pull and, once a worker has run it, how it ended. */
+export interface IngestionPullRequest {
+  id: string;
+  status: IngestionRequestStatus;
+  season: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  scheduled: boolean;
+  requestedAt: string;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  finishedAt: string | null;
+  message: string | null;
+  requestedBy: { id: string; name: string } | null;
+}
+
+export function fetchIngestionRequests(): Promise<IngestionPullRequest[]> {
+  return fetchJson<IngestionPullRequest[]>("/v1/admin/ingestion/requests");
+}
+
+export function cancelIngestionRequest(requestId: string): Promise<{ cancelled: true }> {
+  return sendJson<{ cancelled: true }>(`/v1/admin/ingestion/requests/${requestId}/cancel`, "POST");
 }
 
 export function fetchIngestionSchedule(): Promise<IngestionScheduleConfig> {
@@ -233,8 +277,17 @@ export function updateIngestionSchedule(frequency: IngestionFrequency): Promise<
   return sendJson<IngestionScheduleConfig>("/v1/admin/ingestion/schedule", "PUT", { frequency });
 }
 
-export function triggerIngestionPull(): Promise<TriggerResult> {
-  return sendJson<TriggerResult>("/v1/admin/ingestion/pull", "POST", {});
+/** Narrows what a manual pull covers. Every field is optional; an empty
+ * object pulls the current season's recent games plus the postseason, which
+ * is what the button did before the window existed. */
+export interface PullOptions {
+  season?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function triggerIngestionPull(options: PullOptions = {}): Promise<TriggerResult> {
+  return sendJson<TriggerResult>("/v1/admin/ingestion/pull", "POST", options);
 }
 
 export function deleteIngestionBatch(batchId: string): Promise<{ success: boolean }> {

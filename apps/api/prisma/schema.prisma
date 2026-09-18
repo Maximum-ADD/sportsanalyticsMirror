@@ -106,6 +106,7 @@ model User {
   eventCorrections  EventCorrection[]
   publishedReleases DatasetRelease[]
   ingestionSchedule IngestionSchedule?
+  ingestionRequests IngestionRequest[]
 
   // The personal API consumer auto-provisioned the first time this user
   // creates an API key (see ApiConsumer.userId) — null until then.
@@ -965,6 +966,56 @@ model IngestionSchedule {
   updatedById String?  @unique
   updatedBy   User?    @relation(fields: [updatedById], references: [id])
   updatedAt   DateTime @updatedAt
+}
+
+enum IngestionRequestStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+// A pull the API could not run itself. stats.nba.com blocks cloud-provider
+// IP ranges, so the deployed API records the request here instead, and a
+// pull worker (apps/ingestion/pull_worker.py) on a machine that CAN reach
+// stats.nba.com claims it, runs ingest.py with these options and records
+// the outcome. Where the API can run ingestion itself (local dev), it
+// spawns ingest.py directly and never writes here.
+model IngestionRequest {
+  id     String                 @id @default(uuid())
+  status IngestionRequestStatus @default(QUEUED)
+
+  // Passed straight to ingest.py as --season / --from-date / --to-date;
+  // null means the script's own default. Validated by the API on the way in.
+  season   String?
+  fromDate String?
+  toDate   String?
+
+  // True when the hourly scheduler queued it rather than an admin.
+  scheduled Boolean @default(false)
+
+  requestedById String?
+  requestedBy   User?    @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  requestedAt   DateTime @default(now())
+
+  // Written by the worker: which one took it, when, and how it ended.
+  claimedBy  String?
+  claimedAt  DateTime?
+  finishedAt DateTime?
+  // The failure reason, or the tail of ingest.py's output on success.
+  message String?
+
+  @@index([status, requestedAt])
+}
+
+// One row per pull worker, touched every time it checks in (and while it
+// runs a pull), so the admin page can tell "queued, a worker will pick it
+// up" from "queued, but nobody is running a worker" — which otherwise look
+// identical.
+model IngestionWorker {
+  name       String   @id
+  lastSeenAt DateTime
 }
 
 enum IngestionFrequency {

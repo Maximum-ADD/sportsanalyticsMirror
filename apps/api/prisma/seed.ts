@@ -255,8 +255,24 @@ async function seedPostseasonGamesAndStats(
 // logic — upserting would leave stale rows from a previous run's schedule
 // mismatched against the current one.
 async function resetGameData() {
-  await prisma.playerGameStat.deleteMany();
+  // Every table with a foreign key to Game has to go first, in dependency
+  // order, or the game delete fails on a constraint. Deleting only stats
+  // and events was enough while nothing else wrote game-scoped rows, but
+  // an ingestion pull (IngestionBatch), the predictor (GamePrediction,
+  // GamePredictionRun), the odds fetch (GameMarketOdds) and an admin
+  // correction (EventCorrection) all leave rows that block a re-seed.
+  //
+  // GameEvent is deleted before IngestionBatch because it points at both;
+  // its batch link is SetNull, so the order only matters for clarity.
+  await prisma.eventCorrection.deleteMany();
   await prisma.gameEvent.deleteMany();
+  await prisma.playerGameStat.deleteMany();
+  await prisma.ingestionBatch.deleteMany();
+  await prisma.gamePrediction.deleteMany();
+  await prisma.gamePredictionRun.deleteMany();
+  await prisma.gameMarketOdds.deleteMany();
+  // Cascades on Game delete, but listed so this reads as the full set.
+  await prisma.gamePick.deleteMany();
   await prisma.game.deleteMany();
 }
 
