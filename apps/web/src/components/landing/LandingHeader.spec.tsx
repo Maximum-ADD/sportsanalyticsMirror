@@ -76,28 +76,27 @@ describe("LandingHeader mobile drawer", () => {
 });
 
 describe("LandingHeader signed-in links", () => {
-  // Links render twice (in-row nav + drawer), so use getAllByRole.
-  it("adds API Keys for any signed-in user, but no Admin link", () => {
+  // Links render twice (in-row nav + drawer), so use getAllByRole. API key
+  // management is a Profile section now, so it has no nav link of its own.
+  it("shows no Admin link for a non-admin signed-in user", () => {
     vi.mocked(useMe).mockReturnValue({ data: { id: "u1", role: "USER" } } as never);
     renderWithProviders(<LandingHeader />);
 
-    expect(screen.getAllByRole("link", { name: "API Keys" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("link", { name: "Admin" })).toHaveLength(0);
+    expect(screen.queryAllByRole("link", { name: "API Keys" })).toHaveLength(0);
   });
 
-  it("adds Admin on top of API Keys for admins", () => {
+  it("adds Admin for admins", () => {
     vi.mocked(useMe).mockReturnValue({ data: { id: "u1", role: "ADMIN" } } as never);
     renderWithProviders(<LandingHeader />);
 
-    expect(screen.getAllByRole("link", { name: "API Keys" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Admin" }).length).toBeGreaterThan(0);
   });
 
-  it("shows neither link when signed out", () => {
+  it("shows no Admin link when signed out", () => {
     vi.mocked(useMe).mockReturnValue({ data: null } as never);
     renderWithProviders(<LandingHeader />);
 
-    expect(screen.queryAllByRole("link", { name: "API Keys" })).toHaveLength(0);
     expect(screen.queryAllByRole("link", { name: "Admin" })).toHaveLength(0);
   });
 });

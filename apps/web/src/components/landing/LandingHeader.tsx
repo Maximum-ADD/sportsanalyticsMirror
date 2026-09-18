@@ -36,13 +36,10 @@ interface LandingHeaderProps {
 export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHeaderProps) {
   // Admin is the one link that isn't always in the row — it only appears
   // for a signed-in admin, appended rather than spliced in anywhere else so
-  // it doesn't shift every other link's position for everyone else. API
-  // Keys similarly only appears for a signed-in user (any role — it's the
-  // user's own key management page), sitting before Admin.
+  // it doesn't shift every other link's position for everyone else.
   const { data: me } = useMe();
   const links = [
     ...APP_LINKS,
-    ...(me ? [{ label: "API Keys", to: "/api-keys" }] : []),
     ...(me?.role === "ADMIN" ? [{ label: "Admin", to: "/admin" }] : []),
   ];
 

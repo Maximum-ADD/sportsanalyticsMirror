@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { TeamBadge } from "@/components/TeamBadge";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { ApiKeysSection } from "@/components/ApiKeysSection";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
@@ -540,6 +541,13 @@ export function ProfilePage() {
           <div className="mb-6">
             <SectionHeading>Saved lineups</SectionHeading>
             <SavedLineupsSection />
+          </div>
+        </Reveal>
+
+        <Reveal delay={3}>
+          <div className="mb-6">
+            <SectionHeading>API keys</SectionHeading>
+            <ApiKeysSection />
           </div>
         </Reveal>
 

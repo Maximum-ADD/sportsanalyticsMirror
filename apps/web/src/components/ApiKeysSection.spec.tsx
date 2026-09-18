@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiKeysPage } from "./ApiKeysPage";
+import { ApiKeysSection } from "./ApiKeysSection";
 import {
   createMyApiKey,
   deleteMyApiKey,
@@ -30,26 +30,26 @@ function makeKey(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("ApiKeysPage", () => {
+describe("ApiKeysSection", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
   it("shows loading spinner initially", () => {
     vi.mocked(fetchMyApiKeys).mockReturnValue(new Promise(() => {}));
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
     expect(screen.getByRole("status", { name: "Loading API keys" })).toBeInTheDocument();
   });
 
   it("shows error state on fetch failure", async () => {
     vi.mocked(fetchMyApiKeys).mockRejectedValue(new Error("fail"));
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
     expect(await screen.findByText("Could not load API keys.")).toBeInTheDocument();
   });
 
   it("shows empty state before the user has any keys", async () => {
     vi.mocked(fetchMyApiKeys).mockResolvedValue({ consumer: null, keys: [] });
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
     expect(
       await screen.findByText("No API keys yet — generate one above to get started.")
     ).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe("ApiKeysPage", () => {
         makeKey({ id: "k2", label: null, isActive: false, lastUsedAt: "2026-09-12T09:30:00.000Z" }),
       ],
     });
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
 
     expect(await screen.findByText("laptop")).toBeInTheDocument();
     // unlabeled keys fall back to a readable slice of their id
@@ -85,7 +85,7 @@ describe("ApiKeysPage", () => {
     vi.mocked(createMyApiKey).mockResolvedValue({
       id: "k9", label: "laptop", rawKey: "nba_rawsecret", createdAt: "2026-09-17",
     });
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
 
     await user.type(screen.getByLabelText("Key label"), "  laptop  ");
     await user.click(screen.getByRole("button", { name: "Generate Key" }));
@@ -104,7 +104,7 @@ describe("ApiKeysPage", () => {
     vi.mocked(createMyApiKey).mockResolvedValue({
       id: "k9", label: null, rawKey: "nba_rawsecret", createdAt: "2026-09-17",
     });
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
 
     await screen.findByText("No API keys yet — generate one above to get started.");
     await user.click(screen.getByRole("button", { name: "Generate Key" }));
@@ -116,7 +116,7 @@ describe("ApiKeysPage", () => {
     const user = userEvent.setup();
     vi.mocked(fetchMyApiKeys).mockResolvedValue({ consumer: null, keys: [] });
     vi.mocked(createMyApiKey).mockRejectedValue(new Error("fail"));
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
 
     await screen.findByText("No API keys yet — generate one above to get started.");
     await user.click(screen.getByRole("button", { name: "Generate Key" }));
@@ -128,7 +128,7 @@ describe("ApiKeysPage", () => {
     const user = userEvent.setup();
     vi.mocked(fetchMyApiKeys).mockResolvedValue({ consumer: CONSUMER, keys: [makeKey()] });
     vi.mocked(revokeMyApiKey).mockResolvedValue({ revoked: true });
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
 
     await screen.findByText("laptop");
     await user.click(screen.getByRole("button", { name: "Revoke" }));
@@ -139,7 +139,7 @@ describe("ApiKeysPage", () => {
     const user = userEvent.setup();
     vi.mocked(fetchMyApiKeys).mockResolvedValue({ consumer: CONSUMER, keys: [makeKey()] });
     vi.mocked(deleteMyApiKey).mockResolvedValue({ deleted: true });
-    renderWithProviders(<ApiKeysPage />);
+    renderWithProviders(<ApiKeysSection />);
 
     await screen.findByText("laptop");
     await user.click(screen.getByRole("button", { name: "Delete" }));
