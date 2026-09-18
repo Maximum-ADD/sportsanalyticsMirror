@@ -220,5 +220,56 @@ describe("Admin event corrections and replay", () => {
       const response = await request(app.getHttpServer()).post("/v1/admin/games/does-not-exist/replay");
       expect(response.status).toBe(404);
     });
+
+    // Every game ingested before play-by-play was translated holds only
+    // period markers. Replaying one used to write 0 over every player's
+    // points, rebounds and assists, because nobody could be derived.
+    it("leaves a game's stats alone when its events don't involve any player", async () => {
+      const team = await createTeam();
+      const player = await createPlayer("Curry", team.id);
+      const game = await createGame(team.id, team.id);
+      await testPrisma.gameEvent.createMany({
+        data: [
+          { gameId: game.id, sequence: 1, period: 1, clock: "12:00", eventType: "period", subType: "start", description: "Start of 1st Period" },
+          { gameId: game.id, sequence: 2, period: 1, clock: "0:00", eventType: "period", subType: "end", description: "End of 1st Period" },
+        ],
+      });
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: player.id, gameId: game.id, teamId: team.id, minutes: 34, points: 31, rebounds: 6, assists: 9,
+          steals: 2, blocks: 0, turnovers: 3, fieldGoalsMade: 11, fieldGoalsAttempted: 20, threesMade: 5,
+          threesAttempted: 11, freeThrowsMade: 4, freeThrowsAttempted: 4,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
+
+      expect(response.body).toEqual({ gameId: game.id, playersRecomputed: 0 });
+      const stat = await testPrisma.playerGameStat.findUniqueOrThrow({
+        where: { playerId_gameId: { playerId: player.id, gameId: game.id } },
+      });
+      expect({ points: stat.points, rebounds: stat.rebounds, assists: stat.assists }).toEqual({ points: 31, rebounds: 6, assists: 9 });
+    });
+
+    it("recomputes players who act in the events and leaves the rest alone", async () => {
+      const { game, scorer, passer } = await seedAssistedThree();
+      const benchPlayer = await createPlayer("Bench", (await testPrisma.team.findFirstOrThrow()).id);
+      // In the boxscore, but never the actor of an event in this game.
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: benchPlayer.id, gameId: game.id, minutes: 3, points: 0, rebounds: 0, assists: 1, steals: 0,
+          blocks: 0, turnovers: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0, threesMade: 0, threesAttempted: 0,
+          freeThrowsMade: 0, freeThrowsAttempted: 0,
+        },
+      });
+
+      await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
+
+      const stats = await testPrisma.playerGameStat.findMany({ where: { gameId: game.id } });
+      const byPlayer = new Map(stats.map((stat) => [stat.playerId, stat]));
+      expect(byPlayer.get(scorer.id)?.points).toBe(3);
+      expect(byPlayer.get(passer.id)?.assists).toBe(1);
+      expect(byPlayer.get(benchPlayer.id)?.assists).toBe(1);
+    });
   });
 });

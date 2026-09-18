@@ -15,14 +15,11 @@ returns clean `{"headers": [...], "data": [[...], ...]}` arrays in the
 confirmed header order, just not yet zipped into per-action dicts, which
 fetch_game_actions below does directly.
 
-KNOWN_ACTION_TYPES in event_validation.py is best-effort, not live-verified
-— this machine has no network path to stats.nba.com (confirmed: a plain
-HTTPS request to it times out here while general internet access works
-fine, matching this project's own documented cloud/sandbox-IP-blocking
-issue — see apps/ingestion/README.md). Running this against one real game
-and checking IngestionBatch.rejectionSummary for unexpected
-UNKNOWN_ACTION_TYPE rejections is the actual verification step, not
-something this module can self-certify.
+Raw actions are translated into the platform's event vocabulary by
+feed_translation.py before validation — see that module for what
+PlayByPlayV3 actually sends, checked against live 2025-26 games on
+2026-09-18. IngestionBatch.rejectionSummary is still the place to look if
+NBA changes its vocabulary: an unknown name is rejected, not guessed at.
 """
 
 from collections import Counter
@@ -32,6 +29,7 @@ from nba_api.stats.endpoints import playbyplayv3
 from psycopg2.extras import Json
 
 from event_validation import validate_raw_event
+from feed_translation import translate_game_actions
 from throttle import call_with_rate_limit
 
 SOURCE = "nba_api:playbyplayv3"
@@ -190,7 +188,7 @@ def run_ingestion_batch(
         complete_ingestion_batch(cursor, batch_id, "FAILED", accepted=0, rejected=0, rejection_summary={})
         raise
 
-    for action in order_actions_by_sequence(actions):
+    for action in translate_game_actions(order_actions_by_sequence(actions)):
         if resume_after_sequence is not None and action.get("actionNumber", -1) <= resume_after_sequence:
             continue
         result = validate_raw_event(action, previous_sequence=previous_sequence, known_player_ids=known_player_ids)

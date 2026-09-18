@@ -196,6 +196,16 @@ export class AdminEventsService {
   // would need, so this stays a targeted recomputation rather than a
   // from-scratch re-ingest. Returns how many players' rows were touched —
   // both correctEvent and replayGame report it back to the caller.
+  //
+  // Only players who act in at least one of the game's events are
+  // recomputed (zeros included — a shot reassigned away from a player takes
+  // its points with it). A player who never acts in the events keeps the
+  // stats they have, because there is nothing to recompute them from. That
+  // covers two real cases: games ingested before play-by-play was
+  // translated properly, which hold only period markers — recomputing
+  // everyone there used to write 0 over a whole game's points, rebounds and
+  // assists on a single replay — and the rare player whose only
+  // contribution is an assist credited by name on someone else's shot.
   private async recomputeDerivedStats(tx: Prisma.TransactionClient, gameId: string): Promise<number> {
     const [events, existingStats] = await Promise.all([
       tx.gameEvent.findMany({ where: { gameId } }),
@@ -206,14 +216,18 @@ export class AdminEventsService {
     const playerIds = existingStats.map((row) => row.playerId);
     const players = await tx.player.findMany({
       where: { id: { in: playerIds } },
-      select: { id: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true },
     });
-    const lastNameByPlayerId = new Map(players.map((player) => [player.id, player.lastName]));
+    const namesByPlayerId = new Map(
+      players.map((player) => [player.id, { firstName: player.firstName, lastName: player.lastName }]),
+    );
 
-    const derivedByPlayerId = deriveGameEventStats(events, lastNameByPlayerId);
+    const derivedByPlayerId = deriveGameEventStats(events, namesByPlayerId);
+    const actingPlayerIds = new Set(events.map((event) => event.playerId).filter((playerId) => playerId !== null));
+    const recomputedPlayerIds = playerIds.filter((playerId) => actingPlayerIds.has(playerId));
 
     await Promise.all(
-      playerIds.map((playerId) => {
+      recomputedPlayerIds.map((playerId) => {
         const derived = derivedByPlayerId.get(playerId);
         const data: Record<(typeof COUNTING_STAT_FIELDS)[number], number> = {} as never;
         for (const field of COUNTING_STAT_FIELDS) data[field] = derived?.[field] ?? 0;
@@ -225,7 +239,7 @@ export class AdminEventsService {
       }),
     );
 
-    return playerIds.length;
+    return recomputedPlayerIds.length;
   }
 
   // Replays one game's derivation on demand — the same recomputation

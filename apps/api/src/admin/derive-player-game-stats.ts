@@ -13,20 +13,39 @@
 // way the Python module does. The one place name resolution is still
 // needed is exactly where the Python module needs it: assist/steal/block
 // credit is never a field on the event that earns it, only a "(Name N AST)"
-// style suffix in ITS description — see event_validation.py and
-// derive_player_game_stats.py's own module docstring for why. GameEvent
-// doesn't persist the raw playerName NBA supplied at ingestion time, so the
-// roster name index here is built from Player.lastName instead — the same
-// surname NBA's own play-by-play feed uses in that suffix.
+// style suffix in ITS description — see apps/ingestion/feed_translation.py
+// for how PlayByPlayV3's rows become that form. GameEvent doesn't persist the
+// raw names NBA supplied at ingestion time, so the roster here is built from
+// Player.lastName and Player.firstName instead.
 import type { GameEvent } from "@prisma/client";
+
+type CreditStat = "assists" | "steals" | "blocks";
 
 const TEAM_ACTION_SENTINEL = null;
 
-const SECONDARY_PLAYER_PATTERNS: Record<"assists" | "steals" | "blocks", RegExp> = {
-  assists: /\(([A-Za-z.\-' ]+?) (\d+) AST\)/,
-  steals: /\(([A-Za-z.\-' ]+?) (\d+) STL\)/,
-  blocks: /\(([A-Za-z.\-' ]+?) (\d+) BLK\)/,
+// Any characters but parentheses for the name: an ASCII-only class could
+// never match an accented name.
+const SECONDARY_PLAYER_PATTERNS: Record<CreditStat, RegExp> = {
+  assists: /\(([^()]+?) (\d+) AST\)/,
+  steals: /\(([^()]+?) (\d+) STL\)/,
+  blocks: /\(([^()]+?) (\d+) BLK\)/,
 };
+
+// The team a credit comes from, relative to the team of the event it's on:
+// an assist is a teammate of the shooter; a block or steal is the other side.
+const CREDIT_FROM_SAME_TEAM: Record<CreditStat, boolean> = { assists: true, blocks: false, steals: false };
+
+const COMBINING_MARKS = /[\u0300-\u036f]/g;
+
+/**
+ * A name with accents removed and case folded, for matching. NBA writes
+ * "Jokić" as a player's name but "(Jokic 11 AST)" in credits, so raw
+ * comparison dropped every credit for a player with an accented surname.
+ * Mirrors derive_player_game_stats.fold_name.
+ */
+export function foldName(name: string): string {
+  return name.normalize("NFKD").replace(COMBINING_MARKS, "").toLowerCase().trim();
+}
 
 export const COUNTING_STAT_FIELDS = [
   "points",
@@ -58,47 +77,77 @@ function emptyStatLine(): CountingStats {
 // callers pass real Prisma GameEvent rows straight through.
 export type DerivableGameEvent = Pick<
   GameEvent,
-  "eventType" | "subType" | "playerId" | "success" | "value" | "description"
+  "eventType" | "subType" | "playerId" | "teamId" | "success" | "value" | "description"
 >;
 
-// Surname -> every playerId sharing it, restricted to players who actually
-// acted in this game (mirrors build_roster_name_index: a player must
-// appear as an actor somewhere in the game's own events to be resolvable as
-// a secondary player at all).
-export function buildRosterNameIndex(
+export interface PlayerName {
+  firstName: string;
+  lastName: string;
+}
+
+// What a credit suffix can be matched against, for one player.
+export interface RosterEntry {
+  surname: string; // folded
+  firstInitial: string; // folded, one letter; "" if unknown
+  teamId: string | null; // the team they played for in this game
+}
+
+// playerId -> name and team, restricted to players who actually acted in
+// this game (mirrors build_game_roster: a player must appear as an actor in
+// the game's own events to be resolvable as a credited player at all).
+export function buildGameRoster(
   events: DerivableGameEvent[],
-  lastNameByPlayerId: Map<string, string>,
-): Map<string, string[]> {
-  const index = new Map<string, Set<string>>();
+  namesByPlayerId: Map<string, PlayerName>,
+): Map<string, RosterEntry> {
+  const roster = new Map<string, RosterEntry>();
   for (const event of events) {
-    if (event.playerId === TEAM_ACTION_SENTINEL) continue;
-    const lastName = lastNameByPlayerId.get(event.playerId);
-    if (!lastName) continue;
-    const ids = index.get(lastName) ?? new Set<string>();
-    ids.add(event.playerId);
-    index.set(lastName, ids);
+    if (event.playerId === TEAM_ACTION_SENTINEL || roster.has(event.playerId)) continue;
+    const name = namesByPlayerId.get(event.playerId);
+    if (!name?.lastName) continue;
+    roster.set(event.playerId, {
+      surname: foldName(name.lastName),
+      firstInitial: foldName(name.firstName ?? "").slice(0, 1),
+      teamId: event.teamId,
+    });
   }
-  const result = new Map<string, string[]>();
-  for (const [name, ids] of index) result.set(name, [...ids].sort());
-  return result;
+  return roster;
+}
+
+// Whether a folded credit name ("jokic", "l. james", "st. curry") refers to
+// this player. NBA writes a bare surname unless two players on a roster
+// share it, then prefixes enough of the first name to tell them apart; the
+// prefix must begin with the player's first initial. Mirrors
+// credit_name_matches.
+export function creditNameMatches(creditName: string, player: RosterEntry): boolean {
+  if (creditName === player.surname) return true;
+  if (!creditName.endsWith(` ${player.surname}`) || !player.firstInitial) return false;
+  const prefix = creditName.slice(0, -player.surname.length).trim().replace(/\.$/, "");
+  return prefix.startsWith(player.firstInitial);
 }
 
 // Extracts and resolves the "(Name N AST/STL/BLK)" suffix on one event's
-// description. Returns null when there's no such suffix (a genuinely
-// unassisted shot, an unblocked miss, an unstolen turnover), or when the
-// extracted name doesn't resolve to exactly one known player in this game
-// (unresolved/ambiguous) — never a guess.
+// description to a playerId. When the name fits more than one player — two
+// players share a surname, and NBA only disambiguates within a roster — the
+// one on the expected side of the event's team (CREDIT_FROM_SAME_TEAM) is
+// kept. Returns null when there's no suffix, or the name still doesn't
+// narrow to exactly one player — never a guess. Mirrors
+// resolve_secondary_player.
 export function resolveSecondaryPlayer(
   description: string,
-  stat: "assists" | "steals" | "blocks",
-  rosterByName: Map<string, string[]>,
+  stat: CreditStat,
+  roster: Map<string, RosterEntry>,
+  eventTeamId: string | null = null,
 ): string | null {
   const match = SECONDARY_PLAYER_PATTERNS[stat].exec(description);
   if (match === null) return null;
 
-  const candidates = rosterByName.get(match[1].trim());
-  if (candidates === undefined || candidates.length !== 1) return null;
-  return candidates[0];
+  const creditName = foldName(match[1]);
+  let candidates = [...roster].filter(([, player]) => creditNameMatches(creditName, player)).map(([playerId]) => playerId);
+  if (candidates.length > 1 && eventTeamId) {
+    const fromSameTeam = CREDIT_FROM_SAME_TEAM[stat];
+    candidates = candidates.filter((playerId) => (roster.get(playerId)!.teamId === eventTeamId) === fromSameTeam);
+  }
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 // Aggregates one game's current GameEvent rows into playerId -> counting
@@ -110,9 +159,9 @@ export function resolveSecondaryPlayer(
 // personId.
 export function deriveGameEventStats(
   events: DerivableGameEvent[],
-  lastNameByPlayerId: Map<string, string>,
+  namesByPlayerId: Map<string, PlayerName>,
 ): Map<string, CountingStats> {
-  const rosterByName = buildRosterNameIndex(events, lastNameByPlayerId);
+  const roster = buildGameRoster(events, namesByPlayerId);
   const statsByPlayer = new Map<string, CountingStats>();
 
   const lineFor = (playerId: string): CountingStats => {
@@ -125,7 +174,7 @@ export function deriveGameEventStats(
   };
 
   for (const event of events) {
-    const { eventType, playerId, description } = event;
+    const { eventType, playerId, teamId, description } = event;
     const made = event.success === true;
 
     if (eventType === "2pt" || eventType === "3pt") {
@@ -138,10 +187,10 @@ export function deriveGameEventStats(
         const shotValue = event.value ?? (eventType === "3pt" ? 3 : 2);
         line.points += shotValue;
         if (eventType === "3pt") line.threesMade += 1;
-        const assistId = resolveSecondaryPlayer(description, "assists", rosterByName);
+        const assistId = resolveSecondaryPlayer(description, "assists", roster, teamId);
         if (assistId !== null) lineFor(assistId).assists += 1;
       } else {
-        const blockId = resolveSecondaryPlayer(description, "blocks", rosterByName);
+        const blockId = resolveSecondaryPlayer(description, "blocks", roster, teamId);
         if (blockId !== null) lineFor(blockId).blocks += 1;
       }
     } else if (eventType === "freethrow") {
@@ -165,7 +214,7 @@ export function deriveGameEventStats(
     } else if (eventType === "turnover") {
       if (playerId === TEAM_ACTION_SENTINEL) continue;
       lineFor(playerId).turnovers += 1;
-      const stealId = resolveSecondaryPlayer(description, "steals", rosterByName);
+      const stealId = resolveSecondaryPlayer(description, "steals", roster, teamId);
       if (stealId !== null) lineFor(stealId).steals += 1;
     }
   }
