@@ -55,6 +55,8 @@ export class DatasetReleasesController {
   @ApiOperation({ summary: "List all published dataset releases" })
   @ApiQuery({ name: "page", required: false, type: Number })
   @ApiQuery({ name: "pageSize", required: false, type: Number })
+  @ApiQuery({ name: "sort", required: false, enum: ["date", "season"], description: "Order by publish date (default) or by the season covered" })
+  @ApiQuery({ name: "order", required: false, enum: ["asc", "desc"], description: "Sort direction (default desc)" })
   @ApiResponse({ status: 200, description: "Paginated release list" })
   listReleases(@Query() query: Record<string, unknown>) {
     return this.datasetsService.listReleases(query);
@@ -98,20 +100,25 @@ export class DatasetReleasesController {
     return release;
   }
 
-  // GET /v1/datasets/:version/download — generates CSV and returns it as a file.
+  // GET /v1/datasets/:version/download — the release's stored CSV snapshot,
+  // or for a release published before files were stored, a rebuild.
   @Get(":version/download")
   @ApiOperation({ summary: "Download a dataset release as CSV" })
   @ApiParam({ name: "version", description: "Release version" })
-  @ApiResponse({ status: 200, description: "CSV file" })
+  @ApiResponse({ status: 200, description: "CSV file. X-Dataset-Source says whether it is the stored snapshot or a rebuild." })
   @ApiResponse({ status: 404, description: "Release not found" })
-  @ApiResponse({ status: 409, description: "Release is stale after a source correction" })
+  @ApiResponse({ status: 409, description: "Release predates stored files and is stale after a correction, so it cannot be rebuilt" })
   async downloadRelease(@Param("version") version: string, @Res() res: Response): Promise<void> {
     const result = await this.datasetsService.downloadRelease(version);
     if (result.kind === "missing") {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Release not found");
     }
     if (result.kind === "stale") {
-      throw new ApiException(HttpStatus.CONFLICT, "STALE_DATASET_RELEASE", "Release is stale after a correction; publish a replacement release before downloading");
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        "STALE_DATASET_RELEASE",
+        "This release was published before files were stored and is stale after a correction, so it can't be rebuilt. Download a newer release of this season instead.",
+      );
     }
 
     res
@@ -120,6 +127,9 @@ export class DatasetReleasesController {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="dataset-${version}.csv"`,
         "X-Checksum-SHA256": result.checksum,
+        // "stored": the snapshot captured at publish time. "rebuilt": an
+        // older release regenerated from live data, which may have drifted.
+        "X-Dataset-Source": result.source,
       })
       .send(result.csv);
   }
