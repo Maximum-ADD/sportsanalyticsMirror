@@ -68,13 +68,6 @@ from teams import fetch_all_teams, upsert_teams
 # keep working unchanged.
 SEASON = "2025-26"
 
-# Per-team game fetch sizes. The default is a recency window, which is the
-# right shape for "catch up on what just happened". A date window instead
-# needs the season's games available to filter from, so it asks for a limit
-# comfortably above any real season's game count -- the same reasoning as
-# ingest_historical_season.py's GAMES_PER_TEAM_FULL_SEASON.
-GAMES_PER_TEAM_FOR_DATE_WINDOW = 100
-
 
 def ingest_teams(cursor) -> dict[int, str]:
     """Ingests all 30 teams, returns nbaTeamId -> internal id."""
@@ -112,41 +105,80 @@ def ingest_player_bios(cursor, player_id_by_nba_id: dict[int, str]) -> None:
     print(f"Enriched {updated} player bios.")
 
 
+def select_players_missing_bios(cursor, player_id_by_nba_id: dict[int, str]) -> dict[int, str]:
+    """The subset of players whose bio has never been fetched.
+
+    "Never fetched" means birthDate is null: upsert_player_bio always writes
+    it, so a player with one has had a CommonPlayerInfo call before. A
+    windowed pull uses this to fetch bios only for new arrivals (call-ups,
+    signings) rather than every rostered player — bios are ~450-500 calls,
+    the single biggest fixed cost of a pull, and almost never change.
+
+    A player whose NBA bio genuinely has no birth date stays in this set and
+    is re-fetched on each windowed pull; that is a handful of calls at most.
+    Full refreshes remain the job of an unwindowed pull or
+    backfill_player_bios.py.
+    """
+    if not player_id_by_nba_id:
+        return {}
+    cursor.execute(
+        'SELECT "nbaPlayerId" FROM "Player" WHERE "birthDate" IS NULL AND "nbaPlayerId" = ANY(%s)',
+        (list(player_id_by_nba_id),),
+    )
+    # get_connection uses RealDictCursor, so rows are keyed by column name.
+    missing_nba_ids = {row["nbaPlayerId"] for row in cursor.fetchall()}
+    return {nba_id: player_id for nba_id, player_id in player_id_by_nba_id.items() if nba_id in missing_nba_ids}
+
+
 def collect_recent_game_dates(
     team_id_by_nba_id: dict[int, str],
     season: str = SEASON,
     window: GameWindow | None = None,
 ) -> dict[str, str]:
-    """Fetches every team's games for the season, returns a deduplicated
-    nbaGameId -> game_date map.
+    """Returns the regular-season games a pull should cover, as a
+    deduplicated nbaGameId -> ISO game_date map.
 
-    With no window (the default) this keeps the previous behaviour: each
-    team's newest GAMES_PER_TEAM games. With a window, it asks for enough of
-    the season to filter from and then keeps only the games inside it --
-    otherwise a window older than the newest 15 games would select nothing.
+    With no window, each team's newest GAMES_PER_TEAM games — the previous
+    behaviour, unchanged. With a window, every regular-season game in it,
+    found with one leaguewide call; see collect_windowed_game_dates.
     """
     selection_window = window or GameWindow()
-    games_per_team = (
-        None if selection_window.is_open else GAMES_PER_TEAM_FOR_DATE_WINDOW
-    )
+    if selection_window.is_open:
+        return collect_recent_game_dates_per_team(team_id_by_nba_id, season)
+    return collect_windowed_game_dates(season, selection_window)
 
+
+def collect_recent_game_dates_per_team(team_id_by_nba_id: dict[int, str], season: str) -> dict[str, str]:
+    """Each team's newest GAMES_PER_TEAM games, one LeagueGameFinder call per
+    team (30 calls). A recency window per team is the right shape for
+    "catch up on what just happened", which is what an unwindowed pull is."""
     game_date_by_nba_game_id: dict[str, str] = {}
     for nba_team_id in team_id_by_nba_id:
-        games = (
-            fetch_recent_games(nba_team_id, season)
-            if games_per_team is None
-            else fetch_recent_games(nba_team_id, season, limit=games_per_team)
-        )
+        games = fetch_recent_games(nba_team_id, season)
         for game in games:
             game_date_by_nba_game_id[game["nba_game_id"]] = game["game_date"]
         print(f"  Found {len(games)} recent games for team {nba_team_id}.")
 
-    selected = filter_games_by_window(game_date_by_nba_game_id, selection_window)
-    if not selection_window.is_open:
-        print(
-            f"  {len(selected)} of {len(game_date_by_nba_game_id)} games fall within "
-            f"{selection_window.describe()}."
-        )
+    selected = filter_games_by_window(game_date_by_nba_game_id, GameWindow())
+    print(f"{len(selected)} unique games to fetch boxscores for.")
+    return selected
+
+
+def collect_windowed_game_dates(season: str, window: GameWindow) -> dict[str, str]:
+    """Every regular-season game inside the window, from ONE leaguewide
+    LeagueGameLog call (the same call the postseason phase uses) instead of
+    30 per-team calls.
+
+    Per-team calls were only ever needed for the "newest N per team" shape;
+    a date window wants every game in a range regardless of team, which the
+    leaguewide log gives directly — and it can't miss games older than a
+    team's newest N, which the per-team call would.
+    """
+    games = fetch_season_segment_games(season, NBA_SEASON_TYPE_REGULAR)
+    game_date_by_nba_game_id = {game["nba_game_id"]: game["game_date"] for game in games}
+
+    selected = filter_games_by_window(game_date_by_nba_game_id, window)
+    print(f"  {len(selected)} of {len(game_date_by_nba_game_id)} regular-season games fall within {window.describe()}.")
     print(f"{len(selected)} unique games to fetch boxscores for.")
     return selected
 
@@ -379,7 +411,17 @@ def main() -> None:
         connection.commit()
 
         with connection.cursor() as cursor:
-            ingest_player_bios(cursor, player_id_by_nba_id)
+            # A windowed pull is "fetch these games", not "refresh the
+            # league": only new players need a bio, and skipping the rest
+            # removes ~8 minutes of fixed cost from every narrow pull.
+            bio_targets = (
+                player_id_by_nba_id
+                if window.is_open
+                else select_players_missing_bios(cursor, player_id_by_nba_id)
+            )
+            if not window.is_open:
+                print(f"Fetching bios for {len(bio_targets)} new player(s); skipping {len(player_id_by_nba_id) - len(bio_targets)} with bios.")
+            ingest_player_bios(cursor, bio_targets)
         connection.commit()
 
         game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id, season, window)

@@ -152,14 +152,22 @@ Either date bound can be given alone. Malformed or inverted dates are
 rejected at startup, before any API call. The admin Batches tab exposes the
 same three options next to **Pull Data**.
 
-**A date window does not make a pull quick.** It filters games before any
-boxscore or play-by-play call, which cuts those phases down to the games in
-the window — but teams, rosters and player bios still run in full first,
-and bios alone are ~450-500 calls. At the 1s-per-call rate limit that is
-roughly nine minutes before the first game is fetched, however narrow the
-window. With a window, each team's game list is fetched for
-the whole season (rather than the newest 15 games) so an older window can
-actually be matched; without one, behaviour is unchanged.
+**A windowed pull only pays for what it fetches.** With a date window:
+
+- Games come from **one** leaguewide `LeagueGameLog` call, filtered to the
+  window, instead of 30 per-team calls — and an older window can't miss
+  games the way a "newest 15 per team" list would.
+- Player bios are fetched **only for players who have never had one**
+  (`birthDate` is null: new call-ups and signings), instead of all
+  ~450-500 rostered players. Bios almost never change; refresh them all
+  with an unwindowed pull or `backfill_player_bios.py`.
+- Rosters (30 calls) still run in full, so traded and newly signed players
+  are attached to the right team before their games are ingested.
+
+That leaves roughly 40 fixed calls — well under a minute at the 1s rate
+limit — plus about 2 calls per game in the window (boxscore and
+play-by-play). *These are estimates from the call budget, not a measured
+run.* Without a window, a pull behaves exactly as before.
 
 ### Single-phase scripts
 
