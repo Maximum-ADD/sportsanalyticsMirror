@@ -92,3 +92,17 @@ describe("DatasetReleasesService.listReleases", () => {
     );
   });
 });
+
+describe("DatasetReleasesService.generateSeasonCsv", () => {
+  it("orders players by nbaPlayerId so the same data always hashes the same", async () => {
+    // Without an explicit order, Postgres may return rows in a different
+    // physical order after an upsert, changing the bytes and the checksum
+    // while no stat has changed.
+    const prisma = { player: { findMany: vi.fn().mockResolvedValue([]) } };
+    await new DatasetReleasesService(prisma as never).generateSeasonCsv("2025-26");
+
+    expect(prisma.player.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { nbaPlayerId: "asc" } }),
+    );
+  });
+});

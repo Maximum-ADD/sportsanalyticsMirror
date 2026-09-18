@@ -163,7 +163,16 @@ export class DatasetReleasesService {
   // with their season averages. Returns the raw CSV string.
   async generateSeasonCsv(season: string): Promise<{ csv: string; rowCount: number; checksum: string }> {
     // Fetch all players with their game stats for this season.
+    //
+    // The explicit order is what makes the checksum reproducible. Without
+    // ORDER BY, Postgres returns rows in whatever physical order they sit
+    // in, and ingestion rewrites every player row on each run (roster and
+    // bio upserts), which can reshuffle them. Identical stats in a
+    // different row order hash differently, so a download would "fail" its
+    // checksum with nothing having changed. nbaPlayerId is unique, never
+    // changes, and as an integer sorts the same under any text collation.
     const players = await this.prisma.player.findMany({
+      orderBy: { nbaPlayerId: "asc" },
       include: {
         team: { select: { abbreviation: true } },
         gameStats: {

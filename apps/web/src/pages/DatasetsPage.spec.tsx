@@ -187,6 +187,48 @@ describe("DatasetsPage", () => {
       expect(await screen.findByText("Release is stale after a correction")).toBeInTheDocument();
     });
 
+    it("confirms a download that matches the published checksum", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease({ checksum: "abc123" })]);
+      // Case differs on purpose: hex digests are case-insensitive.
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "ABC123" });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      expect(await screen.findByText("✓ Matches published checksum")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("warns when the data has changed since the release was published", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease({ checksum: "abc123" })]);
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456" });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      const warning = await screen.findByRole("alert");
+      expect(warning).toHaveTextContent(/doesn't match the published checksum/i);
+      expect(warning).toHaveTextContent(/since 2025-26\.1 was released/);
+    });
+
+    it("claims neither a match nor a mismatch when no checksum came back", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease()]);
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: null });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      expect(await screen.findByText("Checksum could not be verified")).toBeInTheDocument();
+      expect(screen.queryByText("✓ Matches published checksum")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
     it("flags a stale release so its failed download is explicable up front", async () => {
       signInAs(null);
       mockReleases([makeRelease({ isStale: true })]);

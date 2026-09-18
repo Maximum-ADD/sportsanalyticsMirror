@@ -291,5 +291,68 @@ describe("Datasets API", () => {
       // Free Agent has no games in this season so should be skipped.
       expect(csv).not.toContain("Agent");
     });
+
+    // The checksum is only meaningful if the same data always produces the
+    // same bytes. Players are inserted here in DESCENDING nbaPlayerId order,
+    // so without an explicit ORDER BY the rows come back in insertion order
+    // and this fails.
+    it("emits rows in nbaPlayerId order, so the checksum is reproducible", async () => {
+      const team = await testPrisma.team.create({
+        data: {
+          nbaTeamId: uid(),
+          name: "Order FC",
+          abbreviation: "ORD",
+          city: "City",
+          conference: "West",
+          division: "Pacific",
+        },
+      });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-ORDER-${uid()}`,
+          gameDate: new Date("2025-11-01"),
+          season: "2025-26",
+          seasonType: "REGULAR",
+          homeTeamId: team.id,
+          awayTeamId: team.id,
+        },
+      });
+
+      const nbaPlayerIdsInsertedDescending = [3003, 2002, 1001];
+      for (const nbaPlayerId of nbaPlayerIdsInsertedDescending) {
+        const player = await testPrisma.player.create({
+          data: { nbaPlayerId, firstName: "P", lastName: `Id${nbaPlayerId}`, position: "G", teamId: team.id },
+        });
+        await testPrisma.playerGameStat.create({
+          data: {
+            playerId: player.id, gameId: game.id, minutes: 30, points: 10, rebounds: 5, assists: 5,
+            steals: 1, blocks: 1, turnovers: 1, fieldGoalsMade: 4, fieldGoalsAttempted: 9,
+            threesMade: 1, threesAttempted: 3, freeThrowsMade: 1, freeThrowsAttempted: 2,
+          },
+        });
+      }
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2025-26.1", description: "Order test", season: "2025-26", checksum: "placeholder",
+          gamesCount: 1, playersCount: 3, eventsCount: 0, fieldSchema: [],
+        },
+      });
+
+      const first = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      const nbaPlayerIdColumn = first.text
+        .trimEnd()
+        .split(/\r?\n/)
+        .slice(1)
+        .map((line) => line.split(",")[1]);
+      expect(nbaPlayerIdColumn).toEqual(["1001", "2002", "3003"]);
+
+      // An update writes a new row version in a new physical position — the
+      // same thing ingestion's roster and bio upserts do on every run. It
+      // touches no exported column, so the file must hash identically.
+      await testPrisma.player.updateMany({ where: { teamId: team.id }, data: { weightLbs: 200 } });
+      const second = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+
+      expect(second.headers["x-checksum-sha256"]).toBe(first.headers["x-checksum-sha256"]);
+    });
   });
 });

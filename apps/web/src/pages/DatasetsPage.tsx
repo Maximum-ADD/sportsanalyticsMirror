@@ -116,6 +116,38 @@ function PublishReleaseForm({ onPublished }: { onPublished: () => void }) {
  * Each release tracks its own status rather than sharing one at page level
  * so a failure names the release it belongs to.
  */
+type ChecksumVerdict = "match" | "mismatch" | "unverified";
+
+/**
+ * Compares the checksum of the bytes just downloaded with the one recorded
+ * when the release was published.
+ *
+ * The CSV is rebuilt from live data on every download rather than stored,
+ * so a re-ingestion since publishing changes its contents under the same
+ * version name. This is the only point where that drift becomes visible.
+ * "unverified" means the response carried no checksum header, so neither a
+ * match nor a mismatch can honestly be claimed.
+ */
+function compareChecksums(downloadedChecksum: string | null, publishedChecksum: string): ChecksumVerdict {
+  if (!downloadedChecksum) return "unverified";
+  return downloadedChecksum.toLowerCase() === publishedChecksum.toLowerCase() ? "match" : "mismatch";
+}
+
+function ChecksumNotice({ verdict, version }: { verdict: ChecksumVerdict; version: string }) {
+  if (verdict === "match") {
+    return <span className="text-right text-[10.5px] text-locker-good">✓ Matches published checksum</span>;
+  }
+  if (verdict === "unverified") {
+    return <span className="text-right text-[10.5px] text-locker-ink-muted">Checksum could not be verified</span>;
+  }
+  return (
+    <span role="alert" className="max-w-72 text-right text-[10.5px] text-yellow-700">
+      Doesn't match the published checksum — the data has changed since {version} was released, so
+      this file won't reproduce analysis made against it.
+    </span>
+  );
+}
+
 function DownloadReleaseButton({ release }: { release: DatasetRelease }) {
   const downloadMutation = useMutation({
     mutationFn: () => downloadDatasetRelease(release.version),
@@ -135,6 +167,12 @@ function DownloadReleaseButton({ release }: { release: DatasetRelease }) {
         <span className="max-w-64 text-right text-[10.5px] text-locker-bad">
           {downloadMutation.error.message}
         </span>
+      )}
+      {downloadMutation.isSuccess && (
+        <ChecksumNotice
+          verdict={compareChecksums(downloadMutation.data.checksum, release.checksum)}
+          version={release.version}
+        />
       )}
     </div>
   );
