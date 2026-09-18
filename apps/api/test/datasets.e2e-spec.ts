@@ -3,6 +3,7 @@ import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createTestApp } from "./create-test-app.js";
 import { resetDatabase, testPrisma } from "./test-db.js";
+import { DatasetReleasesService } from "../src/datasets/datasets.service.js";
 
 let nextId = 0;
 function uid() {
@@ -353,6 +354,86 @@ describe("Datasets API", () => {
       const second = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
 
       expect(second.headers["x-checksum-sha256"]).toBe(first.headers["x-checksum-sha256"]);
+    });
+  });
+
+  // The guarantee a release exists to give: what you download is exactly
+  // what was published, whatever happens to the live data afterwards.
+  describe("stored release files", () => {
+    async function seedSeasonWithOnePlayer() {
+      const team = await testPrisma.team.create({
+        data: { nbaTeamId: uid(), name: "Store FC", abbreviation: "STR", city: "City", conference: "East", division: "Atlantic" },
+      });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-STORE-${uid()}`,
+          gameDate: new Date("2025-11-02"),
+          season: "2025-26",
+          seasonType: "REGULAR",
+          homeTeamId: team.id,
+          awayTeamId: team.id,
+        },
+      });
+      const player = await testPrisma.player.create({
+        data: { nbaPlayerId: uid(), firstName: "Snap", lastName: "Shot", position: "F", teamId: team.id },
+      });
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: player.id, gameId: game.id, minutes: 30, points: 20, rebounds: 5, assists: 5,
+          steals: 1, blocks: 1, turnovers: 1, fieldGoalsMade: 8, fieldGoalsAttempted: 15,
+          threesMade: 2, threesAttempted: 5, freeThrowsMade: 2, freeThrowsAttempted: 2,
+        },
+      });
+    }
+
+    it("serves the published snapshot after the live data changes, and after it goes stale", async () => {
+      await seedSeasonWithOnePlayer();
+      const published = await app
+        .get(DatasetReleasesService)
+        .publishRelease({ version: "2025-26.1", description: "Snapshot", season: "2025-26" });
+
+      const atPublish = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      expect(atPublish.status).toBe(200);
+      expect(atPublish.headers["x-dataset-source"]).toBe("stored");
+      expect(atPublish.headers["x-checksum-sha256"]).toBe(published.checksum);
+      expect(atPublish.text).toContain(",20,");
+
+      // What a re-ingestion does: rewrite the stats behind the release.
+      await testPrisma.playerGameStat.updateMany({ data: { points: 99 } });
+      const afterReingest = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      expect(afterReingest.text).toBe(atPublish.text);
+      expect(afterReingest.headers["x-checksum-sha256"]).toBe(published.checksum);
+
+      // What a correction does. A stored snapshot stays downloadable.
+      await testPrisma.datasetRelease.update({ where: { version: "2025-26.1" }, data: { isStale: true } });
+      const afterStale = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      expect(afterStale.status).toBe(200);
+      expect(afterStale.text).toBe(atPublish.text);
+    });
+
+    it("never includes the stored file in list or detail responses", async () => {
+      await seedSeasonWithOnePlayer();
+      await app
+        .get(DatasetReleasesService)
+        .publishRelease({ version: "2025-26.1", description: "Snapshot", season: "2025-26" });
+
+      const list = await request(app.getHttpServer()).get("/v1/datasets");
+      const detail = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1");
+
+      expect(list.body.data[0].version).toBe("2025-26.1");
+      expect(list.body.data[0]).not.toHaveProperty("csv");
+      expect(detail.body.checksum).toBeTruthy();
+      expect(detail.body).not.toHaveProperty("csv");
+    });
+
+    it("still rebuilds a release published before files were stored", async () => {
+      await seedSeasonWithOnePlayer();
+      await createRelease({ version: "2025-26.1", season: "2025-26", publishedAt: new Date("2026-01-01") });
+
+      const response = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+
+      expect(response.status).toBe(200);
+      expect(response.headers["x-dataset-source"]).toBe("rebuilt");
     });
   });
 });

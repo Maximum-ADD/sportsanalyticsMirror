@@ -937,6 +937,14 @@ model DatasetRelease {
   // explicit until an administrator publishes a replacement version.
   isStale       Boolean  @default(false)
 
+  // The exact CSV this release serves, captured when it was published, so a
+  // download can never differ from what was released — re-running ingestion
+  // or correcting an event afterwards changes live data, not this. Null only
+  // for releases published before files were stored; those are rebuilt from
+  // live data on download instead. Never select this in list queries: at
+  // ~90 KB a release it would dominate the response (see datasets.service.ts).
+  csv String?
+
   @@index([season])
 }
 

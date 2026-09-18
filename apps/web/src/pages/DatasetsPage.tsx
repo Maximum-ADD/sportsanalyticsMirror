@@ -270,7 +270,8 @@ function ReleaseRow({ release }: { release: DatasetRelease }) {
           {release.isStale && (
             <p className="mt-1 text-[11px] text-yellow-700">
               A correction landed after this snapshot was cut, so it no longer matches the source
-              data and can't be downloaded. A newer release supersedes it.
+              data. It still downloads as originally published, to reproduce earlier analysis; use a
+              newer release for the corrected figures.
             </p>
           )}
         </button>
