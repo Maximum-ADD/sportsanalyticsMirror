@@ -133,6 +133,34 @@ Safe to re-run: every write is an upsert keyed on the real NBA id
 existing rows (rosters change, more recent games become available) rather
 than creating duplicates.
 
+### Options
+
+```bash
+python ingest.py --review                                   # land batches as PENDING_REVIEW
+python ingest.py --season 2024-25                           # a season other than the default
+python ingest.py --from-date 2026-04-14 --to-date 2026-04-18  # only games in this window
+```
+
+| Flag | Default | Effect |
+|---|---|---|
+| `--review` | off | Batches land as `PENDING_REVIEW` for approval in the admin Batches tab, instead of `COMPLETED`. The admin **Pull Data** button always passes this. |
+| `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. |
+| `--from-date` | none | Only games on or after this date (`YYYY-MM-DD`, inclusive). |
+| `--to-date` | none | Only games on or before this date (`YYYY-MM-DD`, inclusive). |
+
+Either date bound can be given alone. Malformed or inverted dates are
+rejected at startup, before any API call. The admin Batches tab exposes the
+same three options next to **Pull Data**.
+
+**A date window does not make a pull quick.** It filters games before any
+boxscore or play-by-play call, which cuts those phases down to the games in
+the window — but teams, rosters and player bios still run in full first,
+and bios alone are ~450-500 calls. At the 1s-per-call rate limit that is
+roughly nine minutes before the first game is fetched, however narrow the
+window. With a window, each team's game list is fetched for
+the whole season (rather than the newest 15 games) so an older window can
+actually be matched; without one, behaviour is unchanged.
+
 ### Single-phase scripts
 
 Two phases can be run on their own against a database that already has
