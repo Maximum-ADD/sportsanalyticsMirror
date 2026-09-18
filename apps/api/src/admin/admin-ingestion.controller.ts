@@ -8,7 +8,9 @@ import {
   Body,
   UseGuards,
   Req,
+  HttpStatus,
 } from "@nestjs/common";
+import { ApiException } from "../common/api-exception.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { RolesGuard } from "../common/roles.guard.js";
 import { Roles } from "../common/roles.decorator.js";
@@ -63,6 +65,34 @@ export class AdminIngestionController {
       fromDate: body?.fromDate,
       toDate: body?.toDate,
     });
+  }
+
+  /**
+   * GET /v1/admin/ingestion/requests
+   * The most recent queued pulls and how each ended — what the admin page
+   * shows while the deployed API waits on a pull worker.
+   */
+  @Get("requests")
+  async listPullRequests() {
+    return this.ingestionService.listPullRequests();
+  }
+
+  /**
+   * POST /v1/admin/ingestion/requests/:id/cancel
+   * Cancels a queued pull no worker has picked up yet. A running pull is
+   * on another machine and can't be stopped from here, so 409 for those.
+   */
+  @Post("requests/:id/cancel")
+  async cancelPullRequest(@Param("id") id: string) {
+    const cancelled = await this.ingestionService.cancelPullRequest(id);
+    if (!cancelled) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        "NOT_CANCELLABLE",
+        "Only a queued pull can be cancelled; this one is running, finished or doesn't exist.",
+      );
+    }
+    return { cancelled: true };
   }
 
   /**

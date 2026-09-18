@@ -32,6 +32,8 @@ import { fetchTeams } from "@/lib/nbaApi";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { Pagination } from "@/components/Pagination";
+import { PullQueuePanel } from "@/components/PullQueuePanel";
+import { PULL_REQUESTS_QUERY_KEY } from "@/lib/pullQueue";
 import { TeamBadge } from "@/components/TeamBadge";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMe } from "@/lib/useMe";
@@ -47,12 +49,6 @@ const BUTTON_CLASS =
 const PANEL_CLASS = "border border-landing-light bg-locker-surface p-4";
 const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
 const PULL_LABEL_CLASS = "font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase";
-
-// Shown wherever a pull control is disabled. stats.nba.com blocks
-// cloud-provider IP ranges, so ingestion genuinely cannot run from the
-// deployed API — see apps/ingestion/README.md.
-const INGESTION_UNAVAILABLE_HINT =
-  "Pulls only run where the Python ingestion environment is installed - not on this server.";
 
 type AdminTab = "teams" | "players" | "users" | "batches" | "corrections" | "consumers";
 const TABS: { value: AdminTab; label: string }[] = [
@@ -763,6 +759,7 @@ const BATCH_TABLE_HEADERS: { label: string; sortField?: BatchSortField }[] = [
 ];
 
 function AdminBatchesSection() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("PENDING_REVIEW");
   const [searchTerm, setSearchTerm] = useState("");
@@ -827,6 +824,7 @@ function AdminBatchesSection() {
     onSuccess: () => {
       refetch();
       refetchSchedule();
+      queryClient.invalidateQueries({ queryKey: PULL_REQUESTS_QUERY_KEY });
     },
   });
 
@@ -851,24 +849,19 @@ function AdminBatchesSection() {
     return <ErrorState message="Could not load batches." onRetry={() => refetch()} />;
   }
 
-  // Undefined while the schedule is still loading — treated as available so
-  // the controls don't flicker disabled on every page load.
-  const isIngestionUnavailable = scheduleData ? !scheduleData.ingestionAvailable : false;
+  // Where the API can't run pulls itself (the deployed site), they're queued
+  // for a pull worker and the queue is shown below the controls.
+  const isQueueMode = scheduleData?.pullMode === "queue";
   const hasPullWindow = Boolean(pullSeason || pullFromDate || pullToDate);
 
   return (
     <div className="space-y-4">
       {/* Pull Data & Schedule Controls */}
       <div className="flex flex-wrap items-center gap-3 rounded border border-landing-light bg-landing-hero px-3 py-2.5">
-        {/* Both the button and the schedule are disabled where the Python
-            ingestion environment is absent (Render): stats.nba.com blocks
-            cloud-provider IP ranges, so a pull can only ever run from a
-            machine with that environment installed. */}
         <button
           type="button"
           className={`${BUTTON_CLASS} border-orange-400 text-orange-700`}
-          disabled={pullMutation.isPending || isIngestionUnavailable}
-          title={isIngestionUnavailable ? INGESTION_UNAVAILABLE_HINT : undefined}
+          disabled={pullMutation.isPending}
           onClick={() => pullMutation.mutate()}
         >
           {pullMutation.isPending ? "Pulling..." : "Pull Data"}
@@ -883,7 +876,6 @@ function AdminBatchesSection() {
             className={`${INPUT_CLASS} w-28`}
             placeholder="2025-26"
             value={pullSeason}
-            disabled={isIngestionUnavailable}
             onChange={(event) => setPullSeason(event.target.value)}
           />
           <label htmlFor="pull-from-date" className={PULL_LABEL_CLASS}>
@@ -894,7 +886,6 @@ function AdminBatchesSection() {
             type="date"
             className={INPUT_CLASS}
             value={pullFromDate}
-            disabled={isIngestionUnavailable}
             onChange={(event) => setPullFromDate(event.target.value)}
           />
           <label htmlFor="pull-to-date" className={PULL_LABEL_CLASS}>
@@ -905,7 +896,6 @@ function AdminBatchesSection() {
             type="date"
             className={INPUT_CLASS}
             value={pullToDate}
-            disabled={isIngestionUnavailable}
             onChange={(event) => setPullToDate(event.target.value)}
           />
           {hasPullWindow && (
@@ -931,7 +921,6 @@ function AdminBatchesSection() {
             aria-label="Pull schedule"
             className={INPUT_CLASS}
             value={scheduleData?.frequency ?? "NEVER"}
-            disabled={isIngestionUnavailable}
             onChange={(e) => scheduleMutation.mutate(e.target.value as IngestionFrequency)}
           >
             <option value="NEVER">Never (manual only)</option>
@@ -940,9 +929,6 @@ function AdminBatchesSection() {
             <option value="WEEKLY">Weekly</option>
           </select>
         </div>
-        {isIngestionUnavailable && (
-          <span className="font-mono text-[10px] text-locker-ink-muted">{INGESTION_UNAVAILABLE_HINT}</span>
-        )}
         {scheduleData?.lastRunAt && (
           <span className="font-mono text-[10px] text-locker-ink-muted">
             Last run: {new Date(scheduleData.lastRunAt).toLocaleString()}
@@ -958,6 +944,8 @@ function AdminBatchesSection() {
           <span className="text-[11px] text-locker-bad">Failed to trigger pull</span>
         )}
       </div>
+
+      {isQueueMode && <PullQueuePanel workerLastSeenAt={scheduleData?.workerLastSeenAt ?? null} />}
 
       <div className="flex flex-wrap gap-3">
         <input

@@ -218,18 +218,55 @@ export function deleteAdminApiKey(consumerId: string, keyId: string): Promise<{ 
 
 export type IngestionFrequency = "NEVER" | "HOURLY" | "DAILY" | "WEEKLY";
 
+/**
+ * How the API carries out a pull. "direct": it runs ingest.py itself (local
+ * development). "queue": it can't reach stats.nba.com (the deployed API), so
+ * it queues the pull for a pull worker running on another machine.
+ */
+export type PullMode = "direct" | "queue";
+
 export interface IngestionScheduleConfig {
   frequency: IngestionFrequency;
   lastRunAt: string | null;
   updatedAt: string;
-  /** False where the Python ingestion environment is absent (e.g. Render) —
-   * scheduled pulls can't run there, only on machines that have it. */
+  /** True only in direct mode. Kept for older callers; prefer pullMode. */
   ingestionAvailable: boolean;
+  pullMode: PullMode;
+  /** When a pull worker last checked in; null if none ever has. */
+  workerLastSeenAt: string | null;
 }
 
 export interface TriggerResult {
   started: boolean;
   message: string;
+  /** True when the pull was queued for a worker rather than run by the API. */
+  queued?: boolean;
+}
+
+export type IngestionRequestStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+
+/** One queued pull and, once a worker has run it, how it ended. */
+export interface IngestionPullRequest {
+  id: string;
+  status: IngestionRequestStatus;
+  season: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  scheduled: boolean;
+  requestedAt: string;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  finishedAt: string | null;
+  message: string | null;
+  requestedBy: { id: string; name: string } | null;
+}
+
+export function fetchIngestionRequests(): Promise<IngestionPullRequest[]> {
+  return fetchJson<IngestionPullRequest[]>("/v1/admin/ingestion/requests");
+}
+
+export function cancelIngestionRequest(requestId: string): Promise<{ cancelled: true }> {
+  return sendJson<{ cancelled: true }>(`/v1/admin/ingestion/requests/${requestId}/cancel`, "POST");
 }
 
 export function fetchIngestionSchedule(): Promise<IngestionScheduleConfig> {

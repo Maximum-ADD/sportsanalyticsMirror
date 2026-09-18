@@ -169,6 +169,65 @@ limit — plus about 2 calls per game in the window (boxscore and
 play-by-play). *These are estimates from the call budget, not a measured
 run.* Without a window, a pull behaves exactly as before.
 
+### Pull worker (running pulls requested from the deployed site)
+
+The deployed API can't reach stats.nba.com, so on the live site **Pull
+Data** (and the admin pull schedule) don't run anything themselves — they
+*queue* a pull. `pull_worker.py` runs those queued pulls from a machine that
+can reach stats.nba.com:
+
+```bash
+python pull_worker.py            # keep running; checks for work every minute
+python pull_worker.py --once     # run whatever is queued, then exit
+python pull_worker.py --name home-pc   # how it appears on the admin page (default: hostname)
+```
+
+1. Point this folder's `.env` `DATABASE_URL` at the **same database the
+   deployed API uses** — the worker reads the queue from it, and the pull
+   writes its results there. **Only the `.env` file counts:** `db.py` loads
+   it with `override=True` (see its comment for why), so a `DATABASE_URL`
+   exported in your shell is ignored. The worker prints the database host
+   it's using when it starts — check it.
+2. Leave it running, or schedule `--once` (Windows Task Scheduler, cron) to
+   run as often as you want queued pulls picked up.
+3. Watch the **Pull queue** panel on the admin Batches tab: each request's
+   status (queued, running, succeeded, failed, cancelled), which worker ran
+   it, the tail of `ingest.py`'s output, and when a worker last checked in.
+
+How it behaves:
+
+- Each pull runs `ingest.py --review` with the request's season and dates,
+  as its own process, so batches land as `PENDING_REVIEW` exactly as a pull
+  started locally does.
+- Two workers can safely run at once: claiming uses `FOR UPDATE SKIP LOCKED`,
+  so a request is only ever taken by one.
+- Only one pull is queued or running at a time; the admin page refuses
+  another until it finishes or is cancelled. A queued pull can be cancelled
+  from the admin page; a running one can't — it's on your machine.
+- If the worker is stopped mid-pull, it marks that pull failed the next time
+  it starts. A pull still marked running after 3 hours stops blocking new
+  requests.
+
+To try the whole flow locally:
+
+1. **First point `apps/ingestion/.env` at your local database**, the same one
+   `apps/api/.env` uses. If it still points at production, the worker will
+   run production's queue, not the one you're testing — and a shell
+   `DATABASE_URL` won't redirect it (see step 1 above).
+2. Set `INGESTION_MODE="queue"` in `apps/api/.env` and restart the API; it
+   then queues pulls instead of running them itself.
+3. Queue a pull from the admin Batches tab, then run
+   `python pull_worker.py --once` and confirm the startup line names your
+   local database.
+
+`test_pull_worker.py`'s database tests run only when
+`INGESTION_TEST_DATABASE_URL` points at a disposable, migrated database —
+e.g. the API's test database:
+
+```bash
+INGESTION_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:55433/nba_analytics_test" python -m pytest test_pull_worker.py
+```
+
 ### Single-phase scripts
 
 Two phases can be run on their own against a database that already has

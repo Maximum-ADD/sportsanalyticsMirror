@@ -14,6 +14,7 @@ import {
   deleteAdminUser,
   fetchAdminBatches,
   triggerIngestionPull,
+  fetchIngestionRequests,
   approveAdminBatch,
   rejectAdminBatch,
   fetchAdminCorrections,
@@ -24,6 +25,7 @@ import {
   deleteAdminConsumer,
   deleteAdminApiKey,
   fetchIngestionSchedule,
+  type IngestionScheduleConfig,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
@@ -59,11 +61,27 @@ vi.mock("@/lib/adminApi", () => ({
   updateIngestionSchedule: vi.fn(),
   triggerIngestionPull: vi.fn(),
   deleteIngestionBatch: vi.fn(),
+  fetchIngestionRequests: vi.fn(),
+  cancelIngestionRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchTeams: vi.fn(),
 }));
+
+/** A schedule as a server that runs pulls itself reports it; override
+ * fields to describe other states (e.g. pullMode "queue"). */
+function makeSchedule(overrides: Partial<IngestionScheduleConfig> = {}): IngestionScheduleConfig {
+  return {
+    frequency: "NEVER",
+    lastRunAt: null,
+    updatedAt: "2026-09-17T00:00:00.000Z",
+    ingestionAvailable: true,
+    pullMode: "direct",
+    workerLastSeenAt: null,
+    ...overrides,
+  };
+}
 
 const ME: MeProfile = {
   id: "admin-1",
@@ -359,9 +377,7 @@ describe("AdminPage", () => {
       setUp();
       const user = userEvent.setup();
       vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
-      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
-        frequency: "NEVER", lastRunAt: null, updatedAt: "2026-09-17T00:00:00.000Z", ingestionAvailable: true,
-      });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue(makeSchedule());
       vi.mocked(triggerIngestionPull).mockResolvedValue({ started: true, message: "Ingestion queued." });
 
       renderWithProviders(<AdminPage />);
@@ -379,9 +395,7 @@ describe("AdminPage", () => {
       setUp();
       const user = userEvent.setup();
       vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
-      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
-        frequency: "NEVER", lastRunAt: null, updatedAt: "2026-09-17T00:00:00.000Z", ingestionAvailable: true,
-      });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue(makeSchedule());
       vi.mocked(triggerIngestionPull).mockResolvedValue({ started: true, message: "Ingestion queued." });
 
       renderWithProviders(<AdminPage />);
@@ -403,9 +417,7 @@ describe("AdminPage", () => {
       setUp();
       const user = userEvent.setup();
       vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
-      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
-        frequency: "NEVER", lastRunAt: null, updatedAt: "2026-09-17T00:00:00.000Z", ingestionAvailable: true,
-      });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue(makeSchedule());
 
       renderWithProviders(<AdminPage />);
       await user.click(screen.getByRole("radio", { name: "Batches" }));
@@ -417,47 +429,43 @@ describe("AdminPage", () => {
       expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
     });
 
-    it("disables every pull control and explains when ingestion is unavailable on this server", async () => {
+    // The deployed API can't reach stats.nba.com. It used to disable every
+    // pull control there; now it queues pulls for a pull worker instead.
+    it("keeps the pull controls usable and shows the queue where pulls are queued", async () => {
       setUp();
       const user = userEvent.setup();
       vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
-      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
-        frequency: "NEVER",
-        lastRunAt: null,
-        updatedAt: "2026-09-17T00:00:00.000Z",
-        ingestionAvailable: false,
-      });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue(
+        makeSchedule({ ingestionAvailable: false, pullMode: "queue", workerLastSeenAt: null }),
+      );
+      vi.mocked(fetchIngestionRequests).mockResolvedValue([]);
 
       renderWithProviders(<AdminPage />);
       await user.click(screen.getByRole("radio", { name: "Batches" }));
 
-      expect(await screen.findByText(/Pulls only run where the Python ingestion environment is installed/)).toBeInTheDocument();
-      expect(screen.getByRole("combobox", { name: "Pull schedule" })).toBeDisabled();
-      // Previously only the schedule was disabled, leaving a Pull Data
-      // button that could never succeed on the deployed API.
-      expect(screen.getByRole("button", { name: "Pull Data" })).toBeDisabled();
-      expect(screen.getByLabelText("Season")).toBeDisabled();
-      expect(screen.getByLabelText("From")).toBeDisabled();
-      expect(screen.getByLabelText("To")).toBeDisabled();
+      expect(await screen.findByText("Pull queue")).toBeInTheDocument();
+      expect(screen.getByText(/No pull worker has checked in yet/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Pull Data" })).toBeEnabled();
+      expect(screen.getByRole("combobox", { name: "Pull schedule" })).toBeEnabled();
+      expect(screen.getByLabelText("Season")).toBeEnabled();
+      expect(screen.getByLabelText("From")).toBeEnabled();
     });
 
-    it("keeps the schedule enabled when ingestion is available", async () => {
+    it("hides the queue where the API runs pulls itself", async () => {
       setUp();
       const user = userEvent.setup();
       vi.mocked(fetchAdminBatches).mockResolvedValue({ data: [], page: 1, pageSize: 10, total: 0 });
-      vi.mocked(fetchIngestionSchedule).mockResolvedValue({
-        frequency: "HOURLY",
-        lastRunAt: "2026-09-16T10:00:00.000Z",
-        updatedAt: "2026-09-16T09:00:00.000Z",
-        ingestionAvailable: true,
-      });
+      vi.mocked(fetchIngestionSchedule).mockResolvedValue(
+        makeSchedule({ frequency: "HOURLY", lastRunAt: "2026-09-16T10:00:00.000Z" }),
+      );
 
       renderWithProviders(<AdminPage />);
       await user.click(screen.getByRole("radio", { name: "Batches" }));
 
       expect(await screen.findByRole("combobox", { name: "Pull schedule" })).toBeEnabled();
-      expect(screen.queryByText(/Pulls only run where the Python ingestion environment is installed/)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Pull Data" })).toBeEnabled();
+      expect(screen.queryByText("Pull queue")).not.toBeInTheDocument();
+      expect(fetchIngestionRequests).not.toHaveBeenCalled();
     });
 
     it("rejects a batch", async () => {
