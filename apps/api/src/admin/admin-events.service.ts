@@ -206,11 +206,13 @@ export class AdminEventsService {
     const playerIds = existingStats.map((row) => row.playerId);
     const players = await tx.player.findMany({
       where: { id: { in: playerIds } },
-      select: { id: true, lastName: true },
+      select: { id: true, firstName: true, lastName: true },
     });
-    const lastNameByPlayerId = new Map(players.map((player) => [player.id, player.lastName]));
+    const namesByPlayerId = new Map(
+      players.map((player) => [player.id, { firstName: player.firstName, lastName: player.lastName }]),
+    );
 
-    const derivedByPlayerId = deriveGameEventStats(events, lastNameByPlayerId);
+    const derivedByPlayerId = deriveGameEventStats(events, namesByPlayerId);
 
     await Promise.all(
       playerIds.map((playerId) => {

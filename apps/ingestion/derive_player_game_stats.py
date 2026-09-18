@@ -7,16 +7,18 @@ Pure and DB/network-free, like event_validation.py and
 apps/predictor/four_factors.py's compute_* functions: takes event dicts in,
 returns a plain dict out, unit-testable with hand-built fixtures.
 
-PlayByPlayV3 has no dedicated assistPersonId/stealPersonId/blockPersonId
-fields (confirmed against the installed nba_api source — that richer shape
-belongs to a different, real-time-only feed) — NBA embeds them as a
-free-text suffix on the relevant row's description instead, e.g.:
-  "Curry 26' 3PT Jump Shot (31 PTS) (Green 7 AST)"
-  "MISS Doncic 15' Jump Shot (Gobert 2 BLK)"
-  "Morant Bad Pass Turnover (P1.T3) (Holiday 3 STL)"
-resolve_secondary_player below regexes these out and resolves the named
-player against this game's own roster — never a database lookup, and never
-a guess when the name doesn't resolve cleanly.
+Events arrive already translated into the platform's vocabulary by
+feed_translation.py ("2pt"/"3pt", "freethrow", "rebound" with an
+offensive/defensive subType). Assist, block and steal credits are a
+"(Name N AST|BLK|STL)" suffix on the made shot, missed shot or turnover:
+  "DiVincenzo 26' 3PT Pullup Jump Shot (3 PTS) (Gobert 1 AST)"
+  "MISS Gordon 6' Driving Layup (Edwards 1 BLK)"
+  "Jokic Bad Pass Turnover (P2.T2) (Reid 1 STL)"
+Assists arrive that way from PlayByPlayV3; blocks and steals arrive as
+separate rows and feed_translation folds them into this form.
+resolve_secondary_player regexes the suffix out and resolves the name
+against this game's own roster, ignoring accents — never a database lookup,
+and never a guess when the name doesn't resolve to exactly one player.
 
 Deliberately excluded: minutes and plusMinus. See PlayerGameStat's schema
 doc comment for why (on-court time needs a full substitution-event replay
@@ -26,7 +28,9 @@ provide).
 """
 
 import re
+import unicodedata
 from collections import defaultdict
+from typing import NamedTuple
 
 # NBA's sentinel for a team-level action (a team rebound, a shot-clock
 # turnover) — see event_validation.py's TEAM_ACTION_PERSON_ID. Repeated
@@ -34,11 +38,25 @@ from collections import defaultdict
 # validation module; they document the same fact independently.
 TEAM_ACTION_PERSON_ID = 0
 
+# Any characters but parentheses for the name: an ASCII-only class never
+# matched a name like "Jokić" when it did appear accented.
 SECONDARY_PLAYER_PATTERNS = {
-    "assists": re.compile(r"\(([A-Za-z.\-' ]+?) (\d+) AST\)"),
-    "steals": re.compile(r"\(([A-Za-z.\-' ]+?) (\d+) STL\)"),
-    "blocks": re.compile(r"\(([A-Za-z.\-' ]+?) (\d+) BLK\)"),
+    "assists": re.compile(r"\(([^()]+?) (\d+) AST\)"),
+    "steals": re.compile(r"\(([^()]+?) (\d+) STL\)"),
+    "blocks": re.compile(r"\(([^()]+?) (\d+) BLK\)"),
 }
+
+
+def fold_name(name: str) -> str:
+    """A name with its accents removed and case folded, for matching.
+
+    PlayByPlayV3 is inconsistent about accents: playerName is "Jokić" but
+    the credit suffix on another row reads "(Jokic 11 AST)". Comparing
+    folded forms matches the two; comparing raw strings dropped every
+    assist, block and steal by a player with an accented surname.
+    """
+    decomposed = unicodedata.normalize("NFKD", name)
+    return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold().strip()
 
 # snake_case, matching fetch_game_boxscore's dict shape (games.py) and
 # upsert_player_game_stat's expected input — not the Prisma column names —
@@ -66,42 +84,88 @@ def _empty_stat_line() -> dict:
     return {field: 0 for field in STAT_FIELDS}
 
 
-def build_roster_name_index(events: list[dict]) -> dict[str, list[int]]:
-    """Surname -> every personId sharing it, from this game's own events.
+class RosterEntry(NamedTuple):
+    """What a credit suffix can be matched against, for one player."""
+
+    surname: str  # folded, e.g. "jokic", "james"
+    first_initial: str  # folded, e.g. "l" for "L. James"; "" if unknown
+    team_id: int | None  # the team they played for in this game
+
+
+# The team a credit comes from, relative to the team of the row it's on:
+# an assist is a teammate of the shooter; a block or steal comes from the
+# other side.
+CREDIT_FROM_SAME_TEAM = {"assists": True, "blocks": False, "steals": False}
+
+
+def build_game_roster(events: list[dict]) -> dict[int, RosterEntry]:
+    """personId -> surname, first initial and team, from this game's own
+    events.
 
     Every player who does anything in a game appears at least once with
-    both personId and playerName, so this needs no external roster lookup.
-    A list (not a single id) so an ambiguous surname is detectable rather
-    than silently resolved to whichever player happened to be seen first.
+    their personId, playerName (surname), playerNameI ("L. James") and
+    teamId, so this needs no external roster lookup.
     """
-    index: dict[str, set[int]] = defaultdict(set)
+    roster: dict[int, RosterEntry] = {}
     for event in events:
         person_id = event.get("personId")
         player_name = event.get("playerName")
-        if person_id is None or person_id == TEAM_ACTION_PERSON_ID or not player_name:
+        if person_id in (None, TEAM_ACTION_PERSON_ID) or not player_name or person_id in roster:
             continue
-        index[player_name.strip()].add(person_id)
-    return {name: sorted(ids) for name, ids in index.items()}
+        initial_name = fold_name(event.get("playerNameI") or "")
+        first_initial = initial_name.split(".", 1)[0] if "." in initial_name else ""
+        roster[person_id] = RosterEntry(fold_name(player_name), first_initial[:1], event.get("teamId") or None)
+    return roster
 
 
-def resolve_secondary_player(description: str, stat: str, roster_by_name: dict[str, list[int]]) -> int | None:
-    """Extracts and resolves the "(Name N AST/STL/BLK)" suffix on one event's description.
+def credit_name_matches(credit_name: str, player: RosterEntry) -> bool:
+    """Whether a folded credit name ("jokic", "l. james", "st. curry")
+    refers to this player.
 
-    Returns None when there's no such suffix (a genuinely unassisted shot,
-    an unblocked miss, an unstolen turnover — not missing data), or when
-    the extracted name doesn't resolve to exactly one known player in this
-    game (unresolved/ambiguous) — never a guess.
+    NBA writes a bare surname unless two players on a roster share it, and
+    then prefixes it with enough of the first name to tell them apart — one
+    letter ("L. James") or more ("St. Curry"). The prefix must begin with
+    the player's first initial.
     """
-    pattern = SECONDARY_PLAYER_PATTERNS[stat]
-    match = pattern.search(description)
+    if credit_name == player.surname:
+        return True
+    if not credit_name.endswith(" " + player.surname) or not player.first_initial:
+        return False
+    prefix = credit_name[: -len(player.surname)].strip().rstrip(".")
+    return prefix.startswith(player.first_initial)
+
+
+def resolve_secondary_player(
+    description: str,
+    stat: str,
+    roster: dict[int, RosterEntry],
+    event_team_id: int | None = None,
+) -> int | None:
+    """Extracts and resolves the "(Name N AST/STL/BLK)" suffix on one event's
+    description to a personId.
+
+    Candidates are the game's players whose name matches. If more than one
+    does — two players share a surname, and NBA only disambiguates within a
+    roster, so "(Green 1 AST)" can mean Draymond or Jalen when they're on
+    opposite sides — the one on the expected side of the event's team
+    (see CREDIT_FROM_SAME_TEAM) is kept.
+
+    Returns None when there's no suffix (an unassisted shot, an unblocked
+    miss — not missing data) or the name still doesn't narrow to exactly one
+    player — never a guess.
+    """
+    match = SECONDARY_PLAYER_PATTERNS[stat].search(description)
     if match is None:
         return None
 
-    name = match.group(1).strip()
-    candidates = roster_by_name.get(name)
-    if candidates is None or len(candidates) != 1:
-        return None
-    return candidates[0]
+    credit_name = fold_name(match.group(1))
+    candidates = [person_id for person_id, player in roster.items() if credit_name_matches(credit_name, player)]
+    if len(candidates) > 1 and event_team_id:
+        from_same_team = CREDIT_FROM_SAME_TEAM[stat]
+        candidates = [
+            person_id for person_id in candidates if (roster[person_id].team_id == event_team_id) == from_same_team
+        ]
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def aggregate_player_game_stats(events: list[dict]) -> dict[int, dict]:
@@ -113,7 +177,7 @@ def aggregate_player_game_stats(events: list[dict]) -> dict[int, dict]:
     own. Team-attributed actions (TEAM_ACTION_PERSON_ID) never contribute
     to any player's totals.
     """
-    roster_by_name = build_roster_name_index(events)
+    roster = build_game_roster(events)
     stats_by_player: dict[int, dict] = defaultdict(_empty_stat_line)
 
     for event in events:
@@ -137,11 +201,11 @@ def aggregate_player_game_stats(events: list[dict]) -> dict[int, dict]:
                 # Both 2pt and 3pt makes carry the same optional
                 # "(Name N AST)" description suffix — resolved once here
                 # regardless of shot value, rather than duplicated per branch.
-                assist_id = resolve_secondary_player(event["description"], "assists", roster_by_name)
+                assist_id = resolve_secondary_player(event["description"], "assists", roster, event.get("teamId"))
                 if assist_id is not None:
                     stats_by_player[assist_id]["assists"] += 1
             else:
-                block_id = resolve_secondary_player(event["description"], "blocks", roster_by_name)
+                block_id = resolve_secondary_player(event["description"], "blocks", roster, event.get("teamId"))
                 if block_id is not None:
                     stats_by_player[block_id]["blocks"] += 1
 
@@ -171,7 +235,7 @@ def aggregate_player_game_stats(events: list[dict]) -> dict[int, dict]:
         elif action_type == "turnover":
             if person_id is not None and person_id != TEAM_ACTION_PERSON_ID:
                 stats_by_player[person_id]["turnovers"] += 1
-                steal_id = resolve_secondary_player(event["description"], "steals", roster_by_name)
+                steal_id = resolve_secondary_player(event["description"], "steals", roster, event.get("teamId"))
                 if steal_id is not None:
                     stats_by_player[steal_id]["steals"] += 1
 

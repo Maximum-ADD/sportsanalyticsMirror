@@ -90,26 +90,35 @@ unknown `personId`) is rejected with a structured reason, not silently
 written or silently dropped; `ingest.py` prints a summary when any game
 has rejections.
 
-**Known limitation, needs live verification before trusting it in
-production**: `event_validation.py`'s `KNOWN_ACTION_TYPES` is assembled
-from public research on NBA's play-by-play feed, not confirmed against a
-live fetch — this development machine has no network path to
-stats.nba.com (a plain HTTPS request to it times out here while general
-internet access works fine, the same cloud/sandbox-IP-blocking issue
-described above). Run `play_by_play.py` against one real game and check
-its `IngestionBatch.rejectionSummary` for unexpected
-`UNKNOWN_ACTION_TYPE` rejections before relying on this for real ingestion
-— extend the set rather than widen the check if a real, legitimate action
-type shows up rejected.
+**The feed's vocabulary is translated first** (`feed_translation.py`).
+`PlayByPlayV3` names plays differently from the platform's event schema
+(`Made Shot` rather than `2pt`, `Free Throw` rather than `freethrow`), puts
+offensive/defensive rebounds and missed free throws only in the
+description, sends blocks and steals as separate rows sharing the number of
+the shot or turnover they belong to, and uses a team's id as `personId` on
+team plays. Until this translation existed, every one of those was
+rejected: each game kept ~8 of its ~500 plays (the period markers) and every
+stat fell back to the boxscore. See the module docstring for the full list.
 
-Assist/steal/block attribution is best-effort: `PlayByPlayV3` has no
-dedicated person-id field for a shot's assister or a block/steal's second
-player (confirmed against the installed `nba_api` source — that richer
-shape belongs to a different, real-time-only feed), so it's regexed out of
-the action's free-text `description` and resolved against that game's own
-roster. An unresolvable or ambiguous name (e.g. two players sharing a
-surname) is left uncounted rather than guessed — see
-`derive_player_game_stats.py`'s own docstring.
+**Checked against live data on 2026-09-18**, over 35 real 2025-26 games
+(regular season, play-in and playoffs): 16,775 of 16,777 plays accepted,
+and every one of the 14 counting stats on all 736 player lines derived from
+those plays matched NBA's official boxscore exactly. The two rejections
+were jump balls with a blank description.
+
+If NBA changes its vocabulary, a new name is rejected as
+`UNKNOWN_ACTION_TYPE` and named in `IngestionBatch.rejectionSummary` —
+extend the translation table rather than widening the check.
+
+Assist/steal/block credits are resolved by name: `PlayByPlayV3` gives the
+assister only as a "(Name N AST)" suffix on the made shot. Names are matched
+ignoring accents ("Jokic" in a credit is "Jokić" on the roster), honour the
+first-name prefix NBA adds when teammates share a surname ("L. James",
+"St. Curry"), and use team context when opponents do (an assist comes from
+the shooter's team; a block or steal from the other side). A name that
+still fits more than one player — two teammates with the same surname and
+initial — is left uncounted rather than guessed; that player keeps their
+boxscore figure. See `derive_player_game_stats.py`.
 
 ## Setup
 

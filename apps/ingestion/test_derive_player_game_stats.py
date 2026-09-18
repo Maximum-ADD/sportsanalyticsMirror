@@ -9,7 +9,8 @@ assertion.
 from derive_player_game_stats import (
     TEAM_ACTION_PERSON_ID,
     aggregate_player_game_stats,
-    build_roster_name_index,
+    RosterEntry,
+    build_game_roster,
     resolve_secondary_player,
 )
 
@@ -46,7 +47,7 @@ def missed_shot(action_type: str, person_id: int, player_name: str, description:
 def appears_in_game(person_id: int, player_name: str) -> dict:
     """A neutral event (an unhandled actionType, contributing nothing to
     any counted stat) whose only job is to put this player into the
-    game's own roster-name index — see build_roster_name_index's
+    game's own roster — see build_game_roster's
     docstring: a player must appear as an actor somewhere in the game's
     events to be resolvable as a secondary player at all, matching how a
     real player credited with an assist/steal/block always has actions
@@ -197,16 +198,105 @@ def test_ambiguous_surname_resolves_to_none_rather_than_guessing():
     assert result[CURRY]["points"] == 2
 
 
-def test_build_roster_name_index_excludes_team_attributed_rows():
+def test_build_game_roster_keeps_folded_names_and_team_and_skips_team_rows():
     events = [
-        {"personId": CURRY, "playerName": "Curry"},
+        {"personId": CURRY, "playerName": "Curry", "playerNameI": "S. Curry", "teamId": 1610612744},
         {"personId": TEAM_ACTION_PERSON_ID, "playerName": ""},
     ]
 
-    index = build_roster_name_index(events)
+    roster = build_game_roster(events)
 
-    assert index == {"Curry": [CURRY]}
+    assert roster == {CURRY: RosterEntry("curry", "s", 1610612744)}
 
 
 def test_resolve_secondary_player_returns_none_when_the_suffix_is_absent():
-    assert resolve_secondary_player("Curry 12' Jump Shot (2 PTS)", "assists", {"Curry": [CURRY]}) is None
+    roster = {CURRY: RosterEntry("curry", "s", None)}
+    assert resolve_secondary_player("Curry 12' Jump Shot (2 PTS)", "assists", roster) is None
+
+
+# The cases real 2025-26 play-by-play surfaced (see feed_translation.py):
+# before these, every credit for a player with an accented or shared
+# surname was dropped. Each mirrors a test in the API's
+# derive-player-game-stats.spec.ts, since both derivers must agree.
+WARRIORS = 1610612744
+SPURS = 1610612759
+
+
+def player_row(person_id: int, surname: str, initial_name: str, team_id: int) -> dict:
+    """A foul by this player — puts them on the game's roster with their
+    playerNameI and team, and counts toward nothing."""
+    return {"actionType": "foul", "personId": person_id, "playerName": surname, "playerNameI": initial_name, "teamId": team_id, "description": "Foul"}
+
+
+def shot(action_type: str, made: bool, description: str, team_id: int = WARRIORS) -> dict:
+    return {
+        "actionType": action_type,
+        "personId": CURRY,
+        "playerName": "Curry",
+        "playerNameI": "S. Curry",
+        "teamId": team_id,
+        "shotResult": "Made" if made else "Missed",
+        "shotValue": 3 if action_type == "3pt" else 2,
+        "description": description,
+    }
+
+
+def test_credits_an_accented_player_from_an_unaccented_suffix():
+    jokic = 203999
+    events = [shot("3pt", True, "Curry 26' 3PT Jump Shot (5 PTS) (Jokic 1 AST)"), player_row(jokic, "Jokić", "N. Jokić", WARRIORS)]
+
+    assert aggregate_player_game_stats(events)[jokic]["assists"] == 1
+
+
+def test_tells_teammates_apart_by_the_initial_nba_prefixes_to_a_shared_surname():
+    lebron, bronny = 2544, 1642355
+    events = [
+        shot("2pt", True, "Curry 21' Jump Shot (2 PTS) (L. James 1 AST)"),
+        player_row(lebron, "James", "L. James", WARRIORS),
+        player_row(bronny, "James", "B. James", WARRIORS),
+    ]
+
+    result = aggregate_player_game_stats(events)
+
+    assert result[lebron]["assists"] == 1
+    assert bronny not in result
+
+
+def test_accepts_a_longer_first_name_prefix():
+    events = [
+        {**shot("3pt", True, "Porzingis 26' 3PT Jump Shot (14 PTS) (St. Curry 1 AST)"), "personId": GREEN, "playerName": "Green", "playerNameI": "D. Green"},
+        player_row(CURRY, "Curry", "S. Curry", WARRIORS),
+    ]
+
+    assert aggregate_player_game_stats(events)[CURRY]["assists"] == 1
+
+
+def test_uses_team_context_when_opponents_share_an_unprefixed_surname():
+    draymond, jalen = 203110, 1630224
+    events = [
+        player_row(draymond, "Green", "D. Green", WARRIORS),
+        player_row(jalen, "Green", "J. Green", SPURS),
+        shot("2pt", True, "Curry 3' Running Dunk (2 PTS) (Green 1 AST)"),  # a teammate assists
+        shot("2pt", False, "MISS Curry 6' Layup (Green 1 BLK)"),  # an opponent blocks
+    ]
+
+    result = aggregate_player_game_stats(events)
+
+    assert result[draymond]["assists"] == 1
+    assert result[draymond]["blocks"] == 0
+    assert result[jalen]["blocks"] == 1
+    assert result[jalen]["assists"] == 0
+
+
+def test_still_refuses_to_guess_between_same_team_players_with_the_same_initial():
+    seth = 203552
+    events = [
+        {**shot("2pt", True, "Green 3' Layup (2 PTS) (S. Curry 1 AST)"), "personId": GREEN, "playerName": "Green", "playerNameI": "D. Green"},
+        player_row(CURRY, "Curry", "S. Curry", WARRIORS),
+        player_row(seth, "Curry", "S. Curry", WARRIORS),
+    ]
+
+    result = aggregate_player_game_stats(events)
+
+    assert CURRY not in result
+    assert seth not in result

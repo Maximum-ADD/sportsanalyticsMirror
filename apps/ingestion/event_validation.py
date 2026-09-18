@@ -13,12 +13,13 @@ fetch-vs-compute split: known-player membership is injected as a parameter
 rather than queried here, so this is unit-testable with hand-built fixture
 rows and nothing else.
 
-KNOWN_ACTION_TYPES below is assembled from public documentation of NBA's
-play-by-play feed, not a live-verified enumeration — no authoritative spec
-exists (same situation games.py's classify_game() docstring describes for
-game-id layout). It needs a one-off live PlayByPlayV3 fetch to confirm
-before this is trusted in production, and should be extended (not
-silently widened) if a real game surfaces a value not listed here.
+KNOWN_ACTION_TYPES is the platform's own event vocabulary. Raw
+PlayByPlayV3 rows are translated into it by feed_translation.py before they
+reach this check — the feed's own names ("Made Shot", "Free Throw", ...)
+never appear here. That translation was checked against live 2025-26 games
+on 2026-09-18. A feed name feed_translation doesn't know passes through
+unchanged and is rejected here as UNKNOWN_ACTION_TYPE, naming it; extend
+the translation (not this set) when that happens.
 """
 
 from typing import NamedTuple
@@ -38,6 +39,9 @@ KNOWN_ACTION_TYPES = {
     "period",
     "game",
     "instant replay",
+    # A team field-goal attempt at the end of a period, not credited to a
+    # player (NBA's own boxscore leaves it out of player totals).
+    "heave",
 }
 
 # NBA's sentinel for "this action belongs to a team, not an individual
