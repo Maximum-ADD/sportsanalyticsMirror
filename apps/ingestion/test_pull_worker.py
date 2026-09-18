@@ -51,6 +51,33 @@ class TestSummariseOutput:
         assert len(message) <= pull_worker.MESSAGE_MAX_CHARACTERS
         assert message.endswith("ValueError: the real error")
 
+    def test_trimming_keeps_the_outcome_and_starts_on_a_whole_line(self):
+        # Shaped like a real pull's output: long per-game rejection lines.
+        # Trimming by characters used to drop "Completed." and open the
+        # message mid-word ("yer-game figures.").
+        lines = ["Fetched plus/minus and advanced figures for 1234 regular-season player-games.\n"] + [
+            f"  00525001{n:02d}: rejected 541 play-by-play rows ({{'UNKNOWN_ACTION_TYPE': 518}}) — see IngestionBatch 9429b1ca-f94a-4e4d-88fd-db7fb95de36f.\n"
+            for n in range(14)
+        ]
+        message = pull_worker.summarise_output(lines, 0)
+
+        message_lines = message.split("\n")
+        assert message_lines[0] == "Completed."
+        assert message_lines[1] == pull_worker.TRIMMED_OUTPUT_MARKER
+        assert message_lines[2].startswith("  00525001")
+        assert message.endswith("9429b1ca-f94a-4e4d-88fd-db7fb95de36f.")
+        assert len(message) <= pull_worker.MESSAGE_MAX_CHARACTERS
+
+    def test_marks_nothing_when_the_output_fits(self):
+        message = pull_worker.summarise_output(["Ingested 10 games.\n", "Ingestion complete.\n"], 0)
+        assert message == "Completed.\nIngested 10 games.\nIngestion complete."
+
+    def test_keeps_the_end_of_a_single_overlong_line(self):
+        message = pull_worker.summarise_output(["x" * 5000 + " the error\n"], 1)
+        assert message.startswith("ingest.py exited with code 1.")
+        assert message.endswith("the error")
+        assert len(message) <= pull_worker.MESSAGE_MAX_CHARACTERS
+
 
 class TestRunIngest:
     def test_returns_the_exit_code_and_output_tail(self):
@@ -58,6 +85,40 @@ class TestRunIngest:
         exit_code, tail = pull_worker.run_ingest(command, on_heartbeat=lambda: None)
         assert exit_code == 3
         assert [line.strip() for line in tail] == ["first", "last"]
+
+    def test_reads_non_ascii_output_intact(self):
+        # Windows writes a child's piped output in cp1252 unless told
+        # otherwise; read back as UTF-8, the em dash became U+FFFD.
+        command = [sys.executable, "-c", "print('rejected 541 rows \\u2014 see batch')"]
+        _, tail = pull_worker.run_ingest(command, on_heartbeat=lambda: None)
+        assert tail[0].strip() == "rejected 541 rows — see batch"
+
+    def test_survives_characters_outside_the_windows_code_page(self, monkeypatch):
+        # Two ways this used to fail on Windows, both caught here:
+        #  - the child writes its piped output in cp1252, so printing a
+        #    character outside it (a player named Jokic with the accent, a
+        #    check mark) crashed ingest.py itself with exit code 1;
+        #  - the worker's own stdout is cp1252 under Task Scheduler, and
+        #    echoing such a character killed the thread draining the pipe.
+        # The join timeout guards against the drain stalling outright.
+        import io
+        import threading
+
+        monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+        command = [sys.executable, "-c", "for n in range(3000): print(f'{n} \\u2713 done')"]
+        result = {}
+
+        def run():
+            result["value"] = pull_worker.run_ingest(command, on_heartbeat=lambda: None)
+
+        runner = threading.Thread(target=run, daemon=True)
+        runner.start()
+        runner.join(timeout=30)
+
+        assert not runner.is_alive(), "run_ingest hung: the output pipe stopped being drained"
+        exit_code, tail = result["value"]
+        assert exit_code == 0
+        assert tail[-1].strip() == "2999 ✓ done"
 
     def test_checks_in_while_a_long_pull_runs(self):
         heartbeats = []

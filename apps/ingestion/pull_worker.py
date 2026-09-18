@@ -49,6 +49,7 @@ HEARTBEAT_INTERVAL_SECONDS = 60
 # at the end, so the tail is the useful part.
 OUTPUT_TAIL_LINES = 15
 MESSAGE_MAX_CHARACTERS = 2000
+TRIMMED_OUTPUT_MARKER = "[earlier output trimmed]"
 
 # Maps IngestionRequest columns to ingest.py flags.
 OPTION_FLAGS = (("season", "--season"), ("fromDate", "--from-date"), ("toDate", "--to-date"))
@@ -92,12 +93,33 @@ def build_ingest_command(request: dict, python_executable: str = sys.executable)
 
 def summarise_output(tail_lines: list[str], exit_code: int) -> str:
     """The message stored with a finished request: how it ended, then the
-    last lines ingest.py printed. Trimmed from the front, so a long
-    traceback keeps its final (most useful) lines."""
+    last lines ingest.py printed.
+
+    The outcome line always survives. When the output is too long, whole
+    lines are dropped from the front — the end of the output (a summary, or
+    a traceback's final error) is the useful part — and a marker says so.
+    Trimming by characters instead would drop the outcome and start the
+    message mid-word.
+    """
     outcome = "Completed." if exit_code == 0 else f"ingest.py exited with code {exit_code}."
-    body = "\n".join(line.rstrip() for line in tail_lines).strip()
-    message = f"{outcome}\n{body}" if body else outcome
-    return message[-MESSAGE_MAX_CHARACTERS:]
+    body_lines = [line.rstrip() for line in tail_lines if line.strip()]
+    if not body_lines:
+        return outcome
+
+    kept_lines: list[str] = []
+    room = MESSAGE_MAX_CHARACTERS - len(outcome) - len(TRIMMED_OUTPUT_MARKER) - 2
+    for line in reversed(body_lines):
+        if len(line) + 1 > room:
+            break
+        kept_lines.insert(0, line)
+        room -= len(line) + 1
+
+    if not kept_lines:
+        # One line longer than the whole budget: keep its end, where an
+        # error message usually is.
+        kept_lines = [body_lines[-1][-room:]] if room > 0 else []
+    header = [outcome, TRIMMED_OUTPUT_MARKER] if len(kept_lines) < len(body_lines) else [outcome]
+    return "\n".join(header + kept_lines)
 
 
 def record_heartbeat(cursor, worker_name: str) -> None:
@@ -151,6 +173,25 @@ def finish_request(cursor, request_id: str, succeeded: bool, message: str) -> No
         cursor.execute('UPDATE "IngestionSchedule" SET "lastRunAt" = %s WHERE "id" = %s', (finished_at, "singleton"))
 
 
+def echo_line(line: str) -> None:
+    """Prints a line of ingest.py's output to the worker's own terminal.
+
+    The worker's stdout may not accept every character: under Task Scheduler,
+    or with output redirected to a file, Windows gives it the ANSI code page,
+    where printing a character it lacks raises UnicodeEncodeError. Such
+    characters are replaced rather than allowed to raise — a line that can't
+    be echoed faithfully is still echoed, and nothing is lost from the tail.
+    """
+    try:
+        print(line, end="", flush=True)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or "ascii"
+        print(line.encode(encoding, errors="replace").decode(encoding), end="", flush=True)
+    except OSError:
+        # The terminal went away (window closed, pipe broken). Keep draining.
+        pass
+
+
 def run_ingest(command: list[str], on_heartbeat, heartbeat_interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS) -> tuple[int, list[str]]:
     """Runs ingest.py to completion, echoing its output live, and returns
     (exit code, last OUTPUT_TAIL_LINES lines).
@@ -166,13 +207,22 @@ def run_ingest(command: list[str], on_heartbeat, heartbeat_interval_seconds: flo
         text=True,
         encoding="utf-8",
         errors="replace",
+        # Without this, Python on Windows writes a pipe in the ANSI code page
+        # (cp1252), and reading that back as UTF-8 turns every non-ASCII
+        # character ingest.py prints — its em dashes, accented player names —
+        # into U+FFFD.
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     tail = deque(maxlen=OUTPUT_TAIL_LINES)
 
     def relay_output() -> None:
+        # This thread is the only thing draining the child's output pipe. If
+        # it died, the pipe would fill and ingest.py would block on its next
+        # print — a pull hung until it was presumed orphaned hours later. So
+        # the line is recorded first, and echoing it can never stop the loop.
         for line in process.stdout:
-            print(line, end="", flush=True)
             tail.append(line)
+            echo_line(line)
 
     reader = threading.Thread(target=relay_output, daemon=True)
     reader.start()

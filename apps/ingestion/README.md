@@ -164,10 +164,18 @@ same three options next to **Pull Data**.
 - Rosters (30 calls) still run in full, so traded and newly signed players
   are attached to the right team before their games are ingested.
 
-That leaves roughly 40 fixed calls — well under a minute at the 1s rate
-limit — plus about 2 calls per game in the window (boxscore and
-play-by-play). *These are estimates from the call budget, not a measured
-run.* Without a window, a pull behaves exactly as before.
+On a database whose players already have bios, that leaves roughly 40
+fixed calls — well under a minute at the 1s rate limit — plus about 2 calls
+per game in the window (boxscore and play-by-play). That figure is an
+estimate from the call budget.
+
+The bio saving depends entirely on players already having bios. **Measured
+on a fresh local database** (only the 14 seed players): a 14–18 April 2026
+window, 10 games, took **16.9 minutes**, because rosters loaded 530 players
+with no bios and every one of them was fetched. Expect that the first time
+you pull into an empty or seed-only database; later pulls skip them.
+
+Without a window, a pull behaves exactly as before.
 
 ### Pull worker (running pulls requested from the deployed site)
 
