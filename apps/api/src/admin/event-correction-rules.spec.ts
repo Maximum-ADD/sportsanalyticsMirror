@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildGameRoster, resolveSecondaryPlayer, type PlayerName } from "./derive-player-game-stats.js";
 import {
   creditStatFor,
   hasInapplicableCreditSuffix,
+  KNOWN_EVENT_TYPES,
   parseClockInSeconds,
   rewriteCreditSuffix,
   stripCreditSuffixes,
@@ -42,6 +44,20 @@ function makeContext(overrides: Partial<CorrectionContext> = {}): CorrectionCont
     ...overrides,
   };
 }
+
+describe("KNOWN_EVENT_TYPES", () => {
+  // A correction must accept exactly the types ingestion accepts, or an
+  // admin could save a play the pipeline would reject (or be unable to
+  // save one it accepted).
+  it("matches KNOWN_ACTION_TYPES in apps/ingestion/event_validation.py", () => {
+    const pythonSource = readFileSync(new URL("../../../ingestion/event_validation.py", import.meta.url), "utf-8");
+    const setBody = /KNOWN_ACTION_TYPES = \{([^}]*)\}/.exec(pythonSource)?.[1] ?? "";
+    const pythonTypes = [...setBody.matchAll(/^\s*"([^"]+)",/gm)].map((match) => match[1]);
+
+    expect(pythonTypes.length).toBeGreaterThan(0);
+    expect([...KNOWN_EVENT_TYPES].sort()).toEqual(pythonTypes.sort());
+  });
+});
 
 describe("parseClockInSeconds", () => {
   it("reads the stored ISO form and the legacy mm:ss form", () => {
