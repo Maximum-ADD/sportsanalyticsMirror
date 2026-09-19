@@ -151,6 +151,11 @@ describe("Admin game lookup and play-by-play", () => {
       await testPrisma.eventCorrection.create({
         data: { gameId: game.id, sequence: 7, previousValues: {}, newValues: {}, reason: "seeded" },
       });
+      // A James turnover with a steal credited to Curry, on the other team.
+      await testPrisma.gameEvent.update({
+        where: { gameId_sequence: { gameId: game.id, sequence: 3 } },
+        data: { eventType: "turnover", description: "James Bad Pass Turnover (Curry 1 STL)" },
+      });
 
       const response = await request(app.getHttpServer()).get(`/v1/admin/games/${game.id}/events`);
 
@@ -161,6 +166,8 @@ describe("Admin game lookup and play-by-play", () => {
         Array.from({ length: eventCount }, (_, index) => index + 1),
       );
       expect(response.body.events[1]).toMatchObject({ sequence: 2, playerName: "Stephen Curry", isCorrected: false });
+      expect(response.body.events[2]).toMatchObject({ sequence: 3, creditPlayerId: curry.id });
+      expect(response.body.events[0].creditPlayerId).toBeNull();
       expect(response.body.events[6]).toMatchObject({ sequence: 7, playerName: "LeBron James", isCorrected: true });
       expect(response.body.roster).toEqual([
         { id: curry.id, firstName: "Stephen", lastName: "Curry", teamId: home.id },

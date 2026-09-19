@@ -3,8 +3,9 @@ import type { Prisma, SeasonType } from "@prisma/client";
 import { ApiException } from "../common/api-exception.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { KNOWN_EVENT_TYPES } from "./event-correction-rules.js";
-import { loadGameSnapshot, resolveGameTeamByPlayerId } from "./game-snapshot.js";
+import { buildGameRoster, resolveSecondaryPlayer } from "./derive-player-game-stats.js";
+import { creditStatFor, KNOWN_EVENT_TYPES } from "./event-correction-rules.js";
+import { buildNamesByPlayerId, loadGameSnapshot, resolveGameTeamByPlayerId } from "./game-snapshot.js";
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -49,6 +50,10 @@ export interface AdminGameEvent {
   success: boolean | null;
   value: number | null;
   description: string;
+  // Who the description's assist/block/steal credit resolves to, exactly as
+  // the stats derivation resolves it; null when there's none or it doesn't
+  // resolve to one player.
+  creditPlayerId: string | null;
   isCorrected: boolean;
 }
 
@@ -194,6 +199,11 @@ export class AdminGamesService {
 
     const nameByPlayerId = await this.loadPlayerNames(snapshot.events.map((event) => event.playerId));
     const correctedSequenceSet = new Set(correctedSequences.map((row) => row.sequence));
+    const creditRoster = buildGameRoster(snapshot.events, buildNamesByPlayerId(snapshot));
+    const resolveCredit = (event: (typeof snapshot.events)[number]) => {
+      const stat = creditStatFor(event);
+      return stat === null ? null : resolveSecondaryPlayer(event.description, stat, creditRoster, event.teamId);
+    };
     const events = snapshot.events.map((event) => ({
       sequence: event.sequence,
       period: event.period,
@@ -206,6 +216,7 @@ export class AdminGamesService {
       success: event.success,
       value: event.value,
       description: event.description,
+      creditPlayerId: resolveCredit(event),
       isCorrected: correctedSequenceSet.has(event.sequence),
     }));
     return { game, events, roster, eventTypes: KNOWN_EVENT_TYPES };
