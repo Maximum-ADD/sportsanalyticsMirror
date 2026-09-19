@@ -433,6 +433,165 @@ describe("Admin event corrections and replay", () => {
     });
   });
 
+  // Stats as ingestion leaves them for seedGame's events.
+  const INGESTED_STATS: Record<string, CountingStatOverrides> = {
+    Curry: { points: 3, fieldGoalsMade: 1, fieldGoalsAttempted: 1, threesMade: 1, threesAttempted: 1 },
+    Green: { assists: 1 },
+    Thompson: { rebounds: 1 },
+    James: { fieldGoalsAttempted: 1, turnovers: 1 },
+  };
+
+  describe("POST /v1/admin/games/:gameId/events/:sequence/preview", () => {
+    function preview(gameId: string, sequence: number, body: Record<string, unknown>) {
+      return request(app.getHttpServer()).post(`/v1/admin/games/${gameId}/events/${sequence}/preview`).send(body);
+    }
+
+    it("returns each player's stats before and after, and writes nothing", async () => {
+      const { game, curry, thompson } = await seedGame(INGESTED_STATS);
+      await testPrisma.datasetRelease.create({
+        data: { version: "2025-26.1", description: "first", season: "2025-26", checksum: "x", gamesCount: 1, playersCount: 1, eventsCount: 1, fieldSchema: {} },
+      });
+
+      const response = await preview(game.id, 1, { playerId: thompson.id, reason: "wrong shooter" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.changes).toEqual([{ field: "playerId", from: curry.id, to: thompson.id }]);
+      const byName = new Map(response.body.statChanges.map((change: { playerName: string }) => [change.playerName, change]));
+      expect(byName.get("Stephen Curry")).toMatchObject({ stats: expect.arrayContaining([{ field: "points", before: 3, after: 0 }]) });
+      expect(byName.get("Klay Thompson")).toMatchObject({ stats: expect.arrayContaining([{ field: "points", before: 0, after: 3 }]) });
+
+      expect((await eventAt(game.id, 1)).playerId).toBe(curry.id);
+      expect((await statOf(curry.id, game.id)).points).toBe(3);
+      expect((await statOf(thompson.id, game.id)).points).toBe(0);
+      expect(await testPrisma.eventCorrection.count()).toBe(0);
+      expect((await testPrisma.datasetRelease.findFirstOrThrow()).isStale).toBe(false);
+    });
+
+    it("matches what saving the same correction then does", async () => {
+      const { game, thompson } = await seedGame(INGESTED_STATS);
+      const body = { playerId: thompson.id, creditPlayerId: null, reason: "wrong shooter, unassisted" };
+
+      const previewed = await preview(game.id, 1, body);
+      const saved = await correct(game.id, 1, body);
+
+      expect(saved.status).toBe(201);
+      expect(saved.body.changes).toEqual(previewed.body.changes);
+      expect(saved.body.statChanges).toEqual(previewed.body.statChanges);
+      for (const change of previewed.body.statChanges as { playerId: string; stats: { field: string; after: number }[] }[]) {
+        const stored = (await statOf(change.playerId, game.id)) as unknown as Record<string, number>;
+        for (const stat of change.stats) expect(stored[stat.field]).toBe(stat.after);
+      }
+    });
+
+    it("rejects an invalid play and a missing reason exactly as saving would", async () => {
+      const { game } = await seedGame();
+
+      const invalid = await preview(game.id, 1, { value: 5, reason: "test" });
+      const reasonless = await preview(game.id, 1, { clock: "PT11M00.00S" });
+
+      expect(invalid.status).toBe(400);
+      expect(invalid.body.error.message).toMatch(/value 5 doesn't fit/);
+      expect(reasonless.status).toBe(400);
+      expect(reasonless.body.error.message).toMatch(/reason is required/);
+    });
+  });
+
+  describe("POST /v1/admin/corrections/:id/revert", () => {
+    function revert(correctionId: string, body: Record<string, unknown>) {
+      return request(app.getHttpServer()).post(`/v1/admin/corrections/${correctionId}/revert`).send(body);
+    }
+
+    it("restores the previous values as a new, linked correction and re-derives stats", async () => {
+      const { game, curry, thompson } = await seedGame(INGESTED_STATS);
+      const original = await correct(game.id, 1, { playerId: thompson.id, reason: "wrong shooter" });
+
+      const response = await revert(original.body.correction.id, { reason: "it was Curry after all" });
+
+      expect(response.status).toBe(201);
+      expect(response.body.correction).toMatchObject({
+        previousValues: { playerId: thompson.id },
+        newValues: { playerId: curry.id },
+        reason: "it was Curry after all",
+        revertsCorrectionId: original.body.correction.id,
+      });
+      expect((await eventAt(game.id, 1)).playerId).toBe(curry.id);
+      expect((await statOf(curry.id, game.id)).points).toBe(3);
+      expect((await statOf(thompson.id, game.id)).points).toBe(0);
+      // History is appended to, never deleted.
+      expect(await testPrisma.eventCorrection.count()).toBe(2);
+
+      const history = await request(app.getHttpServer()).get("/v1/admin/events/corrections");
+      const originalRow = history.body.data.find((row: { id: string }) => row.id === original.body.correction.id);
+      expect(originalRow.revertedBy).toMatchObject({ id: response.body.correction.id });
+    });
+
+    it("requires a reason", async () => {
+      const { game } = await seedGame();
+      const original = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock" });
+
+      const response = await revert(original.body.correction.id, {});
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toMatch(/reason is required/);
+    });
+
+    it("returns 404 for a correction that doesn't exist", async () => {
+      const response = await revert("00000000-0000-0000-0000-000000000000", { reason: "undo" });
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 409 when a later correction changed the same fields", async () => {
+      const { game } = await seedGame();
+      const first = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock" });
+      const second = await correct(game.id, 1, { clock: "PT11M20.00S", reason: "clock again" });
+
+      const response = await revert(first.body.correction.id, { reason: "undo the first" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toMatch(/later correction/);
+      expect((await eventAt(game.id, 1)).clock).toBe("PT11M20.00S");
+      expect((await revert(second.body.correction.id, { reason: "undo the second" })).status).toBe(201);
+    });
+
+    it("returns 409 for a correction that has already been undone", async () => {
+      const { game } = await seedGame();
+      const original = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock" });
+      await revert(original.body.correction.id, { reason: "undo" });
+
+      const response = await revert(original.body.correction.id, { reason: "undo again" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toMatch(/already been undone/);
+    });
+
+    it("still undoes a correction when a later one only changed other fields", async () => {
+      const { game } = await seedGame();
+      const clockFix = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock" });
+      await correct(game.id, 1, { subType: "Pullup Jump shot", reason: "shot type" });
+
+      const response = await revert(clockFix.body.correction.id, { reason: "clock was right" });
+
+      expect(response.status).toBe(201);
+      const event = await eventAt(game.id, 1);
+      expect({ clock: event.clock, subType: event.subType }).toEqual({ clock: "PT11M30.00S", subType: "Pullup Jump shot" });
+    });
+
+    it("returns 409 when the play changed underneath the correction (re-ingested)", async () => {
+      const { game } = await seedGame();
+      const original = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock" });
+      await testPrisma.gameEvent.update({
+        where: { gameId_sequence: { gameId: game.id, sequence: 1 } },
+        data: { clock: "PT11M29.00S" },
+      });
+
+      const response = await revert(original.body.correction.id, { reason: "undo" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toMatch(/clock has changed since the correction/);
+      expect((await eventAt(game.id, 1)).clock).toBe("PT11M29.00S");
+    });
+  });
+
   describe("POST /v1/admin/games/:gameId/replay", () => {
     it("recomputes stats without requiring any event correction", async () => {
       const { game, curry } = await seedGame();

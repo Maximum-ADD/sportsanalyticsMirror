@@ -131,6 +131,18 @@ describe("AdminEventsService", () => {
       });
     });
 
+    it("previews the same changes without a transaction or any write", async () => {
+      const outcome = await service.previewCorrection("g1", 5, { patch: { value: null }, reason: "r" });
+
+      expect(outcome.changes).toEqual([{ field: "value", from: 2, to: null }]);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.gameEvent.update).not.toHaveBeenCalled();
+      expect(prisma.playerGameStat.update).not.toHaveBeenCalled();
+      expect(prisma.datasetRelease.updateMany).not.toHaveBeenCalled();
+      expect(prisma.eventCorrection.create).not.toHaveBeenCalled();
+      expect(cache.invalidate).not.toHaveBeenCalled();
+    });
+
     it("rejects a correction that changes nothing, without writing", async () => {
       await expect(service.correctEvent("g1", 5, { patch: { value: 2 }, reason: "r" }, "u1")).rejects.toMatchObject({
         status: 400,

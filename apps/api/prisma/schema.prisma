@@ -847,6 +847,15 @@ model EventCorrection {
 
   correctedAt DateTime @default(now())
 
+  // Set when this correction is an undo: the correction it reverted. An
+  // undo re-applies that correction's previousValues as a NEW correction,
+  // so history is only ever appended to, never deleted. Unique because a
+  // correction can only be undone once (after that, a later correction has
+  // changed its fields — see AdminEventsService.revertCorrection).
+  revertsCorrectionId String?          @unique
+  revertsCorrection   EventCorrection? @relation("CorrectionRevert", fields: [revertsCorrectionId], references: [id], onDelete: SetNull)
+  revertedBy          EventCorrection? @relation("CorrectionRevert")
+
   @@index([gameId, sequence])
   @@index([correctedAt])
 }

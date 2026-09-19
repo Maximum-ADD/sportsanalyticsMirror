@@ -33,6 +33,8 @@ import { planStatRecompute, type PlayerStatRecompute } from "./plan-stat-recompu
 export interface CorrectionWithDetails extends EventCorrection {
   game: { id: string; gameDate: Date; season: string; nbaGameId: string };
   correctedBy: { id: string; name: string } | null;
+  // The undo of this correction, when it has been undone.
+  revertedBy: { id: string; correctedAt: Date } | null;
 }
 
 /** One field of the corrected play, before and after. */
@@ -82,6 +84,10 @@ function notFound(message: string): ApiException {
   return new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", message);
 }
 
+function correctionConflict(message: string): ApiException {
+  return new ApiException(HttpStatus.CONFLICT, "CORRECTION_CONFLICT", message);
+}
+
 function pickCorrectableFields(event: GameEvent): CorrectableEvent {
   const { period, clock, eventType, subType, playerId, teamId, success, value, description } = event;
   return { period, clock, eventType, subType, playerId, teamId, success, value, description };
@@ -112,6 +118,7 @@ export class AdminEventsService {
         include: {
           game: { select: { id: true, gameDate: true, season: true, nbaGameId: true } },
           correctedBy: { select: { id: true, name: true } },
+          revertedBy: { select: { id: true, correctedAt: true } },
         },
         orderBy: { correctedAt: "desc" },
         skip: (page - 1) * pageSize,
@@ -131,6 +138,7 @@ export class AdminEventsService {
       include: {
         game: { select: { id: true, gameDate: true, season: true, nbaGameId: true } },
         correctedBy: { select: { id: true, name: true } },
+        revertedBy: { select: { id: true, correctedAt: true } },
       },
       orderBy: { correctedAt: "desc" },
     });
@@ -160,6 +168,97 @@ export class AdminEventsService {
     });
     this.invalidateDerivedCaches();
     return saved;
+  }
+
+  /**
+   * What correctEvent would do with this request (the play's changed
+   * fields and every player's stats before -> after), without writing
+   * anything. It runs the very planCorrection a save runs, so a preview
+   * shows what saving will do unless the game changes in between.
+   * @throws ApiException exactly as correctEvent would.
+   */
+  async previewCorrection(gameId: string, sequence: number, request: CorrectionRequest): Promise<CorrectionOutcome> {
+    const plan = await this.planCorrection(this.prisma, gameId, sequence, request);
+    return this.describePlan(plan);
+  }
+
+  /**
+   * Undoes a correction by applying its previousValues as a new correction
+   * (linked back through revertsCorrectionId), so history is never
+   * deleted. Goes through the same validation, recompute and release
+   * staling as any correction.
+   * @throws ApiException 404 when the correction doesn't exist; 409 when a
+   *   later correction changed any of its fields, or the play no longer
+   *   holds the values it set (e.g. it was re-ingested).
+   */
+  async revertCorrection(correctionId: string, reason: string, correctedById: string): Promise<SavedCorrection> {
+    const saved = await this.prisma.$transaction(async (tx) => {
+      const original = await tx.eventCorrection.findUnique({ where: { id: correctionId } });
+      if (original === null) throw notFound("Correction not found");
+      await this.lockGame(tx, original.gameId);
+      await this.assertNotSuperseded(tx, original);
+      await this.assertPlayStillHolds(tx, original);
+
+      const patch = this.readCorrectableValues(original.previousValues);
+      const plan = await this.planCorrection(tx, original.gameId, original.sequence, { patch, reason });
+      return this.applyCorrectionPlan(tx, plan, reason, correctedById, original.id);
+    });
+    this.invalidateDerivedCaches();
+    return saved;
+  }
+
+  /** The correctable fields out of a stored previousValues/newValues snapshot. */
+  private readCorrectableValues(snapshot: Prisma.JsonValue): Partial<CorrectableEvent> {
+    const values = (snapshot ?? {}) as Record<string, unknown>;
+    return Object.fromEntries(
+      CORRECTABLE_FIELDS.filter((field) => field in values).map((field) => [field, values[field]]),
+    ) as Partial<CorrectableEvent>;
+  }
+
+  /**
+   * @throws ApiException 409 when a correction to the same play made after
+   *   `original` changed any field `original` changed — including an undo
+   *   of `original` itself. Undoing `original` then would overwrite it.
+   */
+  private async assertNotSuperseded(tx: Prisma.TransactionClient, original: EventCorrection): Promise<void> {
+    const fields = Object.keys(this.readCorrectableValues(original.newValues));
+    // gte + not-self rather than gt: correctedAt is stored to the
+    // millisecond, and a tie must count as "later", never be missed.
+    const laterCorrections = await tx.eventCorrection.findMany({
+      where: {
+        gameId: original.gameId,
+        sequence: original.sequence,
+        correctedAt: { gte: original.correctedAt },
+        id: { not: original.id },
+      },
+      orderBy: { correctedAt: "asc" },
+    });
+    const conflicting = laterCorrections.find((later) =>
+      Object.keys(this.readCorrectableValues(later.newValues)).some((field) => fields.includes(field)),
+    );
+    if (conflicting === undefined) return;
+    if (conflicting.revertsCorrectionId === original.id) throw correctionConflict("This correction has already been undone");
+    throw correctionConflict(
+      `A later correction (${conflicting.correctedAt.toISOString()}) changed the same fields of this play; undo that one first`,
+    );
+  }
+
+  /**
+   * @throws ApiException 409 when the play no longer holds the values
+   *   `original` set, e.g. because it was re-ingested since.
+   */
+  private async assertPlayStillHolds(tx: Prisma.TransactionClient, original: EventCorrection): Promise<void> {
+    const storedEvent = await tx.gameEvent.findUnique({
+      where: { gameId_sequence: { gameId: original.gameId, sequence: original.sequence } },
+    });
+    if (storedEvent === null) throw notFound("Event not found");
+    const current = pickCorrectableFields(storedEvent);
+    const setValues = this.readCorrectableValues(original.newValues);
+    const changedField = (Object.keys(setValues) as CorrectableField[]).find((field) => current[field] !== setValues[field]);
+    if (changedField === undefined) return;
+    throw correctionConflict(
+      `This play's ${changedField} has changed since the correction (it may have been re-ingested), so undoing it would overwrite newer data`,
+    );
   }
 
   // Replays one game's derivation on demand — the same recomputation
@@ -308,12 +407,16 @@ export class AdminEventsService {
     });
   }
 
-  /** Writes a plan: the event, the stats, stale releases, the audit row. */
+  /**
+   * Writes a plan: the event, the stats, stale releases, the audit row.
+   * `revertsCorrectionId` links an undo to the correction it reverts.
+   */
   private async applyCorrectionPlan(
     tx: Prisma.TransactionClient,
     plan: CorrectionPlan,
     reason: string,
     correctedById: string,
+    revertsCorrectionId: string | null = null,
   ): Promise<SavedCorrection> {
     const { snapshot, sequence, changedFields } = plan;
     const gameId = snapshot.game.id;
@@ -334,6 +437,7 @@ export class AdminEventsService {
         newValues: pickFields(plan.corrected, changedFields) as Prisma.InputJsonValue,
         correctedById,
         reason,
+        revertsCorrectionId,
       },
     });
     return { ...this.describePlan(plan), correction, releasesMarkedStale };
