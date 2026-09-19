@@ -92,6 +92,7 @@ export interface PlayerName {
 export interface RosterEntry {
   surname: string; // folded
   firstInitial: string; // folded, one letter; "" if unknown
+  firstName: string; // folded, in full; "" if unknown
   teamId: string | null; // the team they played for in this game
 }
 
@@ -115,9 +116,11 @@ export function buildGameRoster(
   const addPlayer = (playerId: string, teamId: string | null) => {
     const name = namesByPlayerId.get(playerId);
     if (roster.has(playerId) || !name?.lastName) return;
+    const firstName = foldName(name.firstName ?? "");
     roster.set(playerId, {
       surname: foldName(name.lastName),
-      firstInitial: foldName(name.firstName ?? "").slice(0, 1),
+      firstInitial: firstName.slice(0, 1),
+      firstName,
       teamId,
     });
   };
@@ -128,25 +131,52 @@ export function buildGameRoster(
   return roster;
 }
 
+// The first-name prefix a folded credit name puts before this player's
+// surname, without its dot: "jal" for "jal. williams", "" for a bare
+// "williams", or null when the credit doesn't end in their surname at all.
+// Mirrors credit_first_name_prefix.
+function creditFirstNamePrefix(creditName: string, player: RosterEntry): string | null {
+  if (creditName === player.surname) return "";
+  if (!creditName.endsWith(` ${player.surname}`)) return null;
+  return creditName.slice(0, -player.surname.length).trim().replace(/\.$/, "");
+}
+
 // Whether a folded credit name ("jokic", "l. james", "st. curry") refers to
 // this player. NBA writes a bare surname unless two players on a roster
 // share it, then prefixes enough of the first name to tell them apart; the
 // prefix must begin with the player's first initial. Mirrors
 // credit_name_matches.
 export function creditNameMatches(creditName: string, player: RosterEntry): boolean {
-  if (creditName === player.surname) return true;
-  if (!creditName.endsWith(` ${player.surname}`) || !player.firstInitial) return false;
-  const prefix = creditName.slice(0, -player.surname.length).trim().replace(/\.$/, "");
-  return prefix.startsWith(player.firstInitial);
+  const prefix = creditFirstNamePrefix(creditName, player);
+  if (prefix === null) return false;
+  if (prefix === "") return true;
+  return player.firstInitial !== "" && prefix.startsWith(player.firstInitial);
+}
+
+// Of `candidates` (playerIds whose name fits the credit), the ones whose full
+// first name starts with the credit's whole prefix. NBA prefixes as many
+// letters as it takes to tell two players apart ("Jal. Williams" and
+// "Jay. Williams" are Jalen and Jaylin), and those extra letters are the
+// only thing that separates two teammates who share a surname and an
+// initial. A candidate whose first name isn't known is kept, so a gap in
+// the names never turns into a guess. Mirrors narrow_by_first_name_prefix.
+function narrowByFirstNamePrefix(candidates: string[], creditName: string, roster: Map<string, RosterEntry>): string[] {
+  return candidates.filter((playerId) => {
+    const player = roster.get(playerId)!;
+    const prefix = creditFirstNamePrefix(creditName, player) ?? "";
+    return player.firstName === "" || player.firstName.startsWith(prefix);
+  });
 }
 
 // Extracts and resolves the "(Name N AST/STL/BLK)" suffix on one event's
 // description to a playerId. When the name fits more than one player — two
 // players share a surname, and NBA only disambiguates within a roster — the
 // one on the expected side of the event's team (CREDIT_FROM_SAME_TEAM) is
-// kept. Returns null when there's no suffix, or the name still doesn't
-// narrow to exactly one player — never a guess. Mirrors
-// resolve_secondary_player.
+// kept, and if that still leaves more than one, the one whose first name
+// the credit's full prefix fits. Both steps only run when the name is still
+// ambiguous, so neither can change a credit that already resolves. Returns
+// null when there's no suffix, or the name still doesn't narrow to exactly
+// one player — never a guess. Mirrors resolve_secondary_player.
 export function resolveSecondaryPlayer(
   description: string,
   stat: CreditStat,
@@ -162,6 +192,7 @@ export function resolveSecondaryPlayer(
     const fromSameTeam = CREDIT_FROM_SAME_TEAM[stat];
     candidates = candidates.filter((playerId) => (roster.get(playerId)!.teamId === eventTeamId) === fromSameTeam);
   }
+  if (candidates.length > 1) candidates = narrowByFirstNamePrefix(candidates, creditName, roster);
   return candidates.length === 1 ? candidates[0] : null;
 }
 

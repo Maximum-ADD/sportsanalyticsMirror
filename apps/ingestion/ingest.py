@@ -60,7 +60,7 @@ from games import (
 from play_by_play import run_ingestion_batch
 from player_bios import fetch_player_bio, upsert_player_bio
 from player_game_logs import fetch_season_player_game_logs
-from rosters import fetch_team_roster, upsert_players
+from rosters import fetch_team_roster, select_first_names_by_nba_id, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
 # The season a pull covers unless --season overrides it. Kept as a module
@@ -296,7 +296,9 @@ def ingest_games_and_stats(
                 f"  {nba_game_id}: rejected {batch_summary['rejected']} play-by-play rows "
                 f"({batch_summary['rejection_counts']}) — see IngestionBatch {batch_summary['batch_id']}."
             )
-        derived_stats_by_nba_player_id = aggregate_player_game_stats(batch_summary["accepted_events"])
+        accepted_events = batch_summary["accepted_events"]
+        first_name_by_nba_id = select_first_names_by_nba_id(cursor, (event.get("personId") for event in accepted_events))
+        derived_stats_by_nba_player_id = aggregate_player_game_stats(accepted_events, first_name_by_nba_id)
 
         for player_stats in boxscore["players"]:
             player_internal_id = player_id_by_nba_id.get(player_stats["nba_player_id"])
