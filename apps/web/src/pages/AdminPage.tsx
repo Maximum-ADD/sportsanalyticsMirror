@@ -11,7 +11,6 @@ import {
   fetchAdminBatches,
   approveAdminBatch,
   rejectAdminBatch,
-  fetchAdminCorrections,
   fetchAdminConsumers,
   createAdminConsumer,
   createAdminApiKey,
@@ -29,6 +28,8 @@ import {
   type SortDirection,
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
+import { AdminCorrectionsSection } from "@/components/admin/AdminCorrectionsSection";
+import { BUTTON_CLASS, INPUT_CLASS, LABEL_CLASS, PAGE_SIZE, PANEL_CLASS } from "@/components/admin/adminStyles";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { Pagination } from "@/components/Pagination";
@@ -39,15 +40,8 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMe } from "@/lib/useMe";
 import type { AdminUserSummary, Player, Team, UserRole } from "@/types/nba";
 
-const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_IN_MILLISECONDS = 300;
 
-const INPUT_CLASS =
-  "border border-landing-light bg-landing-hero px-3 py-2 text-[13px] text-landing-ink placeholder:text-locker-ink-muted focus:border-locker-leather focus:outline-none";
-const BUTTON_CLASS =
-  "min-h-10 border border-landing-light bg-locker-surface px-3 py-1.5 font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0";
-const PANEL_CLASS = "border border-landing-light bg-locker-surface p-4";
-const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
 const PULL_LABEL_CLASS = "font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase";
 
 type AdminTab = "teams" | "players" | "users" | "batches" | "corrections" | "consumers";
@@ -62,6 +56,14 @@ const TABS: { value: AdminTab; label: string }[] = [
 
 export function AdminPage() {
   const [tab, setTab] = useState<AdminTab>("teams");
+  // The game open in the Corrections tab. Lives here so a batch row can
+  // open its game there directly.
+  const [correctionsGameId, setCorrectionsGameId] = useState<string | null>(null);
+
+  function openCorrections(gameId: string) {
+    setCorrectionsGameId(gameId);
+    setTab("corrections");
+  }
 
   return (
     <div className="min-h-full bg-landing-hero">
@@ -96,8 +98,10 @@ export function AdminPage() {
         {tab === "teams" && <AdminTeamsSection />}
         {tab === "players" && <AdminPlayersSection />}
         {tab === "users" && <AdminUsersSection />}
-        {tab === "batches" && <AdminBatchesSection />}
-        {tab === "corrections" && <AdminCorrectionsSection />}
+        {tab === "batches" && <AdminBatchesSection onCorrectPlays={openCorrections} />}
+        {tab === "corrections" && (
+          <AdminCorrectionsSection selectedGameId={correctionsGameId} onSelectGame={setCorrectionsGameId} />
+        )}
         {tab === "consumers" && <AdminConsumersSection />}
       </div>
     </div>
@@ -758,7 +762,7 @@ const BATCH_TABLE_HEADERS: { label: string; sortField?: BatchSortField }[] = [
   { label: "" },
 ];
 
-function AdminBatchesSection() {
+function AdminBatchesSection({ onCorrectPlays }: { onCorrectPlays: (gameId: string) => void }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("PENDING_REVIEW");
@@ -1082,6 +1086,9 @@ function AdminBatchesSection() {
                             </button>
                           </>
                         )}
+                        <button type="button" className={BUTTON_CLASS} onClick={() => onCorrectPlays(batch.game.id)}>
+                          Correct plays
+                        </button>
                         <button
                           type="button"
                           className={`${BUTTON_CLASS} border-gray-300 text-gray-600`}
@@ -1094,84 +1101,6 @@ function AdminBatchesSection() {
                           Delete
                         </button>
                       </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {data && <Pagination tone="locker" page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}
-    </div>
-  );
-}
-
-// ── Corrections ──────────────────────────────────────────────────────
-
-function AdminCorrectionsSection() {
-  const [page, setPage] = useState(1);
-
-  const { data, isPending, isError, refetch } = useQuery({
-    queryKey: ["adminCorrections", { page }],
-    queryFn: () => fetchAdminCorrections({ page, pageSize: PAGE_SIZE }),
-  });
-
-  if (isError) {
-    return <ErrorState message="Could not load corrections." onRetry={() => refetch()} />;
-  }
-
-  return (
-    <div className="space-y-4">
-      <p className="text-[12.5px] text-locker-ink-muted">
-        Audit trail of all event corrections. Each row shows what changed, who corrected it, and when.
-      </p>
-
-      {isPending ? (
-        <div className="flex min-h-64 items-center justify-center">
-          <BasketballSpinner size="lg" label="Loading corrections" />
-        </div>
-      ) : (
-        <div className="overflow-hidden border border-landing-light bg-locker-surface">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-landing-light bg-landing-hero">
-                {["Game", "Seq", "Changed Fields", "Reason", "Corrected By", "When"].map((header) => (
-                  <th key={header} className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data?.data.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
-                    No corrections recorded yet.
-                  </td>
-                </tr>
-              ) : (
-                data?.data.map((correction) => (
-                  <tr key={correction.id} className="border-b border-landing-light last:border-b-0">
-                    <td className="px-3 py-2.5">
-                      <div className="font-mono text-[11px] text-locker-ink-muted">{correction.game.nbaGameId}</div>
-                      <div className="text-[10px] text-locker-ink-muted">{correction.game.season}</div>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">{correction.sequence}</td>
-                    <td className="px-3 py-2.5">
-                      <div className="max-w-64 overflow-hidden text-ellipsis text-[11px] text-locker-ink-muted">
-                        {Object.keys(correction.newValues).join(", ")}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-[11px] text-locker-ink-muted">
-                      {correction.reason ?? "—"}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
-                      {correction.correctedBy?.name ?? "—"}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted">
-                      {new Date(correction.correctedAt).toLocaleString()}
                     </td>
                   </tr>
                 ))
