@@ -200,17 +200,63 @@ describe("Admin event corrections and replay", () => {
       expect(response.body.changes).toEqual([{ field: "clock", from: "PT11M30.00S", to: "PT11M25.00S" }]);
     });
 
+    // Stats are seeded as ingestion leaves them (already matching the
+    // events), so the play's previous player really starts with its
+    // points. With zeroed seeds this passed even while the previous player
+    // was never recomputed and kept the points the new player also got.
     it("moves derived stats to the corrected player when playerId is reassigned", async () => {
-      const { game, curry, thompson } = await seedGame();
+      const { game, curry, thompson } = await seedGame({
+        Curry: { points: 3, fieldGoalsMade: 1, fieldGoalsAttempted: 1, threesMade: 1, threesAttempted: 1 },
+        Thompson: { rebounds: 1 },
+      });
 
-      await correct(game.id, 1, {
+      const response = await correct(game.id, 1, {
         playerId: thompson.id,
         description: "Thompson 26' 3PT Jump Shot (3 PTS) (Green 1 AST)",
         reason: "wrong shooter",
       });
 
-      expect((await statOf(curry.id, game.id)).points).toBe(0);
+      const curryStat = await statOf(curry.id, game.id);
+      expect({ points: curryStat.points, fieldGoalsAttempted: curryStat.fieldGoalsAttempted, threesMade: curryStat.threesMade }).toEqual({
+        points: 0,
+        fieldGoalsAttempted: 0,
+        threesMade: 0,
+      });
       expect((await statOf(thompson.id, game.id)).points).toBe(3);
+      expect(response.body.statChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ playerName: "Stephen Curry", stats: expect.arrayContaining([{ field: "points", before: 3, after: 0 }]) }),
+          expect.objectContaining({ playerName: "Klay Thompson", stats: expect.arrayContaining([{ field: "points", before: 0, after: 3 }]) }),
+        ]),
+      );
+    });
+
+    // Moving a player's only play leaves them with no events, and a player
+    // with no events is normally not a valid credit target. They are kept
+    // as one for this correction, so it doesn't also strip the assist they
+    // made on someone else's shot.
+    it("keeps credits a player earned elsewhere when their only play is moved away", async () => {
+      const { game, home, curry, green, thompson } = await seedGame();
+      await testPrisma.gameEvent.create({
+        data: {
+          gameId: game.id, sequence: 6, period: 1, clock: "PT10M00.00S", eventType: "2pt", subType: "Layup Shot",
+          playerId: green.id, teamId: home.id, success: true, value: 2, description: "Green 2' Layup (2 PTS) (Thompson 1 AST)",
+        },
+      });
+      await testPrisma.playerGameStat.update({
+        where: { playerId_gameId: { playerId: thompson.id, gameId: game.id } },
+        data: { rebounds: 1, assists: 1 },
+      });
+
+      await correct(game.id, 4, { playerId: curry.id, reason: "Curry got the board" });
+
+      const thompsonStat = await statOf(thompson.id, game.id);
+      expect({ rebounds: thompsonStat.rebounds, assists: thompsonStat.assists }).toEqual({ rebounds: 0, assists: 1 });
+      expect((await statOf(curry.id, game.id)).rebounds).toBe(1);
+
+      // A later replay leaves them alone too: they act in no event.
+      await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
+      expect((await statOf(thompson.id, game.id)).assists).toBe(1);
     });
 
     it("marks the season's dataset releases stale and reports how many", async () => {

@@ -215,11 +215,12 @@ export class AdminEventsService {
 
     const current = pickCorrectableFields(storedEvent);
     const corrected: CorrectableEvent = { ...current, ...request.patch };
-    const retainedTeamByPlayerId = new Map<string, string | null>();
+    const teamIdByRosterPlayerId = resolveGameTeamByPlayerId(snapshot, sequence);
+    const retainedTeamByPlayerId = this.retainPreviousPlayer(current, teamIdByRosterPlayerId);
     const errors = validateCorrectedEvent(corrected, {
       homeTeamId: snapshot.game.homeTeamId,
       awayTeamId: snapshot.game.awayTeamId,
-      teamIdByRosterPlayerId: resolveGameTeamByPlayerId(snapshot, sequence),
+      teamIdByRosterPlayerId,
       originalPlayerId: current.playerId,
     });
     if (errors.length === 0 && request.creditPlayerId !== undefined) {
@@ -240,6 +241,20 @@ export class AdminEventsService {
       retainedTeamByPlayerId,
     );
     return { snapshot, sequence, current, corrected, changedFields, recomputes };
+  }
+
+  /**
+   * The corrected play's player before the correction (if they're on the
+   * game's roster) -> their team, for planStatRecompute to retain. Without
+   * this, moving a player's only play to someone else skipped them in the
+   * recompute (they no longer act), so both players ended up with its points.
+   */
+  private retainPreviousPlayer(
+    current: CorrectableEvent,
+    teamIdByRosterPlayerId: Map<string, string | null>,
+  ): Map<string, string | null> {
+    if (current.playerId === null || !teamIdByRosterPlayerId.has(current.playerId)) return new Map();
+    return new Map([[current.playerId, teamIdByRosterPlayerId.get(current.playerId) ?? current.teamId]]);
   }
 
   private replaceEvent(events: GameEvent[], sequence: number, corrected: CorrectableEvent): GameEvent[] {
