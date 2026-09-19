@@ -417,6 +417,37 @@ describe("Admin event corrections and replay", () => {
         expect(response.body.error.message).toMatch(message);
       });
 
+      it("rejects making the credited passer the shooter while the assist stays theirs", async () => {
+        const { game, curry, green } = await seedGame();
+
+        const response = await correct(game.id, 1, { playerId: green.id, reason: "test" });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(/Draymond Green would be credited with the assist on their own play/);
+        expect((await eventAt(game.id, 1)).playerId).toBe(curry.id);
+      });
+
+      it("accepts that same change when the credit moves in the same correction", async () => {
+        const { game, green, thompson } = await seedGame();
+
+        const response = await correct(game.id, 1, { playerId: green.id, creditPlayerId: thompson.id, reason: "Green shot it, Klay passed" });
+
+        expect(response.status).toBe(201);
+        expect((await eventAt(game.id, 1)).description).toBe("Curry 26' 3PT Jump Shot (3 PTS) (Thompson 1 AST)");
+        const greenStat = await statOf(green.id, game.id);
+        expect({ points: greenStat.points, assists: greenStat.assists }).toEqual({ points: 3, assists: 0 });
+        expect((await statOf(thompson.id, game.id)).assists).toBe(1);
+      });
+
+      it("rejects moving a shot to the other team while its assist stays with the old team", async () => {
+        const { game, away, james } = await seedGame();
+
+        const response = await correct(game.id, 1, { playerId: james.id, teamId: away.id, reason: "test" });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(/Draymond Green is credited with the assist but would be on the wrong side/);
+      });
+
       it("rejects a block from the shooter's own team", async () => {
         const { game, away } = await seedGame();
         const davis = await createPlayer("Anthony", "Davis", away.id);

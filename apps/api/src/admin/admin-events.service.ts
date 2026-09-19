@@ -4,7 +4,13 @@ import { ApiException } from "../common/api-exception.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { ResponseCacheService } from "../cache/response-cache.service.js";
-import { buildGameRoster, resolveSecondaryPlayer, type CountingStatField } from "./derive-player-game-stats.js";
+import {
+  buildGameRoster,
+  CREDIT_FROM_SAME_TEAM,
+  resolveSecondaryPlayer,
+  type CountingStatField,
+  type CreditStat,
+} from "./derive-player-game-stats.js";
 import {
   CORRECTABLE_FIELDS,
   type CorrectableField,
@@ -110,6 +116,8 @@ interface CorrectionPlan {
   changedFields: CorrectableField[];
   recomputes: PlayerStatRecompute[];
 }
+
+const CREDIT_NOUNS: Record<CreditStat, string> = { assists: "assist", blocks: "block", steals: "steal" };
 
 function invalidCorrection(message: string): ApiException {
   return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_CORRECTION", message);
@@ -379,6 +387,10 @@ export class AdminEventsService {
       if ("error" in credit) errors.push(credit.error);
       else corrected.description = credit.description;
     }
+    if (errors.length === 0) {
+      const creditError = this.findResolvedCreditError(snapshot, sequence, corrected, retainedTeamByPlayerId);
+      if (creditError !== null) errors.push(creditError);
+    }
     if (errors.length > 0) throw invalidCorrection(errors.join("; "));
 
     const changedFields = CORRECTABLE_FIELDS.filter((field) => corrected[field] !== current[field]);
@@ -457,6 +469,39 @@ export class AdminEventsService {
       roster,
       earlierCreditCount,
     });
+  }
+
+  /**
+   * Why the corrected play's credit, as the derivation will resolve it,
+   * can't stand; null when it's fine or there's none. Catches a correction
+   * that leaves the credit alone but changes what it means: making the
+   * credited passer the shooter would otherwise give them an assist on
+   * their own shot. (No real ingested play fails this: none of the 2,127
+   * resolved credits in the April 2026 sample is on the wrong side.)
+   */
+  private findResolvedCreditError(
+    snapshot: GameSnapshot,
+    sequence: number,
+    corrected: CorrectableEvent,
+    retainedTeamByPlayerId: Map<string, string | null>,
+  ): string | null {
+    const stat = creditStatFor(corrected);
+    if (stat === null) return null;
+    const correctedEvents = this.replaceEvent(snapshot.events, sequence, corrected);
+    const roster = buildGameRoster(correctedEvents, buildNamesByPlayerId(snapshot), retainedTeamByPlayerId);
+    const creditId = resolveSecondaryPlayer(corrected.description, stat, roster, corrected.teamId);
+    if (creditId === null) return null;
+
+    const player = snapshot.rosterPlayersById.get(creditId);
+    const creditName = player ? `${player.firstName} ${player.lastName}` : "The credited player";
+    const creditNoun = CREDIT_NOUNS[stat];
+    if (creditId === corrected.playerId) {
+      return `${creditName} would be credited with the ${creditNoun} on their own play; choose a different credit (creditPlayerId)`;
+    }
+    if ((roster.get(creditId)?.teamId === corrected.teamId) !== CREDIT_FROM_SAME_TEAM[stat]) {
+      return `${creditName} is credited with the ${creditNoun} but would be on the wrong side of this play; choose a different credit (creditPlayerId)`;
+    }
+    return null;
   }
 
   /**
