@@ -1,5 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
-import type { Game, Player, Team } from "@prisma/client";
+import type { Game, Player, PlayerGameStat, Team } from "@prisma/client";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./create-test-app.js";
@@ -18,22 +18,22 @@ function uid() {
   return nextId;
 }
 
-async function createTeam(): Promise<Team> {
+async function createTeam(name: string, abbreviation: string): Promise<Team> {
   return testPrisma.team.create({
     data: {
       nbaTeamId: uid(),
-      name: "Warriors",
-      abbreviation: "GSW",
-      city: "San Francisco",
+      name,
+      abbreviation,
+      city: "City",
       conference: "West",
       division: "Pacific",
     },
   });
 }
 
-async function createPlayer(lastName: string, teamId: string): Promise<Player> {
+async function createPlayer(firstName: string, lastName: string, teamId: string): Promise<Player> {
   return testPrisma.player.create({
-    data: { nbaPlayerId: uid(), firstName: "Test", lastName, position: "G", teamId },
+    data: { nbaPlayerId: uid(), firstName, lastName, position: "G", teamId },
   });
 }
 
@@ -45,6 +45,48 @@ async function createGame(homeTeamId: string, awayTeamId: string): Promise<Game>
       season: "2025-26",
       homeTeamId,
       awayTeamId,
+    },
+  });
+}
+
+type CountingStatOverrides = Partial<
+  Pick<
+    PlayerGameStat,
+    | "points"
+    | "rebounds"
+    | "assists"
+    | "steals"
+    | "blocks"
+    | "turnovers"
+    | "fieldGoalsMade"
+    | "fieldGoalsAttempted"
+    | "threesMade"
+    | "threesAttempted"
+    | "freeThrowsMade"
+    | "freeThrowsAttempted"
+  >
+>;
+
+async function createStatRow(playerId: string, gameId: string, teamId: string | null, stats: CountingStatOverrides = {}) {
+  return testPrisma.playerGameStat.create({
+    data: {
+      playerId,
+      gameId,
+      teamId,
+      minutes: 30,
+      points: 0,
+      rebounds: 0,
+      assists: 0,
+      steals: 0,
+      blocks: 0,
+      turnovers: 0,
+      fieldGoalsMade: 0,
+      fieldGoalsAttempted: 0,
+      threesMade: 0,
+      threesAttempted: 0,
+      freeThrowsMade: 0,
+      freeThrowsAttempted: 0,
+      ...stats,
     },
   });
 }
@@ -67,6 +109,7 @@ describe("Admin event corrections and replay", () => {
 
   afterEach(async () => {
     await testPrisma.eventCorrection.deleteMany();
+    await testPrisma.datasetRelease.deleteMany();
     await testPrisma.playerGameStat.deleteMany();
     await testPrisma.gameEvent.deleteMany();
     await testPrisma.game.deleteMany();
@@ -80,140 +123,279 @@ describe("Admin event corrections and replay", () => {
     await app.close();
   });
 
-  // Sets up a scorer who made an assisted three, plus stale PlayerGameStat
-  // rows (all zeros) as if the boxscore-only path had written them before
-  // any derivation ran — recompute must bring both back in line.
-  async function seedAssistedThree() {
-    const team = await createTeam();
-    const scorer = await createPlayer("Curry", team.id);
-    const passer = await createPlayer("Green", team.id);
-    const game = await createGame(team.id, team.id);
+  // A small real-shaped game: Warriors (home) v Lakers (away). Curry makes
+  // an assisted three, Green fouls, James misses a layup, Thompson rebounds
+  // it, James turns it over. Every player needs an event of their own to be
+  // resolvable as a credited player (see buildGameRoster). Stat rows start
+  // at zero, as if the box-score-only path wrote them before any derivation
+  // ran, unless a test seeds them otherwise.
+  async function seedGame(statsByPlayer: Record<string, CountingStatOverrides> = {}) {
+    const home = await createTeam("Warriors", "GSW");
+    const away = await createTeam("Lakers", "LAL");
+    const curry = await createPlayer("Stephen", "Curry", home.id);
+    const green = await createPlayer("Draymond", "Green", home.id);
+    const thompson = await createPlayer("Klay", "Thompson", home.id);
+    const james = await createPlayer("LeBron", "James", away.id);
+    const game = await createGame(home.id, away.id);
 
-    await testPrisma.gameEvent.create({
-      data: {
-        gameId: game.id,
-        sequence: 1,
-        period: 1,
-        clock: "11:30",
-        eventType: "3pt",
-        playerId: scorer.id,
-        teamId: team.id,
-        success: true,
-        value: 3,
-        description: "Curry 26' 3PT Jump Shot (3 PTS) (Green 1 AST)",
-      },
-    });
-    // The passer needs an event of their own too — a player must appear as
-    // an actor somewhere in the game's events to be resolvable as a
-    // secondary player at all (see deriveGameEventStats's roster-name
-    // index; a bare assist mention is never enough on its own).
-    await testPrisma.gameEvent.create({
-      data: {
-        gameId: game.id,
-        sequence: 2,
-        period: 1,
-        clock: "11:00",
-        eventType: "foul",
-        playerId: passer.id,
-        teamId: team.id,
-        description: "Green Personal Foul",
-      },
+    const base = { gameId: game.id, period: 1, subType: null, success: null, value: 0 };
+    await testPrisma.gameEvent.createMany({
+      data: [
+        { ...base, sequence: 1, clock: "PT11M30.00S", eventType: "3pt", subType: "Jump Shot", playerId: curry.id, teamId: home.id, success: true, value: 3, description: "Curry 26' 3PT Jump Shot (3 PTS) (Green 1 AST)" },
+        { ...base, sequence: 2, clock: "PT11M00.00S", eventType: "foul", subType: "Personal", playerId: green.id, teamId: home.id, description: "Green P.FOUL (P1.T1)" },
+        { ...base, sequence: 3, clock: "PT10M40.00S", eventType: "2pt", subType: "Driving Layup Shot", playerId: james.id, teamId: away.id, success: false, value: 2, description: "MISS James 5' Driving Layup" },
+        { ...base, sequence: 4, clock: "PT10M38.00S", eventType: "rebound", subType: "defensive", playerId: thompson.id, teamId: home.id, description: "Thompson REBOUND (Off:0 Def:1)" },
+        { ...base, sequence: 5, clock: "PT10M20.00S", eventType: "turnover", subType: "Bad Pass", playerId: james.id, teamId: away.id, description: "James Bad Pass Turnover (P1.T1)" },
+      ],
     });
 
-    for (const player of [scorer, passer]) {
-      await testPrisma.playerGameStat.create({
-        data: {
-          playerId: player.id,
-          gameId: game.id,
-          teamId: team.id,
-          minutes: 30,
-          points: 0,
-          rebounds: 0,
-          assists: 0,
-          steals: 0,
-          blocks: 0,
-          turnovers: 0,
-          fieldGoalsMade: 0,
-          fieldGoalsAttempted: 0,
-          threesMade: 0,
-          threesAttempted: 0,
-          freeThrowsMade: 0,
-          freeThrowsAttempted: 0,
-        },
-      });
+    for (const [player, teamId] of [[curry, home.id], [green, home.id], [thompson, home.id], [james, away.id]] as const) {
+      await createStatRow(player.id, game.id, teamId, statsByPlayer[player.lastName]);
     }
+    return { game, home, away, curry, green, thompson, james };
+  }
 
-    return { game, scorer, passer };
+  function correct(gameId: string, sequence: number, body: Record<string, unknown>) {
+    return request(app.getHttpServer()).post(`/v1/admin/games/${gameId}/events/${sequence}/correct`).send(body);
+  }
+
+  function statOf(playerId: string, gameId: string) {
+    return testPrisma.playerGameStat.findUniqueOrThrow({ where: { playerId_gameId: { playerId, gameId } } });
+  }
+
+  function eventAt(gameId: string, sequence: number) {
+    return testPrisma.gameEvent.findUniqueOrThrow({ where: { gameId_sequence: { gameId, sequence } } });
   }
 
   describe("POST /v1/admin/games/:gameId/events/:sequence/correct", () => {
     it("re-derives PlayerGameStat for the game from the corrected events", async () => {
-      const { game, scorer, passer } = await seedAssistedThree();
+      const { game, curry, green } = await seedGame();
 
       // Correct the shot's clock — a field that doesn't change the
       // aggregation outcome, so this test only proves recompute runs (the
       // rows start at all zeros and don't match the events until it does).
-      const response = await request(app.getHttpServer())
-        .post(`/v1/admin/games/${game.id}/events/1/correct`)
-        .send({ clock: "11:25", reason: "clock sync fix" });
+      const response = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock sync fix" });
 
       expect(response.status).toBe(201);
+      const curryStat = await statOf(curry.id, game.id);
+      expect(curryStat.points).toBe(3);
+      expect(curryStat.threesMade).toBe(1);
+      expect(curryStat.threesAttempted).toBe(1);
+      expect((await statOf(green.id, game.id)).assists).toBe(1);
+    });
 
-      const scorerStat = await testPrisma.playerGameStat.findUniqueOrThrow({
-        where: { playerId_gameId: { playerId: scorer.id, gameId: game.id } },
-      });
-      expect(scorerStat.points).toBe(3);
-      expect(scorerStat.threesMade).toBe(1);
-      expect(scorerStat.threesAttempted).toBe(1);
+    it("records who changed what, from what, to what, and why", async () => {
+      const { game } = await seedGame();
 
-      const passerStat = await testPrisma.playerGameStat.findUniqueOrThrow({
-        where: { playerId_gameId: { playerId: passer.id, gameId: game.id } },
+      const response = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock sync fix" });
+
+      expect(response.body.correction).toMatchObject({
+        gameId: game.id,
+        sequence: 1,
+        previousValues: { clock: "PT11M30.00S" },
+        newValues: { clock: "PT11M25.00S" },
+        correctedById: ADMIN_USER_ID,
+        reason: "clock sync fix",
       });
-      expect(passerStat.assists).toBe(1);
+      expect(response.body.changes).toEqual([{ field: "clock", from: "PT11M30.00S", to: "PT11M25.00S" }]);
     });
 
     it("moves derived stats to the corrected player when playerId is reassigned", async () => {
-      const { game, scorer, passer } = await seedAssistedThree();
+      const { game, curry, thompson } = await seedGame();
 
-      await request(app.getHttpServer())
-        .post(`/v1/admin/games/${game.id}/events/1/correct`)
-        .send({ playerId: passer.id, description: "Green 26' 3PT Jump Shot (3 PTS)", reason: "wrong shooter" });
-
-      const scorerStat = await testPrisma.playerGameStat.findUniqueOrThrow({
-        where: { playerId_gameId: { playerId: scorer.id, gameId: game.id } },
+      await correct(game.id, 1, {
+        playerId: thompson.id,
+        description: "Thompson 26' 3PT Jump Shot (3 PTS) (Green 1 AST)",
+        reason: "wrong shooter",
       });
-      expect(scorerStat.points).toBe(0);
 
-      const passerStat = await testPrisma.playerGameStat.findUniqueOrThrow({
-        where: { playerId_gameId: { playerId: passer.id, gameId: game.id } },
+      expect((await statOf(curry.id, game.id)).points).toBe(0);
+      expect((await statOf(thompson.id, game.id)).points).toBe(3);
+    });
+
+    it("marks the season's dataset releases stale and reports how many", async () => {
+      const { game } = await seedGame();
+      await testPrisma.datasetRelease.create({
+        data: {
+          version: "2025-26.1",
+          description: "first",
+          season: "2025-26",
+          checksum: "x",
+          gamesCount: 1,
+          playersCount: 1,
+          eventsCount: 1,
+          fieldSchema: {},
+        },
       });
-      expect(passerStat.points).toBe(3);
+
+      const response = await correct(game.id, 1, { clock: "PT11M25.00S", reason: "clock sync fix" });
+
+      expect(response.body.releasesMarkedStale).toBe(1);
+      expect((await testPrisma.datasetRelease.findFirstOrThrow()).isStale).toBe(true);
     });
 
     it("returns 404 for an event that doesn't exist", async () => {
-      const { game } = await seedAssistedThree();
-
-      const response = await request(app.getHttpServer())
-        .post(`/v1/admin/games/${game.id}/events/999/correct`)
-        .send({ clock: "0:00" });
-
+      const { game } = await seedGame();
+      const response = await correct(game.id, 999, { clock: "PT00M00.00S", reason: "typo" });
       expect(response.status).toBe(404);
+    });
+
+    describe("reason", () => {
+      it.each([
+        ["missing", {}],
+        ["blank", { reason: "   " }],
+        ["not a string", { reason: 7 }],
+      ])("rejects a %s reason with 400 and writes nothing", async (_label, reasonField) => {
+        const { game } = await seedGame();
+
+        const response = await correct(game.id, 1, { clock: "PT11M25.00S", ...reasonField });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(/reason is required/);
+        expect((await eventAt(game.id, 1)).clock).toBe("PT11M30.00S");
+        expect(await testPrisma.eventCorrection.count()).toBe(0);
+      });
+    });
+
+    describe("validation of the corrected play", () => {
+      // Each case would once have been a 500 or silently corrupted stats.
+      it.each([
+        ["a non-integer period", () => ({ period: "2" }), /period must be an integer/],
+        ["a fractional period", () => ({ period: 1.5 }), /period must be an integer/],
+        ["a period past 10", () => ({ period: 11 }), /period must be an integer from 1 to 10/],
+        ["a malformed clock", () => ({ clock: "PT99M00.00S" }), /not a valid game clock/],
+        ["an unknown event type", () => ({ eventType: "slam" }), /not in the platform vocabulary/],
+        ["a value that isn't the shot's", () => ({ value: 5 }), /value 5 doesn't fit a made 3pt/],
+        ["success on a non-shot", () => ({ eventType: "rebound", subType: "defensive", value: 0 }), /success only applies/],
+        ["a shot with no made/missed", () => ({ success: null }), /must be marked made or missed/],
+        ["an unknown team", () => ({ teamId: "00000000-0000-0000-0000-000000000000" }), /neither team in this game/],
+        ["an unknown player", () => ({ playerId: "00000000-0000-0000-0000-000000000000" }), /did not play in this game/],
+        ["an empty description", () => ({ description: "  " }), /description must not be empty/],
+        ["no change at all", () => ({ clock: "PT11M30.00S" }), /Nothing to change/],
+      ])("rejects %s with 400 and leaves stats alone", async (_label, makePatch, message) => {
+        const { game, curry } = await seedGame({ Curry: { points: 3 } });
+
+        const response = await correct(game.id, 1, { ...makePatch(), reason: "test" });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(message);
+        expect((await eventAt(game.id, 1)).eventType).toBe("3pt");
+        expect((await statOf(curry.id, game.id)).points).toBe(3);
+        expect(await testPrisma.eventCorrection.count()).toBe(0);
+      });
+
+      it("rejects a team that isn't the player's own", async () => {
+        const { game, away } = await seedGame();
+        const response = await correct(game.id, 1, { teamId: away.id, reason: "test" });
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(/does not match the team the player played for/);
+      });
+
+      it("rejects a player who is in the database but not in this game", async () => {
+        const { game, home } = await seedGame();
+        const outsider = await createPlayer("Other", "Guard", home.id);
+        const response = await correct(game.id, 1, { playerId: outsider.id, reason: "test" });
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(/did not play in this game/);
+      });
+
+      it("accepts a play corrected to another valid shape in one go", async () => {
+        const { game, curry } = await seedGame();
+
+        const response = await correct(game.id, 1, { eventType: "2pt", value: 2, reason: "was a long two" });
+
+        expect(response.status).toBe(201);
+        expect((await statOf(curry.id, game.id)).points).toBe(2);
+      });
+    });
+
+    describe("credits", () => {
+      it("moves an assist to another teammate by rewriting the description's suffix", async () => {
+        const { game, green, thompson } = await seedGame();
+
+        const response = await correct(game.id, 1, { creditPlayerId: thompson.id, reason: "wrong passer" });
+
+        expect(response.status).toBe(201);
+        expect((await eventAt(game.id, 1)).description).toBe("Curry 26' 3PT Jump Shot (3 PTS) (Thompson 1 AST)");
+        expect((await statOf(thompson.id, game.id)).assists).toBe(1);
+        expect((await statOf(green.id, game.id)).assists).toBe(0);
+        expect(response.body.correction.newValues).toEqual({
+          description: "Curry 26' 3PT Jump Shot (3 PTS) (Thompson 1 AST)",
+        });
+      });
+
+      it("removes an assist when the credit is set to none", async () => {
+        const { game, green } = await seedGame({ Green: { assists: 1 } });
+
+        await correct(game.id, 1, { creditPlayerId: null, reason: "unassisted" });
+
+        expect((await eventAt(game.id, 1)).description).toBe("Curry 26' 3PT Jump Shot (3 PTS)");
+        expect((await statOf(green.id, game.id)).assists).toBe(0);
+      });
+
+      it("credits a block and a steal to the other team", async () => {
+        const { game, green, thompson } = await seedGame();
+
+        await correct(game.id, 3, { creditPlayerId: green.id, reason: "missed block" });
+        await correct(game.id, 5, { creditPlayerId: thompson.id, reason: "missed steal" });
+
+        expect((await eventAt(game.id, 3)).description).toBe("MISS James 5' Driving Layup (Green 1 BLK)");
+        expect((await statOf(green.id, game.id)).blocks).toBe(1);
+        expect((await eventAt(game.id, 5)).description).toBe("James Bad Pass Turnover (P1.T1) (Thompson 1 STL)");
+        expect((await statOf(thompson.id, game.id)).steals).toBe(1);
+      });
+
+      it("swaps an assist for a block when a made shot is corrected to missed", async () => {
+        const { game, curry, green, james } = await seedGame();
+
+        const response = await correct(game.id, 1, { success: false, creditPlayerId: james.id, reason: "rimmed out" });
+
+        expect(response.status).toBe(201);
+        expect((await eventAt(game.id, 1)).description).toBe("Curry 26' 3PT Jump Shot (3 PTS) (James 1 BLK)");
+        expect((await statOf(curry.id, game.id)).points).toBe(0);
+        expect((await statOf(green.id, game.id)).assists).toBe(0);
+        expect((await statOf(james.id, game.id)).blocks).toBe(1);
+      });
+
+      it.each([
+        ["an assist from the other team", 1, "james", /must come from the shooter's team/],
+        ["a block by the shooter themself", 3, "james", /own play/],
+        ["a steal by the player who lost the ball", 5, "james", /own play/],
+        ["a credit on a play that takes none", 4, "green", /takes no credit/],
+      ] as const)("rejects %s with 400", async (_label, sequence, creditedKey, message) => {
+        const seeded = await seedGame();
+
+        const response = await correct(seeded.game.id, sequence, { creditPlayerId: seeded[creditedKey].id, reason: "test" });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(message);
+      });
+
+      it("rejects a block from the shooter's own team", async () => {
+        const { game, away } = await seedGame();
+        const davis = await createPlayer("Anthony", "Davis", away.id);
+        await testPrisma.gameEvent.create({
+          data: { gameId: game.id, sequence: 6, period: 1, clock: "PT10M00.00S", eventType: "foul", playerId: davis.id, teamId: away.id, value: 0, description: "Davis P.FOUL" },
+        });
+        await createStatRow(davis.id, game.id, away.id);
+
+        const response = await correct(game.id, 3, { creditPlayerId: davis.id, reason: "test" });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.message).toMatch(/must come from the other team/);
+      });
     });
   });
 
   describe("POST /v1/admin/games/:gameId/replay", () => {
     it("recomputes stats without requiring any event correction", async () => {
-      const { game, scorer } = await seedAssistedThree();
+      const { game, curry } = await seedGame();
 
       const response = await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
 
       expect(response.status).toBe(201);
-      expect(response.body).toEqual({ gameId: game.id, playersRecomputed: 2 });
-
-      const scorerStat = await testPrisma.playerGameStat.findUniqueOrThrow({
-        where: { playerId_gameId: { playerId: scorer.id, gameId: game.id } },
-      });
-      expect(scorerStat.points).toBe(3);
+      expect(response.body).toEqual({ gameId: game.id, playersRecomputed: 4, playersChanged: 4 });
+      expect((await statOf(curry.id, game.id)).points).toBe(3);
     });
 
     it("returns 404 for a game that doesn't exist", async () => {
@@ -225,8 +407,8 @@ describe("Admin event corrections and replay", () => {
     // period markers. Replaying one used to write 0 over every player's
     // points, rebounds and assists, because nobody could be derived.
     it("leaves a game's stats alone when its events don't involve any player", async () => {
-      const team = await createTeam();
-      const player = await createPlayer("Curry", team.id);
+      const team = await createTeam("Warriors", "GSW");
+      const player = await createPlayer("Stephen", "Curry", team.id);
       const game = await createGame(team.id, team.id);
       await testPrisma.gameEvent.createMany({
         data: [
@@ -234,42 +416,29 @@ describe("Admin event corrections and replay", () => {
           { gameId: game.id, sequence: 2, period: 1, clock: "0:00", eventType: "period", subType: "end", description: "End of 1st Period" },
         ],
       });
-      await testPrisma.playerGameStat.create({
-        data: {
-          playerId: player.id, gameId: game.id, teamId: team.id, minutes: 34, points: 31, rebounds: 6, assists: 9,
-          steals: 2, blocks: 0, turnovers: 3, fieldGoalsMade: 11, fieldGoalsAttempted: 20, threesMade: 5,
-          threesAttempted: 11, freeThrowsMade: 4, freeThrowsAttempted: 4,
-        },
+      await createStatRow(player.id, game.id, team.id, {
+        points: 31, rebounds: 6, assists: 9, steals: 2, turnovers: 3, fieldGoalsMade: 11, fieldGoalsAttempted: 20,
+        threesMade: 5, threesAttempted: 11, freeThrowsMade: 4, freeThrowsAttempted: 4,
       });
 
       const response = await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
 
-      expect(response.body).toEqual({ gameId: game.id, playersRecomputed: 0 });
-      const stat = await testPrisma.playerGameStat.findUniqueOrThrow({
-        where: { playerId_gameId: { playerId: player.id, gameId: game.id } },
-      });
+      expect(response.body).toEqual({ gameId: game.id, playersRecomputed: 0, playersChanged: 0 });
+      const stat = await statOf(player.id, game.id);
       expect({ points: stat.points, rebounds: stat.rebounds, assists: stat.assists }).toEqual({ points: 31, rebounds: 6, assists: 9 });
     });
 
     it("recomputes players who act in the events and leaves the rest alone", async () => {
-      const { game, scorer, passer } = await seedAssistedThree();
-      const benchPlayer = await createPlayer("Bench", (await testPrisma.team.findFirstOrThrow()).id);
+      const { game, home, curry, green } = await seedGame();
+      const benchPlayer = await createPlayer("Bench", "Warmer", home.id);
       // In the boxscore, but never the actor of an event in this game.
-      await testPrisma.playerGameStat.create({
-        data: {
-          playerId: benchPlayer.id, gameId: game.id, minutes: 3, points: 0, rebounds: 0, assists: 1, steals: 0,
-          blocks: 0, turnovers: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0, threesMade: 0, threesAttempted: 0,
-          freeThrowsMade: 0, freeThrowsAttempted: 0,
-        },
-      });
+      await createStatRow(benchPlayer.id, game.id, home.id, { assists: 1 });
 
       await request(app.getHttpServer()).post(`/v1/admin/games/${game.id}/replay`);
 
-      const stats = await testPrisma.playerGameStat.findMany({ where: { gameId: game.id } });
-      const byPlayer = new Map(stats.map((stat) => [stat.playerId, stat]));
-      expect(byPlayer.get(scorer.id)?.points).toBe(3);
-      expect(byPlayer.get(passer.id)?.assists).toBe(1);
-      expect(byPlayer.get(benchPlayer.id)?.assists).toBe(1);
+      expect((await statOf(curry.id, game.id)).points).toBe(3);
+      expect((await statOf(green.id, game.id)).assists).toBe(1);
+      expect((await statOf(benchPlayer.id, game.id)).assists).toBe(1);
     });
   });
 });

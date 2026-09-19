@@ -15,11 +15,34 @@ import { ApiException } from "../common/api-exception.js";
 import { Roles } from "../common/roles.decorator.js";
 import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
-import {
-  AdminEventsService,
-  parseCorrectEventBody,
-  type CorrectionWithDetails,
-} from "./admin-events.service.js";
+import { AdminEventsService, type CorrectionWithDetails } from "./admin-events.service.js";
+import { parseCorrectEventBody, type CorrectionRequest } from "./event-correction-request.js";
+
+function badRequest(message: string): ApiException {
+  return new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", message);
+}
+
+/**
+ * The event sequence from the route.
+ * @throws ApiException 400 unless it's a non-negative integer.
+ */
+function parseSequence(sequenceParam: string): number {
+  const sequence = Number(sequenceParam);
+  if (!Number.isInteger(sequence) || sequence < 0) throw badRequest("sequence must be a non-negative integer");
+  return sequence;
+}
+
+/**
+ * The parsed correction body.
+ * @throws ApiException 400 naming the malformed field or missing reason.
+ */
+function parseCorrectionRequest(body: unknown): CorrectionRequest {
+  try {
+    return parseCorrectEventBody(body);
+  } catch (err) {
+    throw badRequest((err as Error).message);
+  }
+}
 
 @ApiTags("admin")
 @Controller("v1/admin")
@@ -49,39 +72,17 @@ export class AdminEventsController {
   @ApiOperation({ summary: "Correct a game event and record the audit trail (admin only)" })
   @ApiParam({ name: "gameId", description: "Game UUID" })
   @ApiParam({ name: "sequence", description: "Event sequence number" })
-  @ApiResponse({ status: 201, description: "Correction recorded" })
-  @ApiResponse({ status: 400, description: "Invalid correction body" })
-  @ApiResponse({ status: 404, description: "Event not found" })
-  async correctEvent(
+  @ApiResponse({ status: 201, description: "Correction recorded, with the stats it changed" })
+  @ApiResponse({ status: 400, description: "Invalid correction body, missing reason, or a play that breaks a rule" })
+  @ApiResponse({ status: 404, description: "Game or event not found" })
+  correctEvent(
     @Param("gameId") gameId: string,
-    @Param("sequence") sequenceStr: string,
+    @Param("sequence") sequenceParam: string,
     @Body() body: unknown,
     @Req() request: { user: { id: string } },
   ) {
-    const sequence = Number(sequenceStr);
-    if (!Number.isInteger(sequence) || sequence < 0) {
-      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "sequence must be a non-negative integer");
-    }
-
-    let patch;
-    try {
-      patch = parseCorrectEventBody(body);
-    } catch (err) {
-      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", (err as Error).message);
-    }
-
-    const correction = await this.adminEventsService.correctEvent(
-      gameId,
-      sequence,
-      patch,
-      request.user.id,
-    );
-
-    if (!correction) {
-      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Event not found");
-    }
-
-    return correction;
+    const sequence = parseSequence(sequenceParam);
+    return this.adminEventsService.correctEvent(gameId, sequence, parseCorrectionRequest(body), request.user.id);
   }
 
   @Post("games/:gameId/replay")
@@ -89,13 +90,9 @@ export class AdminEventsController {
     summary: "Re-derive a game's stats from its current events without correcting anything (admin only)",
   })
   @ApiParam({ name: "gameId", description: "Game UUID" })
-  @ApiResponse({ status: 201, description: "Replay result: how many players' stats were recomputed" })
+  @ApiResponse({ status: 201, description: "Replay result: how many players' stats were recomputed and changed" })
   @ApiResponse({ status: 404, description: "Game not found" })
-  async replayGame(@Param("gameId") gameId: string) {
-    const result = await this.adminEventsService.replayGame(gameId);
-    if (!result) {
-      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
-    }
-    return result;
+  replayGame(@Param("gameId") gameId: string) {
+    return this.adminEventsService.replayGame(gameId);
   }
 }
