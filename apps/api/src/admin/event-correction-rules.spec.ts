@@ -222,8 +222,36 @@ describe("rewriteCreditSuffix", () => {
     expect(rewrite(missedShot, "blocks", "james")).toEqual({ description: "MISS Curry 12' Jump Shot (L. James 1 BLK)" });
   });
 
-  it("rejects a name the derivation can't tell apart from a teammate's", () => {
-    expect(rewrite(madeShot, "assists", "jalen")).toEqual({ error: expect.stringMatching(/matches another player/) });
+  it("writes as much of the first name as it takes when an initial isn't enough, as NBA does", () => {
+    const madeShotWithoutCredit = makeEvent({ description: "Curry 12' Jump Shot (2 PTS)" });
+    const jalenCredit = rewrite(madeShotWithoutCredit, "assists", "jalen");
+    const jaylinCredit = rewrite(madeShotWithoutCredit, "assists", "jaylin");
+
+    expect(jalenCredit).toEqual({ description: "Curry 12' Jump Shot (2 PTS) (Jal. Williams 1 AST)" });
+    expect(jaylinCredit).toEqual({ description: "Curry 12' Jump Shot (2 PTS) (Jay. Williams 1 AST)" });
+    expect(resolveSecondaryPlayer((jaylinCredit as { description: string }).description, "assists", roster, HOME)).toBe("jaylin");
+  });
+
+  it("rejects a name the derivation still can't tell apart from a teammate's", () => {
+    // Every prefix of "Chris" is also a prefix of "Christian".
+    const woodNames = new Map(names)
+      .set("chris", { firstName: "Chris", lastName: "Wood" })
+      .set("christian", { firstName: "Christian", lastName: "Wood" });
+    const woodRoster = buildGameRoster(
+      ["chris", "christian"].map((playerId) => ({ ...makeEvent({ eventType: "foul", success: null, value: 0 }), playerId })),
+      woodNames,
+    );
+    const creditWood = (playerId: string) =>
+      rewriteCreditSuffix({
+        event: madeShot,
+        stat: "assists",
+        creditedPlayer: { playerId, name: woodNames.get(playerId)! },
+        roster: woodRoster,
+        earlierCreditCount: 0,
+      });
+
+    expect(creditWood("chris")).toEqual({ error: expect.stringMatching(/matches another player/) });
+    expect(creditWood("christian")).toEqual({ description: "Curry 12' Jump Shot (2 PTS) (Christ. Wood 1 AST)" });
   });
 
   it("enforces the side a credit comes from", () => {
