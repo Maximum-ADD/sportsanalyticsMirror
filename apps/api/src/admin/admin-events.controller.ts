@@ -53,7 +53,8 @@ export class AdminEventsController {
   constructor(private readonly adminEventsService: AdminEventsService) {}
 
   @Get("events/corrections")
-  @ApiOperation({ summary: "List all event corrections (paginated, admin only)" })
+  @ApiOperation({ summary: "List event corrections, optionally for one game (paginated, admin only)" })
+  @ApiQuery({ name: "gameId", required: false, description: "Only this game's corrections" })
   @ApiQuery({ name: "page", required: false, type: Number })
   @ApiQuery({ name: "pageSize", required: false, type: Number })
   @ApiResponse({ status: 200, description: "Paginated correction list" })

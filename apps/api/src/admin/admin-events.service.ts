@@ -27,14 +27,49 @@ import {
 } from "./game-snapshot.js";
 import { planStatRecompute, type PlayerStatRecompute } from "./plan-stat-recompute.js";
 
+const CORRECTION_TEAM_SELECT = { select: { id: true, name: true, abbreviation: true } } as const;
+
+// What every corrections list joins in: the game with its matchup, who
+// corrected it, and the undo of it (if any).
+const CORRECTION_INCLUDE = {
+  game: {
+    select: {
+      id: true,
+      gameDate: true,
+      season: true,
+      nbaGameId: true,
+      homeTeam: CORRECTION_TEAM_SELECT,
+      awayTeam: CORRECTION_TEAM_SELECT,
+    },
+  },
+  correctedBy: { select: { id: true, name: true } },
+  revertedBy: { select: { id: true, correctedAt: true } },
+} satisfies Prisma.EventCorrectionInclude;
+
+interface CorrectionTeam {
+  id: string;
+  name: string;
+  abbreviation: string;
+}
+
 // One row from the corrections list, joined with the game and user so the
 // admin UI can show which game was corrected and by whom without extra
 // round trips.
 export interface CorrectionWithDetails extends EventCorrection {
-  game: { id: string; gameDate: Date; season: string; nbaGameId: string };
+  game: {
+    id: string;
+    gameDate: Date;
+    season: string;
+    nbaGameId: string;
+    homeTeam: CorrectionTeam;
+    awayTeam: CorrectionTeam;
+  };
   correctedBy: { id: string; name: string } | null;
   // The undo of this correction, when it has been undone.
   revertedBy: { id: string; correctedAt: Date } | null;
+  // playerId -> "First Last" for every player id in previousValues and
+  // newValues, so the history can show names rather than ids.
+  playerNames: Record<string, string>;
 }
 
 /** One field of the corrected play, before and after. */
@@ -104,22 +139,18 @@ export class AdminEventsService {
     private readonly cache: ResponseCacheService,
   ) {}
 
-  // Paginated list of all corrections, newest first. The admin page uses
-  // this to show the audit trail across the whole platform.
+  // Paginated list of corrections, newest first: the whole platform's audit
+  // trail, or one game's with ?gameId=.
   async listCorrections(
     query: Record<string, unknown>,
   ): Promise<PagedResult<CorrectionWithDetails>> {
     const { page, pageSize } = parsePageParams(query);
-    const where = {};
+    const where = typeof query.gameId === "string" && query.gameId.length > 0 ? { gameId: query.gameId } : {};
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.eventCorrection.findMany({
         where,
-        include: {
-          game: { select: { id: true, gameDate: true, season: true, nbaGameId: true } },
-          correctedBy: { select: { id: true, name: true } },
-          revertedBy: { select: { id: true, correctedAt: true } },
-        },
+        include: CORRECTION_INCLUDE,
         orderBy: { correctedAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -127,21 +158,42 @@ export class AdminEventsService {
       this.prisma.eventCorrection.count({ where }),
     ]);
 
-    return { data, page, pageSize, total };
+    return { data: await this.attachPlayerNames(rows), page, pageSize, total };
   }
 
   // Corrections for one specific game — the game detail admin view uses
   // this to show the correction history alongside the events themselves.
   async listCorrectionsForGame(gameId: string): Promise<CorrectionWithDetails[]> {
-    return this.prisma.eventCorrection.findMany({
+    const rows = await this.prisma.eventCorrection.findMany({
       where: { gameId },
-      include: {
-        game: { select: { id: true, gameDate: true, season: true, nbaGameId: true } },
-        correctedBy: { select: { id: true, name: true } },
-        revertedBy: { select: { id: true, correctedAt: true } },
-      },
+      include: CORRECTION_INCLUDE,
       orderBy: { correctedAt: "desc" },
     });
+    return this.attachPlayerNames(rows);
+  }
+
+  /** Adds playerNames to each row, from one query for the whole page. */
+  private async attachPlayerNames<Row extends Omit<CorrectionWithDetails, "playerNames">>(
+    rows: Row[],
+  ): Promise<(Row & { playerNames: Record<string, string> })[]> {
+    const playerIdsOf = (row: Row) =>
+      [row.previousValues, row.newValues]
+        .map((values) => (values as Record<string, unknown> | null)?.playerId)
+        .filter((playerId): playerId is string => typeof playerId === "string");
+    const playerIds = [...new Set(rows.flatMap(playerIdsOf))];
+    const players = await this.prisma.player.findMany({
+      where: { id: { in: playerIds } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const nameById = new Map(players.map((player) => [player.id, `${player.firstName} ${player.lastName}`]));
+    return rows.map((row) => ({
+      ...row,
+      playerNames: Object.fromEntries(
+        playerIdsOf(row)
+          .filter((playerId) => nameById.has(playerId))
+          .map((playerId) => [playerId, nameById.get(playerId)!]),
+      ),
+    }));
   }
 
   /**
