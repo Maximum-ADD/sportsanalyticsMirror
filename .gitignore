@@ -39,3 +39,7 @@ apps/predictor/**/__pycache__/
 apps/ingestion/.venv/
 apps/ingestion/__pycache__/
 apps/ingestion/**/__pycache__/
+
+apps/similarity/.venv/
+apps/similarity/__pycache__/
+apps/similarity/**/__pycache__/
