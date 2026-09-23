@@ -42,7 +42,6 @@ describe("Games API", () => {
   });
 
   afterAll(async () => {
-    await testPrisma.$disconnect();
     await app.close();
   });
 
@@ -165,6 +164,69 @@ describe("Games API", () => {
       expect(response.body.total).toBe(3);
       expect(response.body.data).toHaveLength(1);
     });
+
+    describe("?seasonType=", () => {
+      async function seedOneGamePerSegment() {
+        const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+        const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+
+        const segments = [
+          { nbaGameId: "REGULAR-GAME", seasonType: "REGULAR" as const, playoffRound: null },
+          { nbaGameId: "PLAY-IN-GAME", seasonType: "PLAY_IN" as const, playoffRound: null },
+          { nbaGameId: "PLAYOFF-GAME", seasonType: "PLAYOFFS" as const, playoffRound: 1 },
+          { nbaGameId: "FINALS-GAME", seasonType: "FINALS" as const, playoffRound: 4 },
+        ];
+        for (const segment of segments) {
+          await testPrisma.game.create({
+            data: {
+              ...segment,
+              gameDate: new Date("2026-01-01"),
+              season: "2025-26",
+              homeTeamId: lakers.id,
+              awayTeamId: celtics.id,
+              homeScore: 100,
+              awayScore: 98,
+            },
+          });
+        }
+      }
+
+      it.each([
+        ["REGULAR", "REGULAR-GAME"],
+        ["PLAY_IN", "PLAY-IN-GAME"],
+        ["PLAYOFFS", "PLAYOFF-GAME"],
+        ["FINALS", "FINALS-GAME"],
+      ])("returns only %s games", async (seasonType, expectedNbaGameId) => {
+        await seedOneGamePerSegment();
+
+        const response = await request(app.getHttpServer()).get(`/v1/games?seasonType=${seasonType}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(1);
+        expect(response.body.data[0].nbaGameId).toBe(expectedNbaGameId);
+        expect(response.body.data[0].seasonType).toBe(seasonType);
+      });
+
+      // Unlike the player-stats endpoints, this list defaults to *no*
+      // filter rather than REGULAR — a chronological schedule that runs
+      // through the postseason is the useful thing here, and nothing is
+      // being averaged across segments. See GamesService.getGames.
+      it("returns every segment when no seasonType is given", async () => {
+        await seedOneGamePerSegment();
+
+        const response = await request(app.getHttpServer()).get("/v1/games");
+
+        expect(response.status).toBe(200);
+        expect(response.body.total).toBe(4);
+      });
+
+      it("rejects an unrecognised segment instead of silently serving every game", async () => {
+        const response = await request(app.getHttpServer()).get("/v1/games?seasonType=finals");
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe("BAD_REQUEST");
+      });
+    });
   });
 
   describe("GET /v1/games/:id/prediction", () => {
@@ -230,6 +292,196 @@ describe("Games API", () => {
       expect(response.body.homeWinProbability).toBe(0.62);
       expect(response.body.predictedMarginHome).toBe(3.68);
       expect(response.body.marginMethod).toBe("heuristic");
+      // Not supplied above — defaults so pre-versioning rows stay valid.
+      expect(response.body.modelVersion).toBe("unversioned");
+    });
+
+    it("reflects a real model version when predict_games.py supplies one", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "VERSIONED-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      await testPrisma.gamePrediction.create({
+        data: {
+          gameId: game.id,
+          homeWinProbability: 0.62,
+          homeTeamEloPre: 1512.5,
+          awayTeamEloPre: 1487.5,
+          predictedMarginHome: 3.68,
+          marginMethod: "heuristic",
+          modelVersion: "elo-v1+ff-v1",
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.modelVersion).toBe("elo-v1+ff-v1");
+    });
+  });
+
+  describe("GET /v1/games/:id/prediction/history", () => {
+    it("returns a 404 with the standard error envelope for a game that doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/games/does-not-exist/prediction/history");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+      expect(response.body.error.message).toBe("Game not found");
+    });
+
+    it("returns an empty array (not 404) for a game that exists but has no prediction runs yet", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "NO-HISTORY-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction/history`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it("returns every model version's run, oldest first, surviving a newer version superseding GamePrediction", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "HISTORY-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      await testPrisma.gamePredictionRun.create({
+        data: {
+          gameId: game.id,
+          modelVersion: "elo-v1+ff-v1",
+          homeWinProbability: 0.55,
+          homeTeamEloPre: 1500,
+          awayTeamEloPre: 1500,
+          predictedMarginHome: 1.2,
+          marginMethod: "heuristic",
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+        },
+      });
+      await testPrisma.gamePredictionRun.create({
+        data: {
+          gameId: game.id,
+          modelVersion: "elo-v2+ff-v1",
+          homeWinProbability: 0.61,
+          homeTeamEloPre: 1510,
+          awayTeamEloPre: 1495,
+          predictedMarginHome: 2.4,
+          marginMethod: "heuristic",
+          createdAt: new Date("2026-02-01T00:00:00Z"),
+        },
+      });
+      // The "current" row has since moved on to a third version — the
+      // history endpoint's job is to still show the two superseded runs
+      // above exactly as they were computed, not just whatever's current.
+      await testPrisma.gamePrediction.create({
+        data: {
+          gameId: game.id,
+          homeWinProbability: 0.7,
+          homeTeamEloPre: 1525,
+          awayTeamEloPre: 1480,
+          predictedMarginHome: 3.1,
+          marginMethod: "heuristic",
+          modelVersion: "elo-v3+ff-v1",
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/prediction/history`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.map((run: { modelVersion: string }) => run.modelVersion)).toEqual([
+        "elo-v1+ff-v1",
+        "elo-v2+ff-v1",
+      ]);
+      expect(response.body[0].homeWinProbability).toBe(0.55);
+      expect(response.body[1].homeWinProbability).toBe(0.61);
+    });
+  });
+
+  describe("GET /v1/games/:id/events", () => {
+    it("returns a 404 with the standard error envelope for a game that doesn't exist", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/games/does-not-exist/events");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("NOT_FOUND");
+      expect(response.body.error.message).toBe("Game not found");
+    });
+
+    it("returns an empty page (not 404) for a game that exists but has no events yet", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "NO-EVENTS-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/events`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ data: [], page: 1, pageSize: 25, total: 0 });
+    });
+
+    it("returns this game's events ordered by sequence, not insertion order", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const game = await testPrisma.game.create({
+        data: {
+          nbaGameId: "EVENTS-GAME",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+      // Created out of sequence order on purpose — the response must sort
+      // by `sequence`, not by insertion/creation order.
+      await testPrisma.gameEvent.create({
+        data: { gameId: game.id, sequence: 2, period: 1, clock: "PT10M00.00S", eventType: "2pt", description: "Second action" },
+      });
+      await testPrisma.gameEvent.create({
+        data: { gameId: game.id, sequence: 1, period: 1, clock: "PT11M00.00S", eventType: "2pt", description: "First action" },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${game.id}/events`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.map((event: { sequence: number }) => event.sequence)).toEqual([1, 2]);
+      expect(response.body.total).toBe(2);
     });
   });
 
@@ -436,6 +688,81 @@ describe("Games API", () => {
       expect(responseAfterFutureGameExists.status).toBe(200);
       expect(responseAfterFutureGameExists.body.predictedScorers[0].predictedPoints).toBe(20);
       expect(responseAfterFutureGameExists.body.predictedScorers[0].gamesConsidered).toBe(1);
+    });
+
+    // The correctness item the postseason plan called non-negotiable:
+    // adding postseason data must not quietly change existing predictions.
+    // Postseason games are the *most recent* games a player has, so they'd
+    // carry the heaviest recency weight of all if they leaked in here.
+    it("ignores postseason games when predicting scorers", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      const lebron = await createPlayer(lakers.id, { firstName: "LeBron", lastName: "James" });
+
+      async function createPriorGameWithLebronScoring(
+        nbaGameId: string,
+        gameDate: Date,
+        seasonType: "REGULAR" | "PLAY_IN" | "PLAYOFFS" | "FINALS",
+        playoffRound: number | null,
+        points: number
+      ) {
+        const game = await testPrisma.game.create({
+          data: {
+            nbaGameId,
+            gameDate,
+            season: "2025-26",
+            seasonType,
+            playoffRound,
+            homeTeamId: lakers.id,
+            awayTeamId: celtics.id,
+            homeScore: 100,
+            awayScore: 98,
+          },
+        });
+        await testPrisma.playerGameStat.create({
+          data: {
+            playerId: lebron.id,
+            gameId: game.id,
+            minutes: 36,
+            points,
+            rebounds: 8,
+            assists: 8,
+            steals: 1,
+            blocks: 1,
+            turnovers: 3,
+            fieldGoalsMade: 10,
+            fieldGoalsAttempted: 20,
+            threesMade: 2,
+            threesAttempted: 5,
+            freeThrowsMade: 4,
+            freeThrowsAttempted: 4,
+          },
+        });
+        return game;
+      }
+
+      await createPriorGameWithLebronScoring("REG-PRIOR", new Date("2025-10-15"), "REGULAR", null, 20);
+      // Wildly different scoring in every postseason segment, all more
+      // recent than the regular-season game — if any of it reached the
+      // model, the prediction could not still come out at exactly 20.
+      await createPriorGameWithLebronScoring("PLAY-IN-PRIOR", new Date("2026-04-14"), "PLAY_IN", null, 90);
+      await createPriorGameWithLebronScoring("PLAYOFF-PRIOR", new Date("2026-04-20"), "PLAYOFFS", 1, 95);
+      await createPriorGameWithLebronScoring("FINALS-PRIOR", new Date("2026-06-03"), "FINALS", 4, 99);
+
+      const targetGame = await createPriorGameWithLebronScoring(
+        "POSTSEASON-TARGET",
+        new Date("2026-06-10"),
+        "FINALS",
+        4,
+        50
+      );
+
+      const response = await request(app.getHttpServer()).get(`/v1/games/${targetGame.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.predictedScorers).toHaveLength(1);
+      expect(response.body.predictedScorers[0].predictedPoints).toBe(20);
+      expect(response.body.predictedScorers[0].gamesConsidered).toBe(1);
     });
   });
 });

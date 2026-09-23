@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchPlayer, fetchPlayers, fetchPlayerStats, fetchTeam, fetchTeams } from "./nbaApi";
+import {
+  fetchPlayer,
+  fetchPlayerComparison,
+  fetchPlayerStatsBatchInChunks,
+  fetchPlayers,
+  fetchPlayerStats,
+  fetchTeam,
+  fetchTeamRecords,
+  fetchTeams,
+} from "./nbaApi";
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
   vi.stubGlobal(
@@ -27,11 +36,12 @@ describe("nbaApi", () => {
   });
 
   it("fetchPlayers serialises provided params into the query string", async () => {
-    await fetchPlayers({ teamId: "team-1", position: "G", page: 2, pageSize: 10 });
+    await fetchPlayers({ teamId: "team-1", position: "G", search: "LeBron James", page: 2, pageSize: 10 });
     const [url] = vi.mocked(fetch).mock.calls[0];
     const search = new URL(String(url), "http://localhost").searchParams;
     expect(search.get("teamId")).toBe("team-1");
     expect(search.get("position")).toBe("G");
+    expect(search.get("search")).toBe("LeBron James");
     expect(search.get("page")).toBe("2");
     expect(search.get("pageSize")).toBe("10");
   });
@@ -53,14 +63,43 @@ describe("nbaApi", () => {
     expect(fetch).toHaveBeenCalledWith("/api/v1/players/player-1/stats", { credentials: "include" });
   });
 
+  it("fetchPlayerComparison passes the player ids as a comma-separated list", async () => {
+    await fetchPlayerComparison(["player-1", "player-2", "player-3"]);
+    expect(fetch).toHaveBeenCalledWith("/api/v1/players/compare?ids=player-1,player-2,player-3", {
+      credentials: "include",
+    });
+  });
+
   it("fetchTeams requests /v1/teams with a query string", async () => {
-    await fetchTeams({ page: 1, pageSize: 12 });
-    expect(fetch).toHaveBeenCalledWith("/api/v1/teams?page=1&pageSize=12", { credentials: "include" });
+    await fetchTeams({ search: "Los Angeles", page: 1, pageSize: 12 });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/teams?search=Los+Angeles&page=1&pageSize=12", {
+      credentials: "include",
+    });
   });
 
   it("fetchTeam requests the single-team endpoint", async () => {
     await fetchTeam("team-1");
     expect(fetch).toHaveBeenCalledWith("/api/v1/teams/team-1", { credentials: "include" });
+  });
+
+  it("fetchTeamRecords requests the records endpoint", async () => {
+    await fetchTeamRecords();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/teams/records", { credentials: "include" });
+  });
+
+  it("fetchPlayerStatsBatchInChunks splits oversized id lists across sequential requests and merges the rows", async () => {
+    const ids = Array.from({ length: 51 }, (_, index) => `player-${index}`);
+    mockFetchOnce({ players: [{ playerId: "any", seasonAverages: {}, gameLog: [] }] });
+
+    const result = await fetchPlayerStatsBatchInChunks(ids, "REGULAR");
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const [firstUrl] = vi.mocked(fetch).mock.calls[0];
+    const [secondUrl] = vi.mocked(fetch).mock.calls[1];
+    expect(String(firstUrl)).toContain("ids=player-0,player-1");
+    expect(String(secondUrl)).toContain("player-50");
+    expect(String(secondUrl)).toContain("seasonType=REGULAR");
+    expect(result.players).toHaveLength(2);
   });
 
   it("rejects with an error when the response is not ok", async () => {

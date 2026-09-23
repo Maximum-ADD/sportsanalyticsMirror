@@ -11,7 +11,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.spec.ts", "test/**/*.spec.ts", "test/**/*.e2e-spec.ts"],
+    include: [
+      "src/**/*.spec.ts",
+      "test/*.spec.ts",
+      "test/**/*.spec.ts",
+      "test/*.e2e-spec.ts",
+      "test/**/*.e2e-spec.ts",
+    ],
     globalSetup: ["./test/global-setup.ts"],
     // The e2e specs all share one physical Postgres database and truncate
     // its tables in afterEach — running spec files in parallel (Vitest's
@@ -20,6 +26,12 @@ export default defineConfig({
     // under a test mid-run). Unit specs don't touch the database and pay
     // almost nothing for running serially too.
     fileParallelism: false,
+      // The course runner exposes limited process memory. A single worker is
+      // also the only useful setting for this suite because all e2e specs share
+      // one disposable Postgres database.
+      pool: "threads",
+      maxWorkers: 1,
+      minWorkers: 1,
     testTimeout: 20_000,
     hookTimeout: 20_000,
     reporters: ["default", "json"],
@@ -28,6 +40,12 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "json-summary", "json", "cobertura"],
       reportsDirectory: "coverage",
+      thresholds: {
+        lines: 80,
+        statements: 80,
+        functions: 80,
+        branches: 80,
+      },
       include: ["src/**/*.ts"],
       exclude: [
         "src/main.ts",

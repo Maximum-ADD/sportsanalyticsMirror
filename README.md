@@ -3,9 +3,18 @@
 COMS3011A Project 3 (Sport Analytics Tool), built for the NBA.
 
 An event-derived stats platform: every published statistic (points per game,
-shooting splits, etc.) is computed from per-game boxscore rows rather than
-typed in directly, satisfying the brief's core requirement that statistics
-trace back to underlying event records.
+shooting splits, etc.) is computed from per-game boxscore rows, which are
+themselves aggregated from real per-play `GameEvent` records
+(`apps/ingestion/derive_player_game_stats.py`) rather than typed in
+directly — satisfying the brief's core requirement that statistics trace
+back to underlying event records.
+
+## Documentation
+
+Full docs (architecture, ADRs, methodology, sprint log, tech stack, security,
+etc.) live on the
+[documentation site](https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/),
+not in this repo.
 
 ## Structure
 
@@ -13,14 +22,17 @@ Non-monolithic front-end/back-end, per the brief's key requirements:
 
 ```
 apps/
-  api/    NestJS + TypeScript + Prisma + Postgres — REST API
-  web/    React + Vite + TypeScript + Tailwind — frontend SPA
-docs/     Documentation site (to be set up with Docusaurus/MkDocs)
+  api/         NestJS + TypeScript + Prisma + Postgres — REST API
+  web/         React + Vite + TypeScript + Tailwind — frontend SPA
+  ingestion/   Python — pulls real NBA data (nba_api) into Postgres
+  predictor/   Python — Elo win probability + Four Factors margin predictions
+  optimizer/   Python — MILP lineup optimizer (PuLP + CBC)
 ```
 
-The two apps only ever communicate over HTTP. `apps/web` is a plain Vite SPA
-(not Next.js/SvelteKit), so there is no framework-level coupling between
-front and back end.
+`apps/web` and the Python services only ever communicate with `apps/api` over
+HTTP or by writing straight into the shared Postgres database — `apps/web` is
+a plain Vite SPA (not Next.js/SvelteKit), so there is no framework-level
+coupling between front and back end.
 
 ## Prerequisites
 
@@ -53,9 +65,9 @@ front and back end.
    the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    (authorized redirect URI: `http://localhost:4000/auth/callback/google`) —
    put its ID/secret in `.env` as `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
-   Without them the API still runs (everything except signing in works, and
-   `/v1/*` currently doesn't require a session anyway), it just logs a
-   startup warning.
+   Without them the API still runs and public player/team pages work, but
+   protected games, predictions, and optimizer features cannot be used. A
+   startup warning is logged when the Google credentials are absent.
 
 3. **Set up the frontend** (in a separate terminal):
 
@@ -87,41 +99,52 @@ This is a base scaffold, not the finished product. What's wired up:
   the default `USER`.
 - **API**: versioned under `/v1/`, with pagination, a consistent JSON error
   envelope (`{ error: { code, message } }`) via a global Nest exception
-  filter, and routes for players, teams, and derived per-player season
-  stats.
+  filter, and routes for players, teams, derived per-player season stats,
+  a game's raw ordered play-by-play (`GET /v1/games/:id/events`), and a
+  CSV export of a filtered player slice (`GET /v1/players/export`) — "read
+  fixtures, events and derived statistics" and "export a filtered slice as
+  a file," the brief's own words for these two.
 - **Data**: Prisma schema models teams, players, games, raw `GameEvent`
-  rows, and per-game `PlayerGameStat` boxscores. Season averages
-  (`apps/api/src/services/statsService.ts`) are computed from those boxscore
-  rows at request time — nothing is stored as a pre-computed total.
-- **Mock data only.** `prisma/seed.ts` generates a handful of players and
-  five games' worth of made-up boxscores so the UI has something to render.
-  **Real NBA data ingestion via `nba_api` (Python) is not yet built** — see
-  the NBA pitch doc for the intended approach (a separate Python ingestion
-  script writing into this same Postgres database, keeping the NestJS API as
-  the only thing that talks to the database over HTTP-facing requests).
+  rows (real per-play `PlayByPlayV3` data, tagged with the `IngestionBatch`
+  that wrote them), and per-game `PlayerGameStat` boxscores aggregated from
+  those events (`apps/ingestion/derive_player_game_stats.py`). Season
+  averages (`apps/api/src/services/statsService.ts`) are then computed from
+  those boxscore rows at request time — nothing is stored as a
+  pre-computed total.
+- **Season segments**: every `Game` carries a `seasonType` (regular season,
+  play-in, playoffs, finals), and the player/game endpoints filter on it, so
+  a postseason view never shows regular-season figures or vice versa. The
+  prediction and optimizer models are deliberately regular-season only —
+  see `docs/PROJECT_OVERVIEW.md` for why.
+- **Ingestion**: `prisma/seed.ts` still seeds a handful of mock players/games
+  for local dev, but `apps/ingestion` now pulls real NBA data (all 30
+  current teams, their rosters, and each team's ~15 most recent games, each
+  with real per-play data and boxscores derived from it) from `nba_api`
+  into the same Postgres database — a separate Python process, with the
+  NestJS API remaining the only thing that talks to the database over
+  HTTP-facing requests. A postseason phase additionally ingests the
+  season's play-in, playoff and Finals games.
 - **Frontend**: dark-themed dashboard shell — sidebar nav, players list,
   and a player profile page (stat tiles, a traits radar chart, a points
-  trend line chart) built with Recharts + Tailwind.
+  trend line chart, and a regular-season-vs-postseason comparison) built
+  with Recharts + Tailwind. A segment selector on the player, compare and
+  predictions pages keeps its choice in the URL (`?segment=playoffs`).
+- **Market odds**: `apps/ingestion/fetch_market_odds.py` pulls NBA
+  moneyline odds from [The Odds API](https://the-odds-api.com/) (free, no
+  card required) — this project's second external API integration — and
+  stores a de-vigged, bookmaker-averaged home win probability per upcoming
+  game (`GameMarketOdds`), shown on the game detail page alongside the
+  model's own prediction. See `docs/PROJECT_OVERVIEW.md`'s "Market odds"
+  section.
 
 ## What's not done yet (follow-up tasks for the team)
 
-- Real `nba_api` ingestion pipeline (Python) writing into Postgres — all
-  current data is mock-seeded. `apps/optimizer` establishes the intended
-  pattern (a separate Python process writing straight into Postgres,
-  NestJS only reading) but doesn't pull real league data.
-- Second external API integration (brief requirement — e.g. an
-  injury/news feed).
-- Self-service account deletion — the brief requires users be able to
-  delete their account; no route currently exists for it (see
-  `docs/PROJECT_OVERVIEW.md`'s Auth section). Password reset doesn't apply
-  under Google-OAuth-only sign-in, but this needs a decision either way
-  before Milestone 4.
-- `axe-core` automated accessibility checks — not wired in anywhere yet,
-  despite being listed as done in an earlier draft of this file. Some
-  responsive breakpoints and keyboard/focus handling exist (`Navbar.tsx`,
-  `App.tsx`, `RecentResultWidget.tsx`) but haven't had a real audit pass.
-- A deploy stage in CI, and production deployment/hosting generally — not
-  decided (see the docs site's ADR-003, still a stub).
+- `axe-core` automated accessibility checks now run against a handful of
+  pages/components (`Home`, `Optimizer`, `PlayersListPage`,
+  `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/
+  accessibility.ts`), not the whole app yet. Some responsive breakpoints
+  and keyboard/focus handling exist (`Navbar.tsx`, `App.tsx`,
+  `RecentResultWidget.tsx`) but haven't had a real full audit pass.
 - Coverage thresholds are not enforced yet. CI reports the current API and
   Web coverage without failing builds for a minimum percentage.
 
@@ -163,7 +186,6 @@ npm run coverage:report
 
 ## AI usage
 
-See `docs/ai-usage.md` for the attribution ledger. This scaffold (backend,
-schema, seed data, frontend, and this README) was generated with
-Claude Code [Claude Sonnet 5], per the brief's AI attribution requirement.
-Log any further AI-assisted changes there as you make them.
+See the [AI Usage Ledger](https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/ai-usage/)
+on the documentation site for the attribution log, per the brief's AI
+attribution requirement.

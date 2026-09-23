@@ -1,33 +1,71 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Navbar } from "./components/Navbar";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AppLayout } from "./components/AppLayout";
+import { LandingPage } from "./pages/LandingPage";
 import { HomePage } from "./pages/HomePage";
 import { PlayersListPage } from "./pages/PlayersListPage";
 import { PlayerProfilePage } from "./pages/PlayerProfilePage";
+import { ComparePage } from "./pages/ComparePage";
 import { TeamsListPage } from "./pages/TeamsListPage";
 import { TeamProfilePage } from "./pages/TeamProfilePage";
 import { OptimizerPage } from "./pages/OptimizerPage";
 import { PredictionsPage } from "./pages/PredictionsPage";
 import { GameDetailPage } from "./pages/GameDetailPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { AdminPage } from "./pages/AdminPage";
+import { DatasetsPage } from "./pages/DatasetsPage";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ProfileGate } from "./components/ProfileGate";
+import { AdminGate } from "./components/AdminGate";
 
 function App() {
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen flex-col bg-surface-base">
-        <Navbar />
-        {/* tabIndex={-1} is what lets the skip link move focus here, not just scroll to it. */}
-        <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/players" element={<PlayersListPage />} />
-            <Route path="/players/:playerId" element={<PlayerProfilePage />} />
-            <Route path="/teams" element={<TeamsListPage />} />
-            <Route path="/teams/:teamId" element={<TeamProfilePage />} />
-            <Route path="/optimizer" element={<OptimizerPage />} />
-            <Route path="/predictions" element={<PredictionsPage />} />
-            <Route path="/games/:gameId" element={<GameDetailPage />} />
-          </Routes>
-        </main>
-      </div>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route element={<AppLayout />}>
+          {/* Deliberately NOT wrapped in ProfileGate — a user in the middle
+              of onboarding (username already null) must be able to reach
+              this route without being bounced right back into it. */}
+          <Route
+            path="/onboarding"
+            element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/profile"
+            element={<ProtectedRoute><ProfileGate><ProfilePage /></ProfileGate></ProtectedRoute>}
+          />
+          {/* API key management moved into Profile — kept as a redirect so
+              existing links and bookmarks still land somewhere useful. */}
+          <Route path="/api-keys" element={<Navigate to="/profile" replace />} />
+          <Route
+            path="/home"
+            element={<ProtectedRoute><ProfileGate><HomePage /></ProfileGate></ProtectedRoute>}
+          />
+          <Route path="/players" element={<PlayersListPage />} />
+          <Route path="/players/:playerId" element={<PlayerProfilePage />} />
+          <Route path="/compare" element={<ComparePage />} />
+          <Route path="/teams" element={<TeamsListPage />} />
+          <Route path="/teams/:teamId" element={<TeamProfilePage />} />
+          <Route path="/datasets" element={<DatasetsPage />} />
+          <Route
+            path="/optimizer"
+            element={<ProtectedRoute><ProfileGate><OptimizerPage /></ProfileGate></ProtectedRoute>}
+          />
+          <Route
+            path="/predictions"
+            element={<ProtectedRoute><ProfileGate><PredictionsPage /></ProfileGate></ProtectedRoute>}
+          />
+          <Route
+            path="/games/:gameId"
+            element={<ProtectedRoute><ProfileGate><GameDetailPage /></ProfileGate></ProtectedRoute>}
+          />
+          <Route
+            path="/admin"
+            element={<ProtectedRoute><AdminGate><AdminPage /></AdminGate></ProtectedRoute>}
+          />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }
