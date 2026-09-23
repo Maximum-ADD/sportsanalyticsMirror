@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  correctGameEvent,
   deleteAdminUser,
+  fetchAdminCorrections,
+  fetchAdminGames,
   fetchAdminPlayers,
   fetchAdminTeams,
   fetchAdminUsers,
+  previewEventCorrection,
+  replayAdminGame,
+  revertEventCorrection,
   updateAdminPlayer,
   updateAdminTeam,
   updateAdminUserRole,
@@ -95,6 +101,48 @@ describe("adminApi", () => {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "ADMIN" }),
+    });
+  });
+
+  it("fetchAdminGames serialises the season, team and date window", async () => {
+    await fetchAdminGames({ season: "2025-26", teamId: "team-1", fromDate: "2026-04-01", toDate: "2026-04-10" });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/admin/games?season=2025-26&teamId=team-1&fromDate=2026-04-01&toDate=2026-04-10",
+      { credentials: "include" },
+    );
+  });
+
+  it("fetchAdminCorrections can filter to one game", async () => {
+    await fetchAdminCorrections({ gameId: "game-1", page: 2 });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/events/corrections?gameId=game-1&page=2", { credentials: "include" });
+  });
+
+  it("previewEventCorrection and correctGameEvent POST the same body to their own routes", async () => {
+    const body = { playerId: "player-2", creditPlayerId: null, reason: "wrong shooter" };
+    await previewEventCorrection("game-1", 7, body);
+    await correctGameEvent("game-1", 7, body);
+    const request = { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/games/game-1/events/7/preview", request);
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/games/game-1/events/7/correct", request);
+  });
+
+  it("revertEventCorrection POSTs the reason", async () => {
+    await revertEventCorrection("correction-1", "wrong call");
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/corrections/correction-1/revert", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "wrong call" }),
+    });
+  });
+
+  it("replayAdminGame POSTs with no body", async () => {
+    await replayAdminGame("game-1");
+    expect(fetch).toHaveBeenCalledWith("/api/v1/admin/games/game-1/replay", {
+      method: "POST",
+      credentials: "include",
+      headers: undefined,
+      body: undefined,
     });
   });
 });

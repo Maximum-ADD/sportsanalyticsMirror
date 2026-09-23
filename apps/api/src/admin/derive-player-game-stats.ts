@@ -19,9 +19,12 @@
 // Player.lastName and Player.firstName instead.
 import type { GameEvent } from "@prisma/client";
 
-type CreditStat = "assists" | "steals" | "blocks";
+export type CreditStat = "assists" | "steals" | "blocks";
 
 const TEAM_ACTION_SENTINEL = null;
+
+// The code each credit stat is written with in a description suffix.
+export const CREDIT_SUFFIX_CODES: Record<CreditStat, string> = { assists: "AST", steals: "STL", blocks: "BLK" };
 
 // Any characters but parentheses for the name: an ASCII-only class could
 // never match an accented name.
@@ -33,7 +36,7 @@ const SECONDARY_PLAYER_PATTERNS: Record<CreditStat, RegExp> = {
 
 // The team a credit comes from, relative to the team of the event it's on:
 // an assist is a teammate of the shooter; a block or steal is the other side.
-const CREDIT_FROM_SAME_TEAM: Record<CreditStat, boolean> = { assists: true, blocks: false, steals: false };
+export const CREDIT_FROM_SAME_TEAM: Record<CreditStat, boolean> = { assists: true, blocks: false, steals: false };
 
 const COMBINING_MARKS = /[\u0300-\u036f]/g;
 
@@ -95,21 +98,33 @@ export interface RosterEntry {
 // playerId -> name and team, restricted to players who actually acted in
 // this game (mirrors build_game_roster: a player must appear as an actor in
 // the game's own events to be resolvable as a credited player at all).
+//
+// `retainedTeamByPlayerId` (playerId -> their team in this game) names
+// players who stay resolvable even without an event of their own. It has no
+// Python counterpart because only an admin correction needs it: moving a
+// player's only play to someone else would otherwise also drop every
+// assist, block or steal credited to them on OTHER plays, a side effect the
+// admin never asked for. Empty by default, so ingestion-equivalent callers
+// (replay) behave exactly like the Python original.
 export function buildGameRoster(
   events: DerivableGameEvent[],
   namesByPlayerId: Map<string, PlayerName>,
+  retainedTeamByPlayerId: Map<string, string | null> = new Map(),
 ): Map<string, RosterEntry> {
   const roster = new Map<string, RosterEntry>();
-  for (const event of events) {
-    if (event.playerId === TEAM_ACTION_SENTINEL || roster.has(event.playerId)) continue;
-    const name = namesByPlayerId.get(event.playerId);
-    if (!name?.lastName) continue;
-    roster.set(event.playerId, {
+  const addPlayer = (playerId: string, teamId: string | null) => {
+    const name = namesByPlayerId.get(playerId);
+    if (roster.has(playerId) || !name?.lastName) return;
+    roster.set(playerId, {
       surname: foldName(name.lastName),
       firstInitial: foldName(name.firstName ?? "").slice(0, 1),
-      teamId: event.teamId,
+      teamId,
     });
+  };
+  for (const event of events) {
+    if (event.playerId !== TEAM_ACTION_SENTINEL) addPlayer(event.playerId, event.teamId);
   }
+  for (const [playerId, teamId] of retainedTeamByPlayerId) addPlayer(playerId, teamId);
   return roster;
 }
 
@@ -156,12 +171,13 @@ export function resolveSecondaryPlayer(
 // already reflecting any correction just applied — this function does no
 // validation of its own and trusts eventType/subType/playerId are
 // well-formed, same as the Python original trusts actionType/subType/
-// personId.
+// personId. `retainedTeamByPlayerId` is passed straight to buildGameRoster.
 export function deriveGameEventStats(
   events: DerivableGameEvent[],
   namesByPlayerId: Map<string, PlayerName>,
+  retainedTeamByPlayerId: Map<string, string | null> = new Map(),
 ): Map<string, CountingStats> {
-  const roster = buildGameRoster(events, namesByPlayerId);
+  const roster = buildGameRoster(events, namesByPlayerId, retainedTeamByPlayerId);
   const statsByPlayer = new Map<string, CountingStats>();
 
   const lineFor = (playerId: string): CountingStats => {
