@@ -186,6 +186,12 @@ def run_ingestion_batch(
         actions = fetch_game_actions(nba_game_id)
     except Exception:
         complete_ingestion_batch(cursor, batch_id, "FAILED", accepted=0, rejected=0, rejection_summary={})
+        # Committed here, not left for the caller's own end-of-phase commit:
+        # a crash from this re-raise would otherwise roll back the FAILED
+        # marker and every resume checkpoint written so far, along with it —
+        # the next run would find no FAILED batch to resume from and
+        # reprocess the whole phase from scratch instead of resuming.
+        cursor.connection.commit()
         raise
 
     for action in translate_game_actions(order_actions_by_sequence(actions)):

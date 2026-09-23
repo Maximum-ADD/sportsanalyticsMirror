@@ -341,6 +341,17 @@ def ingest_games_and_stats(
 
             upsert_player_game_stat(cursor, player_internal_id, game_internal_id, team_internal_id, merged_stats)
 
+        # Committed per game, not once for the whole phase (the caller's
+        # end-of-phase commit still runs too, as a no-op once this has
+        # already landed everything). One phase can run 400+ games over
+        # ~40 minutes; without this, a crash on game 300 would roll back
+        # games 1-299 along with it, even though they'd already succeeded —
+        # the durability half of "a batch that fails part way through
+        # resumes rather than restarts" needs every completed game to
+        # actually survive a later failure, not just the failing one's own
+        # FAILED marker (see the matching commit in run_ingestion_batch).
+        cursor.connection.commit()
+
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
     if player_games_missing_extra_figures:
         print(f"{player_games_missing_extra_figures} player-games had no plus/minus or advanced figures (left null).")
