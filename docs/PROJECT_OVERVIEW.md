@@ -491,9 +491,6 @@ checks and review required before merging.
 
 ## Known gaps
 
-- A second external API integration (brief requirement, e.g. an
-  injury/news feed or a betting-odds comparison) — not started. (`nba_api`
-  ingestion below is the *first* external API, not this one.)
 - **Multi-season postseason history** — `Game.season` is a single string
   and nothing iterates seasons, so only the configured season's postseason
   is available. Out of scope for the postseason views.
@@ -505,8 +502,6 @@ checks and review required before merging.
   behaviour. Acceptable for now; revisit if it drops notable players.
 - **Round-by-round playoff views** — `Game.playoffRound` is stored but
   nothing reads it yet; the UI treats rounds 1–3 as one "Playoffs" segment.
-- Public documentation site (Docusaurus/MkDocs, deployed via static
-  hosting) — not started. This file lives in-repo; it isn't that site.
 - Automated accessibility checks (`axe-core`) run against a handful of
   pages/components (`Home`, `Optimizer`, `PlayersListPage`,
   `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/
@@ -515,28 +510,53 @@ checks and review required before merging.
   in "Theme" above.
 - Coverage thresholds are not enforced yet — CI reports API/Web coverage
   without failing a build for falling under some minimum.
+- `apps/api/scripts/load-test.mjs` (`npm run load-test` in `apps/api`, with
+  `BASE_URL`/`API_KEY` set) benchmarks the hot read paths against a
+  database populated at the brief's stated scale by the real
+  `apps/ingestion` pipeline, against a stated target (p95 < 300ms, p99 <
+  800ms — see the script's own header comment for why those numbers).
+  Written but **not yet run against a real at-scale database** — someone
+  with a real Postgres needs to actually run it and record the result
+  here before "we have a stated target" becomes "we met it."
+- The AI usage ledger (`ai-usage.md`) lags real usage by a week or more at
+  times — treat `git log`'s `Co-Authored-By` trailers as the source of
+  truth for what AI touched if the ledger looks behind, and backfill it
+  rather than assuming an unlisted change was human-only.
 
-Real `nba_api` ingestion, lint/typecheck enforcement in CI, offensive
-rebound rate in Four Factors, and production deployment (Cloudflare Pages
-+ Render + Supabase, see [`ADR-003`](decisions/ADR-003-hosting-topology.md))
-all used to be listed here as gaps; they're done, so removed rather than
-left to go stale.
+Real `nba_api` ingestion, lint/typecheck enforcement in CI, a second
+external API integration (`fetch_market_odds.py`, see "Market odds"
+below), the public documentation site, production deployment (Cloudflare
+Pages + Render + Supabase, see
+[`ADR-003`](decisions/ADR-003-hosting-topology.md)), offensive rebound rate
+in Four Factors, batch staging/validation with resume-from-partial-failure,
+versioned dataset releases with checksums, API keys/rate limits/quotas for
+external consumers, user-definable derived statistics (`custom-statistics`
+module), point-in-time (`asOf`) queries, and a published API
+deprecation path with a lightweight self-contract test
+(`openapi-contract.e2e-spec.ts`) all used to be listed here as gaps; they're
+done, so removed rather than left to go stale. CI/CD does not yet include
+an automated deploy step gated on tests passing — see `ADR-003`'s
+Consequences section.
 
-**Deliberately out of scope for the event-derivation work above** — the
-brief's Intermediate/Advanced submission-pipeline requirements go well
-beyond what a single automated ingestion source needs, and weren't
-realistic to also attempt alongside making derivation itself real: a
+**Still genuinely out of scope**, not just undocumented: a
 multi-human-submitter workflow with per-submitter approval (this project
 has one automated "submitter" — the pipeline itself, source-tagged per
-`IngestionBatch` — not many competing ones), batch staging/validation with
-resume-from-partial-failure at the scale a whole-season upload implies,
-versioned dataset releases with checksums, API keys/rate limits/quotas for
-external consumers, user-definable derived statistics evaluated over the
-event schema, a live/late-arriving event feed (this pipeline is
-batch-per-game, run after the fact, not a feed from a fixture in
-progress), point-in-time ("what was this stat as of date X") queries, and
-API contract testing/a published deprecation path. None of these are
-started; none should be assumed done because event-derivation now is.
+`IngestionBatch` — not many competing ones) and a live/late-arriving event
+feed (ingestion is still batch-per-game, run after the fact, not a feed
+from a fixture in progress; out-of-order events within one fetch are
+rejected by `event_validation.py`, not merged in).
+
+**Review gates publication, not just labels a batch** — a batch's
+`PENDING_REVIEW`/`REJECTED`/`RUNNING`/`FAILED` status used to be an
+admin-facing audit label only: nothing stopped its events or derived
+`PlayerGameStat` rows from being served publicly the moment ingestion wrote
+them. `PUBLISHED_GAME_FILTER` (`apps/api/src/common/game-visibility.ts`)
+now excludes a game from the public events/stats/dataset/custom-statistic
+endpoints until its latest batch is `COMPLETED`, approval publishes
+immediately (`AdminBatchesService.approveBatch`'s existing cache
+invalidation already made that instant), and `GET /v1/games`/`GET
+/v1/games/:id` (schedule/score only) are deliberately left ungated — see
+`apps/api/test/game-review-gating.e2e-spec.ts`.
 
 ## Personalization preferences
 
