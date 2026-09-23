@@ -21,13 +21,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      // `npm run test:cov` writes its HTML coverage report into
-      // ./coverage inside this project root. Without this ignore, every
-      // report file registers as a change and vite fires a full-page reload
-      // per file (~200) at every open browser tab.
-      watch: {
-        ignored: ['**/coverage/**'],
-      },
       proxy: {
         '/api': {
           target: 'http://localhost:4000',
