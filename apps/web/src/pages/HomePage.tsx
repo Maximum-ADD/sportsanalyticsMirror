@@ -1,4 +1,6 @@
 import { BeatTheModelCard } from "@/components/home/BeatTheModelCard";
+import { MyProspectCard } from "@/components/becomepro/MyProspectCard";
+import { ProspectLeaderboard } from "@/components/becomepro/ProspectLeaderboard";
 import { LeaderboardCard } from "@/components/home/LeaderboardCard";
 import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
@@ -64,6 +66,15 @@ export function HomePage() {
             </Reveal>
             <Reveal delay={2}>
               <SavedShelfCard />
+            </Reveal>
+            {/* Both halves of Become Pro, because either alone is half a
+                story: your own standing, and the board you stand on. Each
+                self-fetching and each saying so when it has nothing real. */}
+            <Reveal delay={2}>
+              <MyProspectCard />
+            </Reveal>
+            <Reveal delay={3}>
+              <ProspectLeaderboard compact limit={5} />
             </Reveal>
           </div>
         </div>

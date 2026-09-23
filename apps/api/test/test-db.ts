@@ -55,6 +55,14 @@ export async function resetDatabase() {
   await testPrisma.savedLineup.deleteMany();
   await testPrisma.gamePick.deleteMany();
 
+  // Become Pro, deepest first: a valuation and a game both point at a season,
+  // and a game also points at an evidence row, so the join layer has to go
+  // before the seasons and the seasons before User.
+  await testPrisma.prospectValuation.deleteMany();
+  await testPrisma.prospectGame.deleteMany();
+  await testPrisma.prospectEvidence.deleteMany();
+  await testPrisma.prospectSeason.deleteMany();
+
   await testPrisma.lineupSlot.deleteMany();
   await testPrisma.lineup.deleteMany();
   await testPrisma.playerPrediction.deleteMany();

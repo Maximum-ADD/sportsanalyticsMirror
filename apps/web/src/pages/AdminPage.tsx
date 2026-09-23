@@ -38,6 +38,7 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMe } from "@/lib/useMe";
 import type { AdminUserSummary, Player, Team, UserRole } from "@/types/nba";
+import { EvidenceReviewQueue } from "@/components/becomepro/EvidenceReviewQueue";
 
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_IN_MILLISECONDS = 300;
@@ -50,7 +51,7 @@ const PANEL_CLASS = "border border-landing-light bg-locker-surface p-4";
 const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
 const PULL_LABEL_CLASS = "font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase";
 
-type AdminTab = "teams" | "players" | "users" | "batches" | "corrections" | "consumers";
+type AdminTab = "teams" | "players" | "users" | "batches" | "corrections" | "consumers" | "evidence";
 const TABS: { value: AdminTab; label: string }[] = [
   { value: "teams", label: "Teams" },
   { value: "players", label: "Players" },
@@ -58,6 +59,7 @@ const TABS: { value: AdminTab; label: string }[] = [
   { value: "batches", label: "Batches" },
   { value: "corrections", label: "Corrections" },
   { value: "consumers", label: "API Keys" },
+  { value: "evidence", label: "Evidence" },
 ];
 
 export function AdminPage() {
@@ -99,6 +101,7 @@ export function AdminPage() {
         {tab === "batches" && <AdminBatchesSection />}
         {tab === "corrections" && <AdminCorrectionsSection />}
         {tab === "consumers" && <AdminConsumersSection />}
+        {tab === "evidence" && <EvidenceReviewQueue />}
       </div>
     </div>
   );

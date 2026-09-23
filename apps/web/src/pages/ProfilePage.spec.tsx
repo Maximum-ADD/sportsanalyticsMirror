@@ -7,6 +7,7 @@ import { ProfilePage } from "./ProfilePage";
 import { authClient, useSession } from "@/lib/authClient";
 import { deleteSavedLineup, fetchMe, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
 import { fetchTeams } from "@/lib/nbaApi";
+import { fetchMyProspectRank } from "@/lib/becomeProApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { MeProfile, Player, SavedLineup, Team } from "@/types/nba";
@@ -34,6 +35,14 @@ vi.mock("@/lib/meApi", () => ({
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchTeams: vi.fn(),
+}));
+
+// Required rather than optional: the mocks in this file replace whole modules,
+// so the Become Pro section would otherwise fire a real request. Defaulted to
+// a no-season account, which is what most of these tests are about.
+vi.mock("@/lib/becomeProApi", () => ({
+  PROSPECT_RANK_QUERY_KEY: ["prospectRank"],
+  fetchMyProspectRank: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -138,6 +147,15 @@ describe("ProfilePage", () => {
     vi.mocked(fetchMe).mockResolvedValue(me);
     vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS, CELTICS], page: 1, pageSize: 30, total: 2 });
     vi.mocked(fetchSavedLineups).mockResolvedValue([]);
+    vi.mocked(fetchMyProspectRank).mockResolvedValue({
+      rank: null,
+      rankState: "BELOW_GAMES_FLOOR",
+      username: "playerone",
+      projectedValueUsd: null,
+      gamesLogged: 0,
+      minimumGamesRequired: 10,
+      valueHistory: [],
+    });
   }
 
   it("shows a loading state before the profile resolves", () => {

@@ -111,6 +111,11 @@ model User {
   // The personal API consumer auto-provisioned the first time this user
   // creates an API key (see ApiConsumer.userId) — null until then.
   apiConsumer ApiConsumer?
+
+  // Become Pro: this user own self-reported playing seasons, plus any
+  // evidence uploads they have ruled on as an admin.
+  prospectSeasons          ProspectSeason[]
+  reviewedProspectEvidence ProspectEvidence[] @relation("ProspectEvidenceReviewer")
 }
 
 model CustomStatistic {
@@ -1023,4 +1028,191 @@ enum IngestionFrequency {
   HOURLY
   DAILY
   WEEKLY
+}
+
+// ── Become Pro ─────────────────────────────────────────────────────────────
+// A user's own playing career, self-reported. The point of the feature is to
+// price an amateur season against the published NBA rookie salary scale, so
+// these rows are the one place in this database where a statistic is typed in
+// by a human rather than derived from an ingested GameEvent.
+//
+// That exception is deliberate and contained: a ProspectGame is a BOX SCORE,
+// never a season total, and the season line every surface reads is derived
+// from those rows at request time by the same code that derives an NBA
+// player's (src/players/season-averages.ts). So the project's rule still
+// holds one level down — nothing publishes a figure that cannot be traced to
+// a per-game record.
+
+// Where a season was played. Required on every season because it scales the
+// valuation: without it the board would rank whoever plays the weakest
+// opposition rather than whoever is the best prospect.
+enum CompetitionLevel {
+  NCAA_D1
+  NCAA_D2
+  NCAA_D3
+  NAIA
+  JUCO
+  INTERNATIONAL_PRO
+  SEMI_PRO
+  HIGH_SCHOOL
+  REC
+}
+
+enum EvidenceStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model ProspectSeason {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // League year in the same "2025-26" format Game.season uses, so a prospect
+  // season and an NBA season are labelled identically wherever the two are
+  // shown side by side.
+  season           String
+  competitionLevel CompetitionLevel
+  position         String
+  teamName         String?
+
+  // Whether this season appears on the public board and directory at all.
+  // Default true: the feature is a leaderboard, and a season nobody can see
+  // is not on one. Kept as a column rather than inferred so opting out is a
+  // decision the owner makes rather than a side effect of some other state.
+  isPublic Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  games      ProspectGame[]
+  evidence   ProspectEvidence[]
+  valuations ProspectValuation[]
+
+  // One season per league year per user: logging "2025-26" twice is a
+  // mistake rather than two careers, and the unique index is what makes it
+  // a 409 instead of a silently split game log.
+  @@unique([userId, season])
+  @@index([userId, createdAt])
+}
+
+// One self-reported box score. Mirrors the columns of PlayerGameStat that a
+// person can actually know about their own game — deliberately WITHOUT
+// plusMinus, usagePercentage or the two ratings, which need the full
+// possession context of a tracked game. Their absence is why a prospect's
+// derived line returns null for those four rather than a zero.
+model ProspectGame {
+  id       String         @id @default(uuid())
+  seasonId String
+  season   ProspectSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  gameDate DateTime
+  opponent String
+
+  minutes             Int
+  points              Int
+  rebounds            Int
+  assists             Int
+  steals              Int
+  blocks              Int
+  turnovers           Int
+  fieldGoalsMade      Int
+  fieldGoalsAttempted Int
+  threesMade          Int
+  threesAttempted     Int
+  freeThrowsMade      Int
+  freeThrowsAttempted Int
+
+  // The document covering this game, if any. SetNull rather than Cascade:
+  // deleting a scoresheet must not delete the games it vouched for, it must
+  // only stop vouching for them.
+  evidenceId String?
+  evidence   ProspectEvidence? @relation(fields: [evidenceId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Two games against the same opponent on the same day is a double entry,
+  // not a doubleheader — the 409 this produces is what stops a season being
+  // inflated by resubmitting the same night.
+  @@unique([seasonId, gameDate, opponent])
+  @@index([seasonId, gameDate])
+}
+
+// A scoresheet, league stat page or official box score uploaded to back a
+// season up. Storage works exactly like avatars: the bucket is PRIVATE and
+// this column holds the OBJECT PATH, never a URL, because a renderable URL
+// only exists for as long as a signed one is valid.
+model ProspectEvidence {
+  id       String         @id @default(uuid())
+  seasonId String
+  season   ProspectSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  fileName   String
+  objectPath String
+  mimeType   String
+  sizeBytes  Int
+
+  status EvidenceStatus @default(PENDING)
+
+  // Who ruled on it and when. Null until an admin does — which is also why
+  // the review UI exists: without one, nothing ever leaves PENDING and the
+  // reliability score is pinned at zero forever.
+  reviewedById String?
+  reviewedBy   User?     @relation("ProspectEvidenceReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  // Shown verbatim to the owner on a rejection, so a refusal is never
+  // unexplained.
+  reviewNote String?
+
+  uploadedAt DateTime @default(now())
+
+  games ProspectGame[]
+
+  @@index([status, uploadedAt])
+  @@index([seasonId])
+}
+
+// What one season is projected to be worth, written by apps/valuation (a
+// Python service, in the same arrangement as apps/optimizer and
+// apps/predictor: Python writes, NestJS only ever reads).
+//
+// Append-and-take-latest-by-computedAt rather than one upserted row per
+// season, matching PlayerPrediction: the value card plots a prospect's value
+// over time, which needs the history rather than only today's number.
+model ProspectValuation {
+  id       String         @id @default(uuid())
+  seasonId String
+  season   ProspectSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  // Null — never 0 — when the season is below the games floor. A zero here
+  // would be a valuation the model never made.
+  projectedDraftSlot    Int?
+  projectedValueUsd     Int?
+  projectedValueLowUsd  Int?
+  projectedValueHighUsd Int?
+
+  // Which published scale produced the dollar figure, e.g. "2025-26", so a
+  // stored valuation can never be silently re-read against a newer table.
+  rookieScaleYear  String
+  levelFactor      Float
+  levelFactorBasis String
+
+  // Two or three sentences naming what moved the figure most, authored by
+  // the model and rendered verbatim by the client — a client-written
+  // explanation of a server-side model would be invention.
+  drivers Json
+
+  // Real NBA players whose season line sits closest to this one, and who was
+  // actually drafted at the projected slot. Stored as ids the API resolves,
+  // so the comparables survive a player being re-ingested.
+  comparablePlayerIds String[]
+  comparableScores    Float[]
+  slotAlumniPlayerIds String[]
+
+  modelVersion String
+  computedAt   DateTime @default(now())
+
+  @@index([seasonId, computedAt])
 }

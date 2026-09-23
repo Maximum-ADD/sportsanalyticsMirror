@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/apiClient";
+import { fetchProspectLeaderboard } from "@/lib/becomeProApi";
 import {
   fetchLeaderboard,
   fetchModelAccuracy,
@@ -31,6 +32,16 @@ vi.mock("@/lib/nbaApi", () => ({
 
 vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn(), fetchSavedLineups: vi.fn() }));
 
+// The Become Pro rail. MyProspectCard renders nothing while signed out (see
+// the session mock below), but the compact value board is public and fetches
+// regardless, so its module has to be replaced like every other.
+vi.mock("@/lib/becomeProApi", () => ({
+  PROSPECT_RANK_QUERY_KEY: ["prospectRank"],
+  PROSPECT_LEADERBOARD_QUERY_KEY: ["prospectLeaderboard"],
+  fetchMyProspectRank: vi.fn(),
+  fetchProspectLeaderboard: vi.fn(),
+}));
+
 // YourTeamsList reads the profile through useMe(), which gates its own query
 // on BetterAuth's useSession — so a signed-out session is what makes the
 // module render its prompt rather than hang on a query that never fires.
@@ -52,6 +63,16 @@ const MODEL_ACCURACY_REPORT = {
 };
 
 beforeEach(() => {
+  vi.mocked(fetchProspectLeaderboard).mockResolvedValue({
+    data: [],
+    page: 1,
+    pageSize: 5,
+    total: 0,
+    minimumGamesRequired: 10,
+    rookieScaleYear: "2025-26",
+    references: [],
+    yourStanding: null,
+  });
   vi.mocked(fetchModelAccuracy).mockResolvedValue(MODEL_ACCURACY_REPORT);
   vi.mocked(fetchLeaderboard).mockResolvedValue({
     minimumCallsRequired: 5,

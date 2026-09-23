@@ -6,6 +6,7 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { ApiKeysSection } from "@/components/ApiKeysSection";
+import { MyProspectCard } from "@/components/becomepro/MyProspectCard";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
@@ -541,6 +542,23 @@ export function ProfilePage() {
           <div className="mb-6">
             <SectionHeading>Saved lineups</SectionHeading>
             <SavedLineupsSection />
+          </div>
+        </Reveal>
+
+        <Reveal delay={3}>
+          <div className="mb-6">
+            <SectionHeading>Become Pro</SectionHeading>
+            <MyProspectCard />
+            {/* A Link, not the local LockerButton — that helper takes onClick
+                rather than `to`, and widening it for one caller would be worse
+                than repeating its class string, which is what
+                PlayerProfilePage's LOCKER_BUTTON_CLASS already does. */}
+            <Link
+              to={me.username ? `/become-pro/${me.username}` : "/become-pro"}
+              className="mt-3 inline-block border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
+            >
+              Manage my season
+            </Link>
           </div>
         </Reveal>
 
