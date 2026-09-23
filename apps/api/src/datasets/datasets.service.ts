@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { DatasetRelease, Prisma } from "@prisma/client";
@@ -217,7 +218,7 @@ export class DatasetReleasesService {
       include: {
         team: { select: { abbreviation: true } },
         gameStats: {
-          where: { game: { season } },
+          where: { game: { season, ...PUBLISHED_GAME_FILTER } },
           include: { game: true },
         },
       },
