@@ -257,8 +257,9 @@ export type CreditRewriteResult = { description: string } | { error: string };
  * Writes `creditedPlayer` into the event's description as the suffix the
  * derivation reads, replacing any credit suffix already there.
  *
- * The name is written the way NBA does: a bare surname, or "F. Surname"
- * when the surname alone is ambiguous in this game. Each form is checked by
+ * The name is written the way NBA does: a bare surname, or the surname
+ * after as much of the first name as it takes to be unambiguous in this
+ * game ("L. James", "Jal. Williams"). Each form is checked by
  * running the real resolveSecondaryPlayer over the rewritten description,
  * and the first that resolves to exactly this player is used, so a saved
  * credit always counts for the player the admin picked. Returns an error
@@ -305,8 +306,17 @@ function findCreditSideError(input: CreditRewriteInput, displayName: string): st
   return null;
 }
 
-/** The ways NBA writes a credited name, shortest first. */
+/**
+ * The ways NBA writes a credited name, shortest first: the bare surname,
+ * then the surname after ever-longer starts of the first name
+ * ("J. Williams", "Ja. Williams", "Jal. Williams", ...). NBA uses the
+ * shortest one that tells two players apart, so trying them in this order
+ * writes a credit the way NBA would have. A trailing dot in the first name
+ * itself ("P.J.") is dropped, so no prefix ever ends in two dots.
+ */
 function creditNameCandidates(name: PlayerName): string[] {
-  const firstInitial = name.firstName.trim().slice(0, 1);
-  return firstInitial ? [name.lastName, `${firstInitial}. ${name.lastName}`] : [name.lastName];
+  const firstName = name.firstName.trim();
+  const prefixes = Array.from({ length: firstName.length }, (_, index) => firstName.slice(0, index + 1).replace(/\.+$/, ""));
+  const distinctPrefixes = [...new Set(prefixes)].filter((prefix) => prefix !== "");
+  return [name.lastName, ...distinctPrefixes.map((prefix) => `${prefix}. ${name.lastName}`)];
 }

@@ -59,6 +59,7 @@ from db import get_connection
 from derive_player_game_stats import aggregate_player_game_stats
 from games import fetch_game_boxscore, fetch_recent_games, upsert_game, upsert_player_game_stat
 from play_by_play import run_ingestion_batch
+from rosters import select_first_names_by_nba_id
 
 # Comfortably above a real season's ~82 games/team (including a healthy
 # margin for teams that played more due to play-in/playoff games counted
@@ -104,7 +105,9 @@ def _write_one_game(cursor, season, nba_game_id, game_date, boxscore, home_team_
         cursor, nba_game_id, game_date, season, home_team_id, away_team_id, boxscore["home_score"], boxscore["away_score"]
     )
     batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status)
-    derived_stats_by_nba_player_id = aggregate_player_game_stats(batch_summary["accepted_events"])
+    accepted_events = batch_summary["accepted_events"]
+    first_name_by_nba_id = select_first_names_by_nba_id(cursor, (event.get("personId") for event in accepted_events))
+    derived_stats_by_nba_player_id = aggregate_player_game_stats(accepted_events, first_name_by_nba_id)
 
     skipped_unknown_players = 0
     skipped_unknown_teams = 0

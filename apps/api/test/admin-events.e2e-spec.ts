@@ -448,6 +448,26 @@ describe("Admin event corrections and replay", () => {
         expect(response.body.error.message).toMatch(/Draymond Green is credited with the assist but would be on the wrong side/);
       });
 
+      it("credits one of two teammates who share a surname and initial, as NBA would write it", async () => {
+        const { game, home } = await seedGame();
+        const jalen = await createPlayer("Jalen", "Williams", home.id);
+        const jaylin = await createPlayer("Jaylin", "Williams", home.id);
+        await testPrisma.gameEvent.createMany({
+          data: [jalen, jaylin].map((player, index) => ({
+            gameId: game.id, sequence: 6 + index, period: 1, clock: "PT10M00.00S", eventType: "foul",
+            playerId: player.id, teamId: home.id, value: 0, description: "Williams P.FOUL",
+          })),
+        });
+        for (const player of [jalen, jaylin]) await createStatRow(player.id, game.id, home.id);
+
+        const response = await correct(game.id, 1, { creditPlayerId: jaylin.id, reason: "Jaylin made the pass" });
+
+        expect(response.status).toBe(201);
+        expect((await eventAt(game.id, 1)).description).toBe("Curry 26' 3PT Jump Shot (3 PTS) (Jay. Williams 1 AST)");
+        expect((await statOf(jaylin.id, game.id)).assists).toBe(1);
+        expect((await statOf(jalen.id, game.id)).assists).toBe(0);
+      });
+
       it("rejects a block from the shooter's own team", async () => {
         const { game, away } = await seedGame();
         const davis = await createPlayer("Anthony", "Davis", away.id);
