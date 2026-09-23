@@ -236,6 +236,10 @@ model Player {
   lineupSlots     LineupSlot[]
   followedByUsers UserFollowedPlayer[]
 
+  archetypes        PlayerArchetype[]
+  similarTo         PlayerSimilarity[] @relation("SimilarFrom")
+  similarFromOthers PlayerSimilarity[] @relation("SimilarTo")
+
   savedComparisonSlots SavedComparisonPlayer[]
   savedLineupSlots     SavedLineupSlot[]
 
@@ -511,6 +515,178 @@ model PlayerPrediction {
   asOf                   DateTime @default(now())
 
   @@index([playerId, asOf])
+}
+
+// One playing-style group from one season's clustering fit — see
+// apps/similarity. Written only by that service; NestJS reads these and
+// never writes them, the same contract GamePrediction describes.
+//
+// The LABEL LIVES HERE, on one row per group, rather than being copied
+// onto every player. Renaming an archetype is then a single UPDATE, which
+// matters because the names are the one part of this feature a machine
+// cannot produce: they are assigned by hand and revised as the fit is
+// tuned (see apps/similarity/archetype_labels.py). Denormalising the
+// string onto ~330 player rows per season would turn each rename into a
+// re-run of the writer, with the database disagreeing with the code until
+// someone remembered to do it.
+//
+// Archetypes are per-season by construction: each season gets its own fit,
+// so this season's "Stretch big" is a different row from last season's and
+// carries its own centroid. A rename therefore applies to one season
+// unless it is deliberately propagated.
+model Archetype {
+  id     String @id @default(uuid())
+  season String
+
+  // The human-assigned display name, e.g. "Catch-and-shoot wing". Safe to
+  // edit in place; nothing derives from its text.
+  label String
+
+  // Which cluster this was in the fit that produced it. Arbitrary and NOT
+  // stable across fits — K-Means renumbers freely — so it is kept for
+  // tracing a row back to a run, never as an identifier to match on. It is
+  // also what URLs should carry instead of the label, so that renaming an
+  // archetype cannot break a shared link.
+  clusterId Int
+
+  // The cluster centroid in REAL units (points per 36, inches, …), in
+  // apps/similarity/features.FEATURE_NAMES order. Real units rather than
+  // z-scores because a z-score is relative to whoever was in the fit:
+  // these have to stay comparable across re-fits so a name can follow its
+  // shape. See apps/similarity/labeling.py.
+  referenceCentroid Json
+
+  // How many players landed here, denormalised for the archetype list and
+  // the cluster map's legend, which would otherwise count ~330 rows per
+  // season on every request. Rewritten wholesale by each fit, so it cannot
+  // drift the way an incrementally-maintained counter would.
+  memberCount Int
+
+  // Which fit produced this row, following GamePrediction.modelVersion:
+  // lets a caller see whether an archetype came from the current model or
+  // an older run not yet recomputed.
+  modelVersion String   @default("unversioned")
+  computedAt   DateTime @default(now())
+
+  playerMemberships PlayerArchetypeMembership[]
+
+  // One row per cluster per season, which is also what stops a re-run
+  // silently doubling the archetype list.
+  @@unique([season, clusterId])
+  @@index([season])
+}
+
+// One player's placement in one season's style space — see apps/similarity.
+//
+// There is deliberately NO primaryArchetypeId here. The primary archetype
+// is the rank 1 row in playerArchetypeMembership below, and storing it
+// twice would create a second source of truth for a value already
+// determined — the same call PlayerGameStat makes in refusing to store
+// true shooting % alongside the columns that determine it.
+model PlayerArchetype {
+  id       String @id @default(uuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id])
+  season   String
+
+  // The player's standardized feature vector, in FEATURE_NAMES order.
+  // Z-scores rather than real units because this exists to be plotted on
+  // a radar against the league, where "1.4 standard deviations above
+  // average" is the meaningful quantity.
+  featureVector Json
+
+  // Distance from this player to their primary archetype's centroid, in
+  // the standardized space. Small means a textbook example of the type,
+  // large means a player the label fits poorly — worth surfacing rather
+  // than hiding, since the clusters are boundaries through a continuum.
+  distanceToCentroid Float
+
+  // Where this player sits on the 2D cluster map, from the first two
+  // principal components of the same standardized matrix. Computed once in
+  // Python and stored, so the browser never runs a projection.
+  //
+  // PCA eigenvector direction is arbitrary, so a re-fit can mirror-flip
+  // the whole map. apps/similarity fixes the sign deterministically before
+  // storing; without that the map would appear to reshuffle between runs
+  // even when nothing moved.
+  plotX Float
+  plotY Float
+
+  modelVersion String   @default("unversioned")
+  computedAt   DateTime @default(now())
+
+  memberships PlayerArchetypeMembership[]
+
+  // One placement per player per season.
+  @@unique([playerId, season])
+  @@index([season])
+}
+
+// How strongly one player belongs to one archetype, as a row rather than a
+// field — the top few archetypes per player, not a single hard label.
+//
+// A row per membership, rather than a Json blob on PlayerArchetype, for
+// the same reason the label lives on Archetype: a blob would have to name
+// the archetype inside itself, so renaming one would mean rewriting every
+// player's Json. Here a membership points at the archetype by id and a
+// rename touches nothing.
+//
+// Soft membership is the honest presentation for this data. The clusters
+// score around 0.15 on silhouette, meaning they are boundaries drawn
+// through a continuum rather than separate populations, so a single hard
+// label overclaims for any player near an edge.
+model PlayerArchetypeMembership {
+  id                String          @id @default(uuid())
+  playerArchetypeId String
+  playerArchetype   PlayerArchetype @relation(fields: [playerArchetypeId], references: [id], onDelete: Cascade)
+  archetypeId       String
+  archetype         Archetype       @relation(fields: [archetypeId], references: [id], onDelete: Cascade)
+
+  // 1 is the player's strongest archetype. Only the top few are stored:
+  // the remaining weights are rounding noise, and showing them would
+  // present false precision as insight.
+  rank Int
+
+  // Mixture weight in [0, 1], from the Gaussian mixture fit. Read as an
+  // ORDERING, not as a calibrated probability: it is a density ratio under
+  // the model's assumptions, and the UI should render it as a bar rather
+  // than to two decimal places.
+  weight Float
+
+  @@unique([playerArchetypeId, archetypeId])
+  @@index([playerArchetypeId, rank])
+  @@index([archetypeId])
+}
+
+// The players most stylistically like a given player in a given season,
+// precomputed — see apps/similarity.
+//
+// Precomputed rather than a live nearest-neighbour search in the API, for
+// the same reason PlayerPrediction is: it makes the read a plain indexed
+// lookup, and the answer only changes when the model is re-fit.
+model PlayerSimilarity {
+  id              String @id @default(uuid())
+  playerId        String
+  player          Player @relation("SimilarFrom", fields: [playerId], references: [id])
+  similarPlayerId String
+  similarPlayer   Player @relation("SimilarTo", fields: [similarPlayerId], references: [id])
+  season          String
+
+  // 1 is the most similar. Independent of the clustering: this is a
+  // nearest-neighbour lookup in the same standardized space, so it stays
+  // useful even where the cluster boundaries are debatable.
+  rank Int
+
+  // 0-100, derived from Euclidean distance for display. Similarity of
+  // STYLE, never of quality — two players can be highly similar here and
+  // far apart in ability, so nothing should rank players by this.
+  similarityScore Float
+
+  modelVersion String   @default("unversioned")
+  computedAt   DateTime @default(now())
+
+  @@unique([playerId, similarPlayerId, season])
+  @@index([playerId, season, rank])
 }
 
 // A single optimizer run's chosen lineup (MILP solve over the latest
