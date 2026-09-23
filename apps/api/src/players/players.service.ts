@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Player, Prisma, SeasonType, Team } from "@prisma/client";
 import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
 import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -124,7 +125,7 @@ export class PlayersService {
   getPlayerSeasonStats(playerId: string, seasonType: SeasonType = DEFAULT_SEASON_TYPE) {
     return this.cache.getOrLoad(buildCacheKey("players:stats", [playerId, seasonType]), DERIVED_DATA_TTL_MS, () =>
       this.prisma.playerGameStat.findMany({
-        where: { playerId, game: { seasonType } },
+        where: { playerId, game: { seasonType, ...PUBLISHED_GAME_FILTER } },
         include: { game: true },
         orderBy: { game: { gameDate: "desc" } },
       })
@@ -137,7 +138,7 @@ export class PlayersService {
   // the data and would turn arbitrary analyst queries into an unbounded cache.
   getPlayerSeasonStatsAsOf(playerId: string, seasonType: SeasonType, asOf: Date) {
     return this.prisma.playerGameStat.findMany({
-      where: { playerId, game: { seasonType, gameDate: { lte: asOf } } },
+      where: { playerId, game: { seasonType, gameDate: { lte: asOf }, ...PUBLISHED_GAME_FILTER } },
       include: { game: true },
       orderBy: { game: { gameDate: "desc" } },
     });
@@ -157,7 +158,10 @@ export class PlayersService {
   // getPlayerSeasonStats documents for one player.
   getPlayerSeasonStatsBatch(playerIds: string[], seasonType?: SeasonType) {
     return this.prisma.playerGameStat.findMany({
-      where: { playerId: { in: playerIds }, ...(seasonType ? { game: { seasonType } } : {}) },
+      where: {
+        playerId: { in: playerIds },
+        game: { ...(seasonType ? { seasonType } : {}), ...PUBLISHED_GAME_FILTER },
+      },
       include: { game: true },
       orderBy: { game: { gameDate: "desc" } },
     });
@@ -170,7 +174,7 @@ export class PlayersService {
   // stays a separate read rather than widening every caller's row.
   getPlayerGameStatsWithOpponents(playerId: string, seasonType: SeasonType) {
     return this.prisma.playerGameStat.findMany({
-      where: { playerId, game: { seasonType } },
+      where: { playerId, game: { seasonType, ...PUBLISHED_GAME_FILTER } },
       include: { game: { include: { homeTeam: true, awayTeam: true } } },
       orderBy: { game: { gameDate: "desc" } },
     });
@@ -186,7 +190,7 @@ export class PlayersService {
   getSeasonStatTotalsBatch(playerIds: string[], seasonType: SeasonType) {
     return this.prisma.playerGameStat.groupBy({
       by: ["playerId"],
-      where: { playerId: { in: playerIds }, game: { seasonType } },
+      where: { playerId: { in: playerIds }, game: { seasonType, ...PUBLISHED_GAME_FILTER } },
       _count: { _all: true },
       _sum: {
         points: true,

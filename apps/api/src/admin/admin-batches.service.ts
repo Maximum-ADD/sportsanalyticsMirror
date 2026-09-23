@@ -189,8 +189,12 @@ export class AdminBatchesService {
       },
     });
 
-    // Newly approved events may change public stats — invalidate the
-    // game and player caches.
+    // Until now this game was excluded from every public read (see
+    // PUBLISHED_GAME_FILTER, ../common/game-visibility.ts) because its
+    // latest batch wasn't COMPLETED — approval is what actually publishes
+    // its events/stats, not just a status label. Invalidate the game and
+    // player caches so that takes effect immediately rather than waiting
+    // out their TTL.
     this.cache.invalidate("games");
     this.cache.invalidate("players");
 
