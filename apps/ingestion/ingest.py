@@ -77,11 +77,17 @@ def ingest_teams(cursor) -> dict[int, str]:
     return team_id_by_nba_id
 
 
-def ingest_rosters(cursor, team_id_by_nba_id: dict[int, str]) -> dict[int, str]:
-    """Ingests every team's current roster, returns nbaPlayerId -> internal id."""
+def ingest_rosters(cursor, team_id_by_nba_id: dict[int, str], season: str = SEASON) -> dict[int, str]:
+    """Ingests every team's roster for `season`, returns nbaPlayerId -> internal id.
+
+    The roster must be the pulled season's: play-by-play validation rejects
+    any action by a player missing from it (UNKNOWN_PLAYER), so a past
+    season pulled against this season's rosters loses every play by a
+    player who has since retired or left the league.
+    """
     player_id_by_nba_id: dict[int, str] = {}
     for nba_team_id, team_internal_id in team_id_by_nba_id.items():
-        players = fetch_team_roster(nba_team_id, SEASON)
+        players = fetch_team_roster(nba_team_id, season)
         player_id_by_nba_id.update(upsert_players(cursor, players, team_internal_id))
         print(f"  Ingested {len(players)} players for team {nba_team_id}.")
     print(f"Ingested {len(player_id_by_nba_id)} players total.")
@@ -234,8 +240,12 @@ def ingest_games_and_stats(
     player_id_by_nba_id: dict[int, str],
     extra_figures_by_player_game: dict[tuple[str, int], dict] | None = None,
     final_status: str = "COMPLETED",
+    season: str = SEASON,
 ) -> None:
     """Fetches and writes one Game + its PlayerGameStat rows per game id.
+
+    Each Game is labelled with `season`, which must be the season the game
+    ids were collected for.
 
     Season-type agnostic: each game's segment (regular season, play-in,
     playoffs, finals) is derived from its own game id by classify_game(),
@@ -281,7 +291,7 @@ def ingest_games_and_stats(
             cursor,
             nba_game_id,
             game_date,
-            SEASON,
+            season,
             home_team_id,
             away_team_id,
             boxscore["home_score"],
@@ -420,7 +430,7 @@ def main() -> None:
         connection.commit()
 
         with connection.cursor() as cursor:
-            player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id)
+            player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id, season)
         connection.commit()
 
         with connection.cursor() as cursor:
@@ -448,7 +458,7 @@ def main() -> None:
         with connection.cursor() as cursor:
             ingest_games_and_stats(
                 cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, regular_season_figures,
-                final_status=batch_status,
+                final_status=batch_status, season=season,
             )
         connection.commit()
 
@@ -462,7 +472,7 @@ def main() -> None:
         with connection.cursor() as cursor:
             ingest_games_and_stats(
                 cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures,
-                final_status=batch_status,
+                final_status=batch_status, season=season,
             )
         connection.commit()
 
