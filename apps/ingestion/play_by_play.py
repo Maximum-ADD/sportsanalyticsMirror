@@ -179,6 +179,7 @@ def run_ingestion_batch(
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
     final_status: str = "COMPLETED",
+    store_events: bool = True,
 ) -> dict:
     """Fetches, validates and writes one game's real play-by-play. Returns a run summary.
 
@@ -197,9 +198,22 @@ def run_ingestion_batch(
     NBA ids directly (see its own docstring), and re-querying rows just
     written back out of Postgres would be pure overhead for data already
     sitting in memory.
+
+    store_events=False validates and returns the plays exactly the same but
+    writes none of them to GameEvent: the caller still derives the game's
+    stats from "accepted_events", and the plays are then discarded. For
+    backfilling old seasons, where a game's plays cost ~250 KB of database
+    space that only the admin corrections tools and GET /games/:id/events
+    would read (see ingest_postseason.py --skip-play-storage). The batch row
+    is still written with its accepted and rejected counts, so the run stays
+    auditable and the game passes the publish gate.
     """
     known_player_ids = set(player_id_by_nba_id.keys())
     batch_id, resume_after_sequence = upsert_ingestion_batch(cursor, game_internal_id)
+    if not store_events:
+        # Resuming skips plays an earlier run already saved. Unsaved plays
+        # can't be skipped: the stats are derived from this run's plays alone.
+        resume_after_sequence = None
 
     accepted_events: list[dict] = []
     event_rows: list[dict] = []
@@ -239,9 +253,10 @@ def run_ingestion_batch(
     # Written once for the whole game. The caller commits per game, so a
     # checkpoint saved after each play only ever became durable together
     # with the game's last play anyway — one checkpoint here resumes the same.
-    upsert_game_events(cursor, event_rows)
-    if previous_sequence is not None:
-        save_resume_checkpoint(cursor, batch_id, previous_sequence)
+    if store_events:
+        upsert_game_events(cursor, event_rows)
+        if previous_sequence is not None:
+            save_resume_checkpoint(cursor, batch_id, previous_sequence)
 
     complete_ingestion_batch(cursor, batch_id, final_status, len(accepted_events), rejected, dict(rejection_counts))
     return {

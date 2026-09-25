@@ -75,7 +75,7 @@ def make_action(action_number, action_type="2pt", person_id=None):
 class TestRunIngestionBatchWrites:
     """A game's plays go to the database as one statement, not one per play."""
 
-    def run_batch(self, actions, resume_after_sequence=None):
+    def run_batch(self, actions, resume_after_sequence=None, store_events=True):
         cursor = FakeCursor()
         with (
             patch("play_by_play.fetch_game_actions", return_value=actions),
@@ -85,7 +85,9 @@ class TestRunIngestionBatchWrites:
             patch("play_by_play.save_resume_checkpoint") as save_resume_checkpoint,
             patch("play_by_play.complete_ingestion_batch"),
         ):
-            summary = run_ingestion_batch(cursor, "game-1", "0022500001", {1610612747: "lal"}, {})
+            summary = run_ingestion_batch(
+                cursor, "game-1", "0022500001", {1610612747: "lal"}, {}, store_events=store_events
+            )
         return summary, upsert_game_events, save_resume_checkpoint
 
     def test_writes_every_accepted_play_in_one_call(self):
@@ -115,6 +117,30 @@ class TestRunIngestionBatchWrites:
 
         assert upsert_game_events.call_args.args[1] == []
         save_resume_checkpoint.assert_not_called()
+
+
+class TestRunIngestionBatchWithoutStorage:
+    """store_events=False: the plays still feed the stats, but none are saved."""
+
+    # The same fakes, with the database writes recorded.
+    run_batch = TestRunIngestionBatchWrites.run_batch
+
+    def test_saves_no_plays_and_no_checkpoint(self):
+        _, upsert_game_events, save_resume_checkpoint = self.run_batch([make_action(1), make_action(2)], store_events=False)
+
+        upsert_game_events.assert_not_called()
+        save_resume_checkpoint.assert_not_called()
+
+    def test_still_returns_the_accepted_plays_for_the_stats(self):
+        summary, _, _ = self.run_batch([make_action(1), make_action(2, person_id=999)], store_events=False)
+
+        assert [event["actionNumber"] for event in summary["accepted_events"]] == [1]
+        assert summary["rejection_counts"] == {"UNKNOWN_PLAYER": 1}
+
+    def test_ignores_a_resume_checkpoint_since_nothing_before_it_was_saved(self):
+        summary, _, _ = self.run_batch([make_action(1), make_action(2)], resume_after_sequence=1, store_events=False)
+
+        assert summary["accepted"] == 2
 
 
 class TestBuildGameEventRow:

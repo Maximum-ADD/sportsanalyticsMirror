@@ -311,11 +311,15 @@ def ingest_games_and_stats(
     extra_figures_by_player_game: dict[tuple[str, int], dict] | None = None,
     final_status: str = "COMPLETED",
     season: str = SEASON,
+    store_events: bool = True,
 ) -> None:
     """Fetches and writes one Game + its PlayerGameStat rows per game id.
 
     Each Game is labelled with `season`, which must be the season the game
     ids were collected for.
+
+    store_events=False derives the stats from each game's play-by-play
+    without saving the plays themselves — see run_ingestion_batch.
 
     Season-type agnostic: each game's segment (regular season, play-in,
     playoffs, finals) is derived from its own game id by classify_game(),
@@ -370,7 +374,10 @@ def ingest_games_and_stats(
             playoff_round,
         )
 
-        batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status)
+        batch_summary = run_ingestion_batch(
+            cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id,
+            final_status=final_status, store_events=store_events,
+        )
         if batch_summary["rejected"]:
             print(
                 f"  {nba_game_id}: rejected {batch_summary['rejected']} play-by-play rows "

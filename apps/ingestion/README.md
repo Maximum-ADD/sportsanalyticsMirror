@@ -283,6 +283,18 @@ data itself: 2 leaguewide `LeagueGameLog` calls plus ~90 boxscores.
 Running the full `ingest.py` instead would re-fetch every player bio
 (~450-500 calls) to reach the same result.
 
+It is also the way to add an **older season's postseason**, since it never
+writes rosters:
+
+```bash
+python ingest_postseason.py --season 2023-24 --skip-play-storage
+```
+
+| Flag | Default | Effect |
+|---|---|---|
+| `--season` | `2025-26` | Whose postseason to ingest, as `YYYY-YY`. |
+| `--skip-play-storage` | off | Derive each game's stats from its play-by-play, then discard the plays instead of saving them to `GameEvent`. A postseason's plays take ~22 MB; without them the admin corrections tools and `GET /games/:id/events` have nothing to show for those games. |
+
 Existing regular-season rows are untouched either way — the migration
 defaults them to `seasonType = REGULAR`, which is accurate, since they were
 all ingested with `season_type_nullable="Regular Season"`.
