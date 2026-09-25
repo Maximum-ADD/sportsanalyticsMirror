@@ -324,10 +324,11 @@ export interface PlayerMatchupProjection {
   upcomingGames: UpcomingGameProjection[];
 }
 
-// One player's career-wide aggregates — totals, averages, and a
-// per-season breakdown so the career tab can show both the headline
+// One player's career-wide aggregates in one segment — totals, averages,
+// and a per-season breakdown so the career tab can show both the headline
 // numbers and how they were built up year by year.
 export interface CareerStats {
+  seasonType: SeasonType;
   careerTotals: DerivedSeasonAverages;
   careerAverages: DerivedSeasonAverages;
   seasonBreakdown: { season: string; averages: DerivedSeasonAverages }[];
@@ -768,30 +769,32 @@ export class StatsService {
     ) as PlayerSeasonSplits;
   }
 
-  // Career-wide aggregates for one player: totals across every season,
-  // averages (same numbers, since deriveSeasonAverages already returns
-  // per-game rates), and a per-season breakdown so the career tab can
-  // chart progression. No seasonType filter — the whole point is
-  // "across every segment the player appeared in".
+  // Career-wide aggregates for one player in one segment: totals across
+  // every season, averages (same numbers, since deriveSeasonAverages
+  // already returns per-game rates), and a per-season breakdown so the
+  // career tab can chart progression. Scoped to one segment like every
+  // other player figure: a season row mixing regular-season and playoff
+  // games would shift a past season's numbers whenever its postseason
+  // was ingested.
   //
-  // Cached per player with the same TTL as season stats.
-  getCareerStats(playerId: string): Promise<CareerStats | null> {
+  // Cached per player and segment with the same TTL as season stats.
+  getCareerStats(playerId: string, seasonType: SeasonType = DEFAULT_SEASON_TYPE): Promise<CareerStats | null> {
     return this.cache.getOrLoad(
-      buildCacheKey("players:career", [playerId]),
+      buildCacheKey("players:career", [playerId, seasonType]),
       DERIVED_DATA_TTL_MS,
-      () => this.readCareerStats(playerId),
+      () => this.readCareerStats(playerId, seasonType),
     );
   }
 
-  private async readCareerStats(playerId: string): Promise<CareerStats | null> {
+  private async readCareerStats(playerId: string, seasonType: SeasonType): Promise<CareerStats | null> {
     const player = await this.playersService.getPlayerById(playerId);
     if (!player) return null;
 
-    // Every boxscore row for this player, across every segment.
-    const allGameStats = await this.playersService.getPlayerSeasonStatsBatch([playerId]);
+    // Every boxscore row for this player in the segment, across every season.
+    const allGameStats = await this.playersService.getPlayerSeasonStatsBatch([playerId], seasonType);
     if (allGameStats.length === 0) {
       const empty = this.deriveSeasonAverages([]);
-      return { careerTotals: empty, careerAverages: empty, seasonBreakdown: [] };
+      return { seasonType, careerTotals: empty, careerAverages: empty, seasonBreakdown: [] };
     }
 
     const careerAverages = this.deriveSeasonAverages(allGameStats);
@@ -811,7 +814,7 @@ export class StatsService {
         averages: this.deriveSeasonAverages(stats),
       }));
 
-    return { careerTotals: careerAverages, careerAverages, seasonBreakdown };
+    return { seasonType, careerTotals: careerAverages, careerAverages, seasonBreakdown };
   }
 
   // Competition-wide averages for one season segment — average points,

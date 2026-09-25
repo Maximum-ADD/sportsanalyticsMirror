@@ -223,12 +223,14 @@ export function PlayerProfilePage() {
     enabled: !!playerId,
   });
 
-  // Career-wide aggregates: totals, averages, and per-season breakdown
-  // for the career tab below the main stat tiles.
+  // Career-wide aggregates in the selected segment: totals, averages, and
+  // per-season breakdown for the career tab below the main stat tiles.
+  // Same per-segment caching and keepPreviousData as statsQuery above.
   const careerQuery = useQuery({
-    queryKey: ["playerCareerStats", playerId],
-    queryFn: () => fetchPlayerCareerStats(playerId!),
+    queryKey: ["playerCareerStats", playerId, seasonType],
+    queryFn: () => fetchPlayerCareerStats(playerId!, seasonType),
     enabled: !!playerId,
+    placeholderData: keepPreviousData,
   });
 
   // Opponent splits + upcoming-game projections. Independent of the segment
@@ -662,7 +664,7 @@ export function PlayerProfilePage() {
 
           <Reveal className="xl:col-span-3">
           <section className="border border-landing-light bg-locker-surface p-6">
-            <SectionHeading title="Career" />
+            <SectionHeading title={`Career · ${formatSeasonType(seasonType)}`} />
             {careerQuery.isPending ? (
               <p className="py-8 text-center text-[12.5px] text-locker-ink-muted">Loading career stats…</p>
             ) : careerQuery.data?.career ? (
