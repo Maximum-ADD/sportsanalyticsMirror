@@ -1,5 +1,6 @@
 import { fetchJson, sendJson } from "./apiClient";
 import type {
+  PlayerArchetypeResponse,
   Game,
   GameDetail,
   GamePrediction,
@@ -309,4 +310,19 @@ export function fetchSavedComparisons(
   params: { page?: number; pageSize?: number } = {}
 ): Promise<PagedResult<SavedComparison>> {
   return fetchJson<PagedResult<SavedComparison>>(`/v1/me/saved/comparisons${toQueryString(params)}`);
+}
+
+// A player's playing-style archetypes and the players most stylistically
+// like them. `season` picks which fit to read; omitted, the API uses the
+// most recently fitted season rather than a hardcoded one, so this follows
+// the model instead of needing to change alongside it.
+//
+// A 200 with a null archetype is the normal "not enough minutes" answer,
+// not an error — only a genuinely missing player 404s.
+export function fetchPlayerArchetype(
+  playerId: string,
+  season?: string
+): Promise<PlayerArchetypeResponse> {
+  const seasonParam = season ? `?season=${encodeURIComponent(season)}` : "";
+  return fetchJson<PlayerArchetypeResponse>(`/v1/players/${playerId}/archetype${seasonParam}`);
 }

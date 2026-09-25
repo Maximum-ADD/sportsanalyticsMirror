@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { fetchPlayer, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits, fetchPlayerCareerStats } from "@/lib/nbaApi";
+import { fetchPlayer, fetchPlayerArchetype, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits, fetchPlayerCareerStats } from "@/lib/nbaApi";
 import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowPlayerButton } from "@/components/FollowPlayerButton";
 import { MatchupAnalysis } from "@/components/MatchupAnalysis";
+import { PlayerArchetypeCard } from "@/components/PlayerArchetypeCard";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
@@ -215,6 +216,17 @@ export function PlayerProfilePage() {
     queryFn: () => fetchPlayerStats(playerId!, seasonType),
     enabled: !!playerId,
     placeholderData: keepPreviousData,
+  });
+
+  // Playing-style archetypes and similar players. Deliberately NOT keyed on
+  // seasonType: an archetype is fitted over a whole season, every segment
+  // together (see apps/similarity/player_seasons.py), so it would be the
+  // same answer for every segment and re-fetching on the selector would be
+  // pure noise.
+  const archetypeQuery = useQuery({
+    queryKey: ["playerArchetype", playerId],
+    queryFn: () => fetchPlayerArchetype(playerId!),
+    enabled: !!playerId,
   });
 
   const splitsQuery = useQuery({
@@ -657,6 +669,21 @@ export function PlayerProfilePage() {
               />
               <BioField label="Draft" value={formatDraft(player)} isPending={bioPending} />
             </div>
+          </section>
+          </Reveal>
+
+          <Reveal className="xl:col-span-3">
+          <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
+            <SectionHeading title="Style & similar players" />
+            {archetypeQuery.isPending && (
+              <p className="text-[12.5px] text-locker-ink-muted">Loading playing style…</p>
+            )}
+            {archetypeQuery.isError && (
+              <p className="text-[12.5px] text-locker-ink-muted">
+                Could not load playing style for this player.
+              </p>
+            )}
+            {archetypeQuery.data && <PlayerArchetypeCard data={archetypeQuery.data} />}
           </section>
           </Reveal>
 
