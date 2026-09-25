@@ -101,3 +101,16 @@ def select_first_names_by_nba_id(cursor, nba_player_ids: Iterable[int | None]) -
         (known_ids,),
     )
     return {row["nbaPlayerId"]: row["firstName"] for row in cursor.fetchall()}
+
+
+def select_player_ids_by_nba_id(cursor) -> dict[int, str]:
+    """nbaPlayerId -> internal id for every player already in the Player table.
+
+    What a pull uses in place of fresh rosters when it must not write any:
+    a past season (see ingest.py's resolve_player_ids) or a single phase run
+    against a database that already has them (ingest_postseason.py). A
+    player missing from the table has their plays rejected as
+    UNKNOWN_PLAYER and their stat rows skipped.
+    """
+    cursor.execute('SELECT "nbaPlayerId", "id" FROM "Player"')
+    return {row["nbaPlayerId"]: row["id"] for row in cursor.fetchall()}

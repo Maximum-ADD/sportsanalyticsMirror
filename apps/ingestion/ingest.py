@@ -60,7 +60,7 @@ from games import (
 from play_by_play import run_ingestion_batch
 from player_bios import fetch_player_bio, upsert_player_bio
 from player_game_logs import fetch_season_player_game_logs
-from rosters import fetch_team_roster, select_first_names_by_nba_id, upsert_players
+from rosters import fetch_team_roster, select_first_names_by_nba_id, select_player_ids_by_nba_id, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
 # The season a pull covers unless --season overrides it. Kept as a module
@@ -77,13 +77,27 @@ def ingest_teams(cursor) -> dict[int, str]:
     return team_id_by_nba_id
 
 
+def season_start_year(season: str) -> int:
+    """The calendar year a "YYYY-YY" season label starts in: 2023 for "2023-24"."""
+    return int(season[:4])
+
+
+def is_past_season(season: str) -> bool:
+    """True when `season` started before SEASON, the season rosters describe.
+
+    A newer season than SEASON is not "past": its rosters are the league as
+    it stands, so a pull for it may refresh them like a current one.
+    """
+    return season_start_year(season) < season_start_year(SEASON)
+
+
 def ingest_rosters(cursor, team_id_by_nba_id: dict[int, str], season: str = SEASON) -> dict[int, str]:
     """Ingests every team's roster for `season`, returns nbaPlayerId -> internal id.
 
-    The roster must be the pulled season's: play-by-play validation rejects
-    any action by a player missing from it (UNKNOWN_PLAYER), so a past
-    season pulled against this season's rosters loses every play by a
-    player who has since retired or left the league.
+    Only for the current season or a newer one — see resolve_player_ids for
+    why a past season never gets here. upsert_players writes each player's
+    Player.teamId, so whatever season this fetches becomes every player's
+    current team.
     """
     player_id_by_nba_id: dict[int, str] = {}
     for nba_team_id, team_internal_id in team_id_by_nba_id.items():
@@ -134,6 +148,62 @@ def select_players_missing_bios(cursor, player_id_by_nba_id: dict[int, str]) -> 
     # get_connection uses RealDictCursor, so rows are keyed by column name.
     missing_nba_ids = {row["nbaPlayerId"] for row in cursor.fetchall()}
     return {nba_id: player_id for nba_id, player_id in player_id_by_nba_id.items() if nba_id in missing_nba_ids}
+
+
+def ingest_current_players(
+    connection, team_id_by_nba_id: dict[int, str], season: str, window: GameWindow
+) -> dict[int, str]:
+    """Refreshes rosters, then bios, for the current (or a newer) season.
+
+    Returns nbaPlayerId -> internal id for every rostered player. Each step
+    commits on its own, so a failure in the long bio phase keeps the rosters.
+    """
+    with connection.cursor() as cursor:
+        player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id, season)
+    connection.commit()
+
+    with connection.cursor() as cursor:
+        # A windowed pull is "fetch these games", not "refresh the
+        # league": only new players need a bio, and skipping the rest
+        # removes ~8 minutes of fixed cost from every narrow pull.
+        bio_targets = (
+            player_id_by_nba_id
+            if window.is_open
+            else select_players_missing_bios(cursor, player_id_by_nba_id)
+        )
+        if not window.is_open:
+            print(f"Fetching bios for {len(bio_targets)} new player(s); skipping {len(player_id_by_nba_id) - len(bio_targets)} with bios.")
+        ingest_player_bios(cursor, bio_targets)
+    connection.commit()
+    return player_id_by_nba_id
+
+
+def resolve_player_ids(
+    connection, team_id_by_nba_id: dict[int, str], season: str, window: GameWindow
+) -> dict[int, str]:
+    """nbaPlayerId -> internal id for every player this pull can attach plays and stat rows to.
+
+    The current season, or a newer one, refreshes rosters and bios first
+    (ingest_current_players), so trades and signings land before their games.
+
+    A past season writes no players at all and uses the ones already in the
+    database. Its rosters would be wrong for today: upsert_players sets
+    Player.teamId, so a 2023-24 roster would move everyone traded since back
+    to their old team and add retired players to current rosters, on every
+    page that shows a player's team. The cost is the one
+    ingest_historical_season.py already accepts: plays and stat rows by a
+    player no longer in the league are skipped (UNKNOWN_PLAYER).
+    """
+    if not is_past_season(season):
+        return ingest_current_players(connection, team_id_by_nba_id, season, window)
+
+    with connection.cursor() as cursor:
+        player_id_by_nba_id = select_player_ids_by_nba_id(cursor)
+    print(
+        f"{season} is a past season: rosters and bios are left alone, using the "
+        f"{len(player_id_by_nba_id)} players already in the database."
+    )
+    return player_id_by_nba_id
 
 
 def collect_recent_game_dates(
@@ -429,23 +499,7 @@ def main() -> None:
             team_id_by_nba_id = ingest_teams(cursor)
         connection.commit()
 
-        with connection.cursor() as cursor:
-            player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id, season)
-        connection.commit()
-
-        with connection.cursor() as cursor:
-            # A windowed pull is "fetch these games", not "refresh the
-            # league": only new players need a bio, and skipping the rest
-            # removes ~8 minutes of fixed cost from every narrow pull.
-            bio_targets = (
-                player_id_by_nba_id
-                if window.is_open
-                else select_players_missing_bios(cursor, player_id_by_nba_id)
-            )
-            if not window.is_open:
-                print(f"Fetching bios for {len(bio_targets)} new player(s); skipping {len(player_id_by_nba_id) - len(bio_targets)} with bios.")
-            ingest_player_bios(cursor, bio_targets)
-        connection.commit()
+        player_id_by_nba_id = resolve_player_ids(connection, team_id_by_nba_id, season, window)
 
         game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id, season, window)
         # Two calls for the whole regular season, rather than two per game.

@@ -153,13 +153,20 @@ python ingest.py --from-date 2026-04-14 --to-date 2026-04-18  # only games in th
 | Flag | Default | Effect |
 |---|---|---|
 | `--review` | off | Batches land as `PENDING_REVIEW` for approval in the admin Batches tab, instead of `COMPLETED`. The admin **Pull Data** button always passes this. |
-| `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. |
+| `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. A season before the default leaves rosters and bios alone (see below). |
 | `--from-date` | none | Only games on or after this date (`YYYY-MM-DD`, inclusive). |
 | `--to-date` | none | Only games on or before this date (`YYYY-MM-DD`, inclusive). |
 
 Either date bound can be given alone. Malformed or inverted dates are
 rejected at startup, before any API call. The admin Batches tab exposes the
 same three options next to **Pull Data**.
+
+**A past season never touches rosters.** Rosters set each player's current
+team, so pulling 2023-24's would move everyone traded since back to their
+old team and put retired players on current rosters. A pull for a season
+older than the default instead uses the players already in the database, and
+skips plays and stat rows by anyone no longer in the league
+(`UNKNOWN_PLAYER`), the same trade-off `ingest_historical_season.py` makes.
 
 **A windowed pull only pays for what it fetches.** With a date window:
 
