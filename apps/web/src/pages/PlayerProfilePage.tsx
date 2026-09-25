@@ -406,7 +406,7 @@ export function PlayerProfilePage() {
             {!hasGamesInSegment && (
               <div className="mt-4 border border-landing-light bg-landing-hero px-4 py-3">
                 <p className="text-[12.5px] text-locker-ink-muted">
-                  {player.firstName} {player.lastName} did not play in the {formatSeasonType(seasonType)} this season
+                  {player.firstName} {player.lastName} has no {formatSeasonType(seasonType)} games on record
                   — the figures below are all zero because there are no games to derive them from, not because they
                   were poor.
                 </p>

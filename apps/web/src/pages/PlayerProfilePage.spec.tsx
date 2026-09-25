@@ -301,7 +301,7 @@ describe("PlayerProfilePage season segments", () => {
 
     renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=play-in"]);
 
-    expect(await screen.findByText(/did not play in the Play-In this season/)).toBeInTheDocument();
+    expect(await screen.findByText(/has no Play-In games on record/)).toBeInTheDocument();
   });
 
   it("clears local stat edits when the segment changes, so an edited regular-season figure can't appear in a postseason view", async () => {

@@ -49,7 +49,7 @@ describe("SeasonSplitsTable", () => {
 
     render(<SeasonSplitsTable splits={splits} playerName="LeBron James" />);
 
-    expect(screen.getByText(/LeBron James has no postseason games in this season/)).toBeInTheDocument();
+    expect(screen.getByText(/LeBron James has no postseason games on record/)).toBeInTheDocument();
   });
 
   it("omits segments the player didn't appear in rather than showing them as zeros", () => {

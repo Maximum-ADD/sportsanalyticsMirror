@@ -107,8 +107,7 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
   if (postseasonSegments.length === 0) {
     return (
       <p className="text-[12.5px] text-locker-ink-muted">
-        {playerName} has no postseason games in this season, so there's nothing to compare against their regular
-        season yet.
+        {playerName} has no postseason games on record, so there's nothing to compare their regular season against.
       </p>
     );
   }
