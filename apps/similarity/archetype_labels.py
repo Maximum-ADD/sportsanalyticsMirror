@@ -7,6 +7,28 @@ than against cluster numbers.
 
 Reference fit: 2025-26, whole season (all segments), k=9.
 
+STALE AS OF 2026-09-25 - DO NOT SHIP THESE NAMES YET. The centroids below
+were read off a fit that predates the 2026-09-23 re-ingestion of 2025-26.
+Re-running the fit against the re-pulled data still attaches all nine names
+with nothing left unnamed, but two of them no longer describe their group:
+
+  - "Defensive guard" described a tight 12-player cluster stealing 2.48 per
+    36 minutes. That cluster no longer exists; no cluster now exceeds 1.90.
+    The name has attached itself to a 36-player combo-guard group (Caldwell-
+    Pope, Edgecombe, Monk) that is nothing like it.
+  - "Low-usage forward" now sits on the group with the highest steal rate
+    (1.90), which is closer to what "Defensive guard" was meant to mean.
+
+This is worth understanding rather than just fixing: centroid matching
+guarantees a STABLE ASSIGNMENT, not that a name still fits. When a group
+stops existing, the nearest surviving centroid inherits its name, which is
+correct behaviour and wrong output. A re-fit therefore needs a human to
+re-read the clusters, not merely a re-run of the matcher.
+
+Deliberately not re-named yet: the older-postseason backfill has still to
+load, which will move 2025-26 again. Re-name once, against the final data,
+with explore_fit.py --emit-labels.
+
 The names come from standard basketball vernacular. Seven of the nine match
 role names in the Athlore archetype taxonomy
 (https://athlore.app/discover/archetypes), used here as a naming vocabulary
