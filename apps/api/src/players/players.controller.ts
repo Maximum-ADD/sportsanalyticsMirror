@@ -8,6 +8,7 @@ import { OptionalSessionGuard } from "../common/optional-session.guard.js";
 import { toCsv } from "../common/csv.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService, type PlayerWithTeam } from "./players.service.js";
+import { ArchetypesService, type PlayerArchetypeResponse } from "./archetypes.service.js";
 import {
   DEFAULT_LEADERS_MIN_GAMES,
   POSTSEASON_LEADERS_MIN_GAMES,
@@ -105,7 +106,8 @@ function parseBatchStatsIds(ids: unknown): string[] {
 export class PlayersController {
   constructor(
     private readonly playersService: PlayersService,
-    private readonly statsService: StatsService
+    private readonly statsService: StatsService,
+    private readonly archetypesService: ArchetypesService
   ) {}
 
   // GET /v1/players?teamId=&position=&search=&page=&pageSize=&sort=&order=&minGames=
@@ -343,6 +345,44 @@ export class PlayersController {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
     }
     return { playerId: id, career };
+  }
+
+  // GET /v1/players/:id/archetype?season=2025-26 — the player's playing-style
+  // archetypes and the players most stylistically like them. Declared before
+  // ":id" so "archetype" is never swallowed as a player id.
+  //
+  // Two-step 404, like getPlayerStats: "no such player" and "this player has
+  // no archetype" are different answers and the profile card renders them
+  // differently. A player under the minutes floor is deliberately left
+  // unplaced rather than given a label their sample cannot support, so the
+  // second case is normal rather than exceptional and returns 200 with a
+  // null archetype instead of an error.
+  @Get(":id/archetype")
+  @ApiOperation({ summary: "Playing-style archetypes and similar players" })
+  @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiQuery({ name: "season", required: false, description: "Season to read (e.g. 2025-26). Defaults to the most recently fitted season." })
+  @ApiResponse({ status: 200, description: "Archetypes and similar players, or nulls when the player has none" })
+  @ApiResponse({ status: 404, description: "Player not found" })
+  async getPlayerArchetype(
+    @Param("id") id: string,
+    @Query("season") rawSeason: unknown
+  ): Promise<{ playerId: string; season: string | null; archetype: PlayerArchetypeResponse | null }> {
+    const player = await this.playersService.getPlayerById(id);
+    if (!player) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
+    }
+
+    const season = await this.archetypesService.resolveSeason(
+      typeof rawSeason === "string" && rawSeason.trim() ? rawSeason.trim() : undefined
+    );
+    // No season has a fitted model yet — apps/similarity has never been run
+    // against this database. Not an error, and not the player's fault.
+    if (!season) {
+      return { playerId: id, season: null, archetype: null };
+    }
+
+    const archetype = await this.archetypesService.getPlayerArchetype(id, season);
+    return { playerId: id, season, archetype };
   }
 
   @Get(":id")
