@@ -60,7 +60,7 @@ from games import (
 from play_by_play import run_ingestion_batch
 from player_bios import fetch_player_bio, upsert_player_bio
 from player_game_logs import fetch_season_player_game_logs
-from rosters import fetch_team_roster, upsert_players
+from rosters import fetch_team_roster, select_first_names_by_nba_id, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
 # The season a pull covers unless --season overrides it. Kept as a module
@@ -296,7 +296,9 @@ def ingest_games_and_stats(
                 f"  {nba_game_id}: rejected {batch_summary['rejected']} play-by-play rows "
                 f"({batch_summary['rejection_counts']}) — see IngestionBatch {batch_summary['batch_id']}."
             )
-        derived_stats_by_nba_player_id = aggregate_player_game_stats(batch_summary["accepted_events"])
+        accepted_events = batch_summary["accepted_events"]
+        first_name_by_nba_id = select_first_names_by_nba_id(cursor, (event.get("personId") for event in accepted_events))
+        derived_stats_by_nba_player_id = aggregate_player_game_stats(accepted_events, first_name_by_nba_id)
 
         for player_stats in boxscore["players"]:
             player_internal_id = player_id_by_nba_id.get(player_stats["nba_player_id"])
@@ -338,6 +340,17 @@ def ingest_games_and_stats(
                 player_games_missing_derived_stats += 1
 
             upsert_player_game_stat(cursor, player_internal_id, game_internal_id, team_internal_id, merged_stats)
+
+        # Committed per game, not once for the whole phase (the caller's
+        # end-of-phase commit still runs too, as a no-op once this has
+        # already landed everything). One phase can run 400+ games over
+        # ~40 minutes; without this, a crash on game 300 would roll back
+        # games 1-299 along with it, even though they'd already succeeded —
+        # the durability half of "a batch that fails part way through
+        # resumes rather than restarts" needs every completed game to
+        # actually survive a later failure, not just the failing one's own
+        # FAILED marker (see the matching commit in run_ingestion_batch).
+        cursor.connection.commit()
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
     if player_games_missing_extra_figures:

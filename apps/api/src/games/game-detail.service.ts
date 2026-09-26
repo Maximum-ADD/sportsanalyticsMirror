@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Player, PlayerGameStat, Team } from "@prisma/client";
 import { DERIVED_DATA_TTL_MS } from "../cache/cache-ttl.js";
 import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { GameWithTeamsAndPrediction } from "./games.service.js";
 import { GamesService } from "./games.service.js";
@@ -153,7 +154,7 @@ export class GameDetailService {
     const allPriorGameStats = await this.prisma.playerGameStat.findMany({
       where: {
         playerId: { in: rosterPlayers.map((player) => player.id) },
-        game: { gameDate: { lt: game.gameDate }, seasonType: MODELLED_SEASON_TYPE },
+        game: { gameDate: { lt: game.gameDate }, seasonType: MODELLED_SEASON_TYPE, ...PUBLISHED_GAME_FILTER },
       },
       select: { playerId: true, points: true },
       orderBy: { game: { gameDate: "desc" } },

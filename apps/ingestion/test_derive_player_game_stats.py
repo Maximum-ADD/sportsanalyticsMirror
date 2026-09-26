@@ -300,3 +300,83 @@ def test_still_refuses_to_guess_between_same_team_players_with_the_same_initial(
 
     assert CURRY not in result
     assert seth not in result
+
+
+# Real 2025-26 play-by-play: OKC's Jalen and Jaylin Williams are credited as
+# "Jal. Williams" and "Jay. Williams", but the feed's playerNameI is
+# "J. Williams" for both, so their full first names come from the roster.
+JALEN, JAYLIN = 1631114, 1631119
+WILLIAMS_FIRST_NAMES = {JALEN: "Jalen", JAYLIN: "Jaylin"}
+
+
+def williams_teammates() -> list[dict]:
+    return [
+        player_row(JALEN, "Williams", "J. Williams", WARRIORS),
+        player_row(JAYLIN, "Williams", "J. Williams", WARRIORS),
+    ]
+
+
+def test_tells_same_initial_teammates_apart_by_the_longer_prefix_nba_writes():
+    events = [
+        shot("2pt", True, "Curry 1' Alley Oop Dunk Shot (2 PTS) (Jal. Williams 1 AST)"),
+        shot("2pt", True, "Curry 3' Layup (4 PTS) (Jay. Williams 1 AST)"),
+        *williams_teammates(),
+    ]
+
+    result = aggregate_player_game_stats(events, WILLIAMS_FIRST_NAMES)
+
+    assert result[JALEN]["assists"] == 1
+    assert result[JAYLIN]["assists"] == 1
+
+
+def test_uses_a_longer_prefix_like_st_curry_to_pick_between_same_initial_teammates():
+    seth = 203552
+    events = [
+        {**shot("2pt", True, "Green 3' Layup (2 PTS) (St. Curry 1 AST)"), "personId": GREEN, "playerName": "Green", "playerNameI": "D. Green"},
+        player_row(CURRY, "Curry", "S. Curry", WARRIORS),
+        player_row(seth, "Curry", "S. Curry", WARRIORS),
+    ]
+
+    result = aggregate_player_game_stats(events, {CURRY: "Stephen", seth: "Seth"})
+
+    assert result[CURRY]["assists"] == 1
+    assert seth not in result
+
+
+def test_still_refuses_to_guess_when_the_prefix_fits_both_first_names():
+    chris, christian = 1, 2
+    events = [
+        shot("2pt", True, "Curry 3' Layup (2 PTS) (Chris. Wood 1 AST)"),
+        player_row(chris, "Wood", "C. Wood", WARRIORS),
+        player_row(christian, "Wood", "C. Wood", WARRIORS),
+    ]
+
+    result = aggregate_player_game_stats(events, {chris: "Chris", christian: "Christian"})
+
+    assert chris not in result
+    assert christian not in result
+
+
+def test_keeps_refusing_when_the_first_name_that_would_settle_it_is_unknown():
+    events = [shot("2pt", True, "Curry 1' Alley Oop Dunk Shot (2 PTS) (Jal. Williams 1 AST)"), *williams_teammates()]
+
+    # Jaylin's first name is missing, so "Jal." can't rule him out.
+    result = aggregate_player_game_stats(events, {JALEN: "Jalen"})
+
+    assert JALEN not in result
+    assert JAYLIN not in result
+
+
+def test_leaves_same_initial_credits_unresolved_without_first_names():
+    events = [shot("2pt", True, "Curry 1' Alley Oop Dunk Shot (2 PTS) (Jal. Williams 1 AST)"), *williams_teammates()]
+
+    result = aggregate_player_game_stats(events)
+
+    assert JALEN not in result
+    assert JAYLIN not in result
+
+
+def test_build_game_roster_adds_folded_first_names_when_given():
+    roster = build_game_roster([player_row(JALEN, "Williams", "J. Williams", WARRIORS)], {JALEN: "Jalen"})
+
+    assert roster == {JALEN: RosterEntry("williams", "j", WARRIORS, "jalen")}

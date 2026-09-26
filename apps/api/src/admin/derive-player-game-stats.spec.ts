@@ -270,13 +270,66 @@ describe("deriveGameEventStats — credit names as NBA actually writes them", ()
     expect(result.get(CURRY)?.assists ?? 0).toBe(0);
     expect(result.get(seth)?.assists ?? 0).toBe(0);
   });
+
+  // Real 2025-26 play-by-play: OKC's Jalen and Jaylin Williams are credited
+  // as "Jal. Williams" and "Jay. Williams". One letter can't tell them
+  // apart; NBA's longer prefix can.
+  it("tells same-initial teammates apart by the longer prefix NBA writes", () => {
+    const jalen = "jalen-williams-id";
+    const jaylin = "jaylin-williams-id";
+    const names = new Map(NAMES)
+      .set(jalen, { firstName: "Jalen", lastName: "Williams" })
+      .set(jaylin, { firstName: "Jaylin", lastName: "Williams" });
+
+    const result = deriveGameEventStats(
+      [
+        madeShot("2pt", CURRY, "Curry 1' Alley Oop Dunk Shot (2 PTS) (Jal. Williams 1 AST)", 2),
+        madeShot("2pt", CURRY, "Curry 3' Layup (4 PTS) (Jay. Williams 1 AST)", 2),
+        appearsInGame(jalen),
+        appearsInGame(jaylin),
+      ],
+      names,
+    );
+
+    expect(result.get(jalen)?.assists).toBe(1);
+    expect(result.get(jaylin)?.assists).toBe(1);
+  });
+
+  it("uses a longer prefix like 'St. Curry' to pick between same-initial teammates", () => {
+    const seth = "seth-curry-id";
+    const names = new Map(NAMES).set(seth, { firstName: "Seth", lastName: "Curry" });
+
+    const result = deriveGameEventStats(
+      [madeShot("2pt", GREEN, "Green 3' Layup (2 PTS) (St. Curry 1 AST)", 2), appearsInGame(CURRY), appearsInGame(seth)],
+      names,
+    );
+
+    expect(result.get(CURRY)?.assists).toBe(1);
+    expect(result.get(seth)?.assists ?? 0).toBe(0);
+  });
+
+  it("still refuses to guess when the prefix fits both first names", () => {
+    const chris = "chris-wood-id";
+    const christian = "christian-wood-id";
+    const names = new Map(NAMES)
+      .set(chris, { firstName: "Chris", lastName: "Wood" })
+      .set(christian, { firstName: "Christian", lastName: "Wood" });
+
+    const result = deriveGameEventStats(
+      [madeShot("2pt", CURRY, "Curry 3' Layup (2 PTS) (Chris. Wood 1 AST)", 2), appearsInGame(chris), appearsInGame(christian)],
+      names,
+    );
+
+    expect(result.get(chris)?.assists ?? 0).toBe(0);
+    expect(result.get(christian)?.assists ?? 0).toBe(0);
+  });
 });
 
 describe("buildGameRoster", () => {
   it("keeps each acting player's folded names and team, and skips team rows", () => {
     const roster = buildGameRoster([appearsInGame(CURRY), event({ description: "Warriors Rebound" })], NAMES);
 
-    expect(roster).toEqual(new Map([[CURRY, { surname: "curry", firstInitial: "s", teamId: WARRIORS }]]));
+    expect(roster).toEqual(new Map([[CURRY, { surname: "curry", firstInitial: "s", firstName: "stephen", teamId: WARRIORS }]]));
   });
 
   it("skips a player missing from the name lookup", () => {
@@ -291,7 +344,7 @@ describe("credit name matching", () => {
   });
 
   it("matches a bare surname or a prefix starting with the first initial", () => {
-    const lebron = { surname: "james", firstInitial: "l", teamId: WARRIORS };
+    const lebron = { surname: "james", firstInitial: "l", firstName: "lebron", teamId: WARRIORS };
     expect(creditNameMatches("james", lebron)).toBe(true);
     expect(creditNameMatches("l. james", lebron)).toBe(true);
     expect(creditNameMatches("b. james", lebron)).toBe(false);

@@ -2,6 +2,7 @@ import type { Game, Team } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GamesService } from "./games.service.js";
 import { ResponseCacheService } from "../cache/response-cache.service.js";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 
 const HOME_TEAM = { id: "team-home" } as Team;
@@ -210,7 +211,7 @@ describe("GamesService", () => {
 
     expect(result).toEqual({ data: events, page: 1, pageSize: 25, total: 1 });
     expect(prisma.gameEvent.findMany).toHaveBeenCalledWith({
-      where: { gameId: "game-1" },
+      where: { gameId: "game-1", game: PUBLISHED_GAME_FILTER },
       orderBy: { sequence: "asc" },
       skip: 0,
       take: 25,

@@ -2,12 +2,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthStatus } from "./AuthStatus";
 import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { fetchMe } from "@/lib/meApi";
-import { fetchMyProspectRank } from "@/lib/becomeProApi";
-import { makeProspectRankSummary } from "@/test/becomeProFixtures";
 import type { MeProfile } from "@/types/nba";
 
 vi.mock("@/lib/authClient", () => ({
@@ -18,13 +16,6 @@ vi.mock("@/lib/authClient", () => ({
 vi.mock("@/lib/meApi", () => ({
   fetchMe: vi.fn(),
 }));
-
-// Required, not optional: the mock factories in this file replace the whole
-// module, so without this the header cannot mount at all once it reads a rank.
-vi.mock("@/lib/becomeProApi", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/becomeProApi")>("@/lib/becomeProApi");
-  return { ...actual, fetchMyProspectRank: vi.fn() };
-});
 
 function renderWithProviders(signInCallbackURL?: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -49,14 +40,6 @@ const ME: MeProfile = {
 };
 
 describe("AuthStatus", () => {
-  beforeEach(() => {
-    // Unranked by default: the badge renders nothing, so every assertion about
-    // the account link's accessible name stays the name alone.
-    vi.mocked(fetchMyProspectRank).mockResolvedValue(
-      makeProspectRankSummary({ rank: null, rankState: "BELOW_GAMES_FLOOR" })
-    );
-  });
-
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -148,33 +131,5 @@ describe("AuthStatus", () => {
     const link = await screen.findByRole("link", { name: "playerone" });
 
     expect(link.textContent).toContain("P");
-  });
-
-  // The literal ask: a #number badge next to your name. This is the one place
-  // the name appears on every page.
-  it("shows the Become Pro rank beside the name", async () => {
-    vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com", name: "Player One" } },
-      isPending: false,
-    } as never);
-    vi.mocked(fetchMe).mockResolvedValue(ME);
-    vi.mocked(fetchMyProspectRank).mockResolvedValue(makeProspectRankSummary({ rank: 12 }));
-
-    renderWithProviders();
-
-    expect(await screen.findByLabelText("Rank 12 on the Become Pro board")).toBeInTheDocument();
-  });
-
-  it("shows no badge for an account that is not ranked yet", async () => {
-    vi.mocked(useSession).mockReturnValue({
-      data: { user: { email: "player@example.com", name: "Player One" } },
-      isPending: false,
-    } as never);
-    vi.mocked(fetchMe).mockResolvedValue(ME);
-
-    renderWithProviders();
-    await screen.findByRole("link", { name: "playerone" });
-
-    expect(screen.queryByText(/^#/)).not.toBeInTheDocument();
   });
 });

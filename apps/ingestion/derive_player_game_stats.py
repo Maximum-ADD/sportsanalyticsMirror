@@ -90,6 +90,10 @@ class RosterEntry(NamedTuple):
     surname: str  # folded, e.g. "jokic", "james"
     first_initial: str  # folded, e.g. "l" for "L. James"; "" if unknown
     team_id: int | None  # the team they played for in this game
+    # Folded, in full, e.g. "jalen"; "" if unknown. Not in the feed (its
+    # playerNameI is "J. Williams" for both Jalen and Jaylin), so it comes
+    # from the ingested roster: see aggregate_player_game_stats.
+    first_name: str = ""
 
 
 # The team a credit comes from, relative to the team of the row it's on:
@@ -98,14 +102,17 @@ class RosterEntry(NamedTuple):
 CREDIT_FROM_SAME_TEAM = {"assists": True, "blocks": False, "steals": False}
 
 
-def build_game_roster(events: list[dict]) -> dict[int, RosterEntry]:
-    """personId -> surname, first initial and team, from this game's own
-    events.
+def build_game_roster(events: list[dict], first_name_by_person_id: dict[int, str] | None = None) -> dict[int, RosterEntry]:
+    """personId -> surname, first initial, team and first name, from this
+    game's own events.
 
     Every player who does anything in a game appears at least once with
     their personId, playerName (surname), playerNameI ("L. James") and
-    teamId, so this needs no external roster lookup.
+    teamId. `first_name_by_person_id` adds each player's full first name
+    where it's known; a player missing from it gets "" and is matched by
+    initial only, as before.
     """
+    first_names = first_name_by_person_id or {}
     roster: dict[int, RosterEntry] = {}
     for event in events:
         person_id = event.get("personId")
@@ -114,8 +121,25 @@ def build_game_roster(events: list[dict]) -> dict[int, RosterEntry]:
             continue
         initial_name = fold_name(event.get("playerNameI") or "")
         first_initial = initial_name.split(".", 1)[0] if "." in initial_name else ""
-        roster[person_id] = RosterEntry(fold_name(player_name), first_initial[:1], event.get("teamId") or None)
+        roster[person_id] = RosterEntry(
+            fold_name(player_name),
+            first_initial[:1],
+            event.get("teamId") or None,
+            fold_name(first_names.get(person_id) or ""),
+        )
     return roster
+
+
+def credit_first_name_prefix(credit_name: str, player: RosterEntry) -> str | None:
+    """The first-name prefix a folded credit name puts before this player's
+    surname, without its dot: "jal" for "jal. williams", "" for a bare
+    "williams", or None when the credit doesn't end in their surname at all.
+    """
+    if credit_name == player.surname:
+        return ""
+    if not credit_name.endswith(" " + player.surname):
+        return None
+    return credit_name[: -len(player.surname)].strip().removesuffix(".")
 
 
 def credit_name_matches(credit_name: str, player: RosterEntry) -> bool:
@@ -127,12 +151,31 @@ def credit_name_matches(credit_name: str, player: RosterEntry) -> bool:
     letter ("L. James") or more ("St. Curry"). The prefix must begin with
     the player's first initial.
     """
-    if credit_name == player.surname:
-        return True
-    if not credit_name.endswith(" " + player.surname) or not player.first_initial:
+    prefix = credit_first_name_prefix(credit_name, player)
+    if prefix is None:
         return False
-    prefix = credit_name[: -len(player.surname)].strip().rstrip(".")
-    return prefix.startswith(player.first_initial)
+    if prefix == "":
+        return True
+    return bool(player.first_initial) and prefix.startswith(player.first_initial)
+
+
+def narrow_by_first_name_prefix(candidates: list[int], credit_name: str, roster: dict[int, RosterEntry]) -> list[int]:
+    """Of `candidates` (personIds whose name fits the credit), the ones whose
+    full first name starts with the credit's whole prefix.
+
+    NBA prefixes as many letters as it takes to tell two players apart
+    ("Jal. Williams" and "Jay. Williams" are Jalen and Jaylin), and those
+    extra letters are the only thing that separates two teammates who share
+    a surname and an initial. A candidate whose first name isn't known is
+    kept, so a gap in the names never turns into a guess.
+    """
+
+    def fits_prefix(person_id: int) -> bool:
+        player = roster[person_id]
+        prefix = credit_first_name_prefix(credit_name, player) or ""
+        return not player.first_name or player.first_name.startswith(prefix)
+
+    return [person_id for person_id in candidates if fits_prefix(person_id)]
 
 
 def resolve_secondary_player(
@@ -148,7 +191,10 @@ def resolve_secondary_player(
     does — two players share a surname, and NBA only disambiguates within a
     roster, so "(Green 1 AST)" can mean Draymond or Jalen when they're on
     opposite sides — the one on the expected side of the event's team
-    (see CREDIT_FROM_SAME_TEAM) is kept.
+    (see CREDIT_FROM_SAME_TEAM) is kept, and if that still leaves more than
+    one, the one whose first name the credit's full prefix fits (see
+    narrow_by_first_name_prefix). Both steps only run while the name is
+    still ambiguous, so neither can change a credit that already resolves.
 
     Returns None when there's no suffix (an unassisted shot, an unblocked
     miss — not missing data) or the name still doesn't narrow to exactly one
@@ -165,10 +211,12 @@ def resolve_secondary_player(
         candidates = [
             person_id for person_id in candidates if (roster[person_id].team_id == event_team_id) == from_same_team
         ]
+    if len(candidates) > 1:
+        candidates = narrow_by_first_name_prefix(candidates, credit_name, roster)
     return candidates[0] if len(candidates) == 1 else None
 
 
-def aggregate_player_game_stats(events: list[dict]) -> dict[int, dict]:
+def aggregate_player_game_stats(events: list[dict], first_name_by_person_id: dict[int, str] | None = None) -> dict[int, dict]:
     """Aggregates one game's accepted events into nba_player_id -> counting stats.
 
     `events` must already be the ACCEPTED rows for a single game (see
@@ -176,8 +224,13 @@ def aggregate_player_game_stats(events: list[dict]) -> dict[int, dict]:
     subType/personId are well-formed and does no further validation of its
     own. Team-attributed actions (TEAM_ACTION_PERSON_ID) never contribute
     to any player's totals.
+
+    `first_name_by_person_id` (nba_player_id -> first name, from the
+    ingested roster: see rosters.select_first_names_by_nba_id) lets a
+    credit tell apart teammates who share a surname and an initial. Without
+    it those credits stay unresolved, as they always were.
     """
-    roster = build_game_roster(events)
+    roster = build_game_roster(events, first_name_by_person_id)
     stats_by_player: dict[int, dict] = defaultdict(_empty_stat_line)
 
     for event in events:

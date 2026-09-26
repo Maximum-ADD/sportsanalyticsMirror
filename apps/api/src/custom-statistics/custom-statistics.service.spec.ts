@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { CustomStatisticsService } from "./custom-statistics.service.js";
 
 function createPrismaMock() {
@@ -64,7 +65,9 @@ describe("CustomStatisticsService", () => {
       gamesCount: 2,
       value: 20,
     });
-    expect(prisma.playerGameStat.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { playerId: "player-1", game: { seasonType: "PLAYOFF" } } }));
+    expect(prisma.playerGameStat.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { playerId: "player-1", game: { seasonType: "PLAYOFF", ...PUBLISHED_GAME_FILTER } } })
+    );
   });
 
   it("calculates zero-valued averages when a player has no games", async () => {
@@ -74,6 +77,8 @@ describe("CustomStatisticsService", () => {
     const service = new CustomStatisticsService(prisma as never);
 
     await expect(service.calculateDefinition("author-1", "definition-1", "player-1")).resolves.toMatchObject({ gamesCount: 0, value: 0 });
-    expect(prisma.playerGameStat.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { playerId: "player-1" } }));
+    expect(prisma.playerGameStat.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { playerId: "player-1", game: PUBLISHED_GAME_FILTER } })
+    );
   });
 });

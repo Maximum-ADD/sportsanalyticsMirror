@@ -137,6 +137,12 @@ export function rejectAdminBatch(batchId: string, reviewNotes?: string): Promise
 
 // --- Event Corrections ---
 
+export interface CorrectionTeam {
+  id: string;
+  name: string;
+  abbreviation: string;
+}
+
 export interface EventCorrection {
   id: string;
   gameId: string;
@@ -146,17 +152,179 @@ export interface EventCorrection {
   correctedById: string | null;
   reason: string | null;
   correctedAt: string;
-  game: { id: string; gameDate: string; season: string; nbaGameId: string };
+  // Set when this correction is an undo: the correction it reverted.
+  revertsCorrectionId: string | null;
+  game: {
+    id: string;
+    gameDate: string;
+    season: string;
+    nbaGameId: string;
+    homeTeam: CorrectionTeam;
+    awayTeam: CorrectionTeam;
+  };
   correctedBy: { id: string; name: string } | null;
+  // The undo of this correction, once it has been undone.
+  revertedBy: { id: string; correctedAt: string } | null;
+  // playerId -> "First Last" for the player ids in previousValues/newValues.
+  playerNames: Record<string, string>;
 }
 
 export interface FetchAdminCorrectionsParams {
+  gameId?: string;
   page?: number;
   pageSize?: number;
 }
 
 export function fetchAdminCorrections(params: FetchAdminCorrectionsParams = {}): Promise<PagedResult<EventCorrection>> {
   return fetchJson<PagedResult<EventCorrection>>(`/v1/admin/events/corrections${toQueryString(params)}`);
+}
+
+export interface AdminGameTeam {
+  id: string;
+  name: string;
+  abbreviation: string;
+  city: string;
+  logoUrl: string | null;
+}
+
+export interface AdminGameSummary {
+  id: string;
+  nbaGameId: string;
+  gameDate: string;
+  season: string;
+  seasonType: string;
+  homeTeam: AdminGameTeam;
+  awayTeam: AdminGameTeam;
+  homeScore: number | null;
+  awayScore: number | null;
+  // Games ingested before real play-by-play hold only a few period markers.
+  eventCount: number;
+  correctionCount: number;
+}
+
+export interface FetchAdminGamesParams {
+  season?: string;
+  teamId?: string;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminGames(params: FetchAdminGamesParams = {}): Promise<PagedResult<AdminGameSummary>> {
+  return fetchJson<PagedResult<AdminGameSummary>>(`/v1/admin/games${toQueryString(params)}`);
+}
+
+export interface AdminGameEvent {
+  sequence: number;
+  period: number;
+  clock: string;
+  eventType: string;
+  subType: string | null;
+  playerId: string | null;
+  playerName: string | null;
+  teamId: string | null;
+  success: boolean | null;
+  value: number | null;
+  description: string;
+  // Who the play's assist/block/steal credit resolves to, as the stats
+  // derivation resolves it; null when there's none or it's ambiguous.
+  creditPlayerId: string | null;
+  isCorrected: boolean;
+}
+
+/** A player with a box-score row for the game, and their team in it. */
+export interface AdminRosterPlayer {
+  id: string;
+  firstName: string;
+  lastName: string;
+  teamId: string | null;
+}
+
+export interface AdminGamePlayByPlay {
+  game: Omit<AdminGameSummary, "eventCount" | "correctionCount">;
+  events: AdminGameEvent[];
+  roster: AdminRosterPlayer[];
+  eventTypes: string[];
+}
+
+export function fetchAdminPlayByPlay(gameId: string): Promise<AdminGamePlayByPlay> {
+  return fetchJson<AdminGamePlayByPlay>(`/v1/admin/games/${gameId}/events`);
+}
+
+/** The GameEvent fields a correction can change. */
+export interface CorrectableEventFields {
+  period: number;
+  clock: string;
+  eventType: string;
+  subType: string | null;
+  playerId: string | null;
+  teamId: string | null;
+  success: boolean | null;
+  value: number | null;
+  description: string;
+}
+
+/**
+ * A correction: the fields to change, the play's assist/block/steal credit
+ * (a playerId, null for none, omitted to leave it alone) and a reason.
+ */
+export type CorrectionRequestBody = Partial<CorrectableEventFields> & {
+  creditPlayerId?: string | null;
+  reason: string;
+};
+
+export interface CorrectionFieldChange {
+  field: keyof CorrectableEventFields;
+  from: unknown;
+  to: unknown;
+}
+
+export interface PlayerStatChange {
+  playerId: string;
+  playerName: string;
+  stats: { field: string; before: number | null; after: number }[];
+}
+
+/** What a correction does (or, from a preview, would do). */
+export interface CorrectionOutcome {
+  gameId: string;
+  sequence: number;
+  season: string;
+  changes: CorrectionFieldChange[];
+  statChanges: PlayerStatChange[];
+}
+
+export interface SavedCorrection extends CorrectionOutcome {
+  correction: { id: string };
+  // How many of the season's dataset releases this marked stale.
+  releasesMarkedStale: number;
+}
+
+export function previewEventCorrection(
+  gameId: string,
+  sequence: number,
+  body: CorrectionRequestBody,
+): Promise<CorrectionOutcome> {
+  return sendJson<CorrectionOutcome>(`/v1/admin/games/${gameId}/events/${sequence}/preview`, "POST", body);
+}
+
+export function correctGameEvent(gameId: string, sequence: number, body: CorrectionRequestBody): Promise<SavedCorrection> {
+  return sendJson<SavedCorrection>(`/v1/admin/games/${gameId}/events/${sequence}/correct`, "POST", body);
+}
+
+export function revertEventCorrection(correctionId: string, reason: string): Promise<SavedCorrection> {
+  return sendJson<SavedCorrection>(`/v1/admin/corrections/${correctionId}/revert`, "POST", { reason });
+}
+
+export interface ReplayResult {
+  gameId: string;
+  playersRecomputed: number;
+  playersChanged: number;
+}
+
+export function replayAdminGame(gameId: string): Promise<ReplayResult> {
+  return sendJson<ReplayResult>(`/v1/admin/games/${gameId}/replay`, "POST");
 }
 
 // --- API Consumers ---

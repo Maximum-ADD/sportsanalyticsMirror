@@ -51,6 +51,28 @@ describe("Admin endpoints — unauthenticated access", () => {
     expect(response.status).toBe(401);
   });
 
+  it("POST /v1/admin/games/:gameId/events/:sequence/preview returns 401 without session", async () => {
+    const response = await request(app.getHttpServer())
+      .post("/v1/admin/games/fake-id/events/0/preview")
+      .send({ description: "fix", reason: "r" });
+    expect(response.status).toBe(401);
+  });
+
+  it("POST /v1/admin/corrections/:id/revert returns 401 without session", async () => {
+    const response = await request(app.getHttpServer()).post("/v1/admin/corrections/fake-id/revert").send({ reason: "r" });
+    expect(response.status).toBe(401);
+  });
+
+  it("GET /v1/admin/games returns 401 without session", async () => {
+    const response = await request(app.getHttpServer()).get("/v1/admin/games");
+    expect(response.status).toBe(401);
+  });
+
+  it("GET /v1/admin/games/:gameId/events returns 401 without session", async () => {
+    const response = await request(app.getHttpServer()).get("/v1/admin/games/fake-id/events");
+    expect(response.status).toBe(401);
+  });
+
   it("POST /v1/admin/games/:gameId/replay returns 401 without session", async () => {
     const response = await request(app.getHttpServer()).post("/v1/admin/games/fake-id/replay");
     expect(response.status).toBe(401);

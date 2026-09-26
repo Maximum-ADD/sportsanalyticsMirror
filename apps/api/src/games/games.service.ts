@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Game, GameEvent, GameMarketOdds, GamePrediction, Prisma, SeasonType, Team } from "@prisma/client";
 import { DERIVED_DATA_TTL_MS, REFERENCE_DATA_TTL_MS } from "../cache/cache-ttl.js";
 import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -270,12 +271,12 @@ export class GamesService {
     return this.cache.getOrLoad(buildCacheKey("games:events", [gameId, page, pageSize]), DERIVED_DATA_TTL_MS, async () => {
       const [data, total] = await Promise.all([
         this.prisma.gameEvent.findMany({
-          where: { gameId },
+          where: { gameId, game: PUBLISHED_GAME_FILTER },
           orderBy: { sequence: "asc" },
           skip: (page - 1) * pageSize,
           take: pageSize,
         }),
-        this.prisma.gameEvent.count({ where: { gameId } }),
+        this.prisma.gameEvent.count({ where: { gameId, game: PUBLISHED_GAME_FILTER } }),
       ]);
       return { data, page, pageSize, total };
     });

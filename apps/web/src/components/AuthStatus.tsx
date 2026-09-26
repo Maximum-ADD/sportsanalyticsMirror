@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { signInWithGoogle, useSession } from "@/lib/authClient";
 import { useMe } from "@/lib/useMe";
 import { pingHealth } from "@/lib/apiClient";
-import { PROSPECT_RANK_QUERY_KEY, fetchMyProspectRank } from "@/lib/becomeProApi";
-import { ProRankBadge } from "@/components/becomepro/ProRankBadge";
 
 // Friendly copy for the BetterAuth error codes we're likely to actually see.
 // Falls back to a generic message for anything else so an unrecognised code
@@ -52,20 +49,6 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
   // Only fired once there's a session — GET /v1/me needs the session cookie
   // this same hook otherwise waits on (see useMe).
   const { data: me } = useMe();
-
-  // The Become Pro rank shown beside the name. This component mounts in the
-  // header on EVERY page, so the endpoint behind it is deliberately the
-  // join-free GET /v1/me/become-pro rather than the paginated board.
-  //
-  // Gated on `session` for the same reason useMe is: there is no cookie to
-  // authenticate it with before BetterAuth resolves, and src/test/setup.ts
-  // globally stubs useSession to a signed-out state, so this stays disabled in
-  // every existing spec and no unmocked request starts firing across the suite.
-  const { data: prospectRank } = useQuery({
-    queryKey: PROSPECT_RANK_QUERY_KEY,
-    queryFn: fetchMyProspectRank,
-    enabled: Boolean(session),
-  });
 
   // BetterAuth's OAuth state row expires 10 minutes after sign-in starts —
   // hardcoded in the library, not configurable (checked up to the latest
@@ -139,9 +122,6 @@ export function AuthStatus({ signInCallbackURL }: AuthStatusProps) {
       <span className="max-w-32 truncate text-[11px] font-medium tracking-[0.1em] text-white uppercase transition-colors group-hover:text-brand-accent">
         {displayName}
       </span>
-      {/* Renders nothing at all until there is a rank, so an account with no
-          logged season shows exactly what it does today. */}
-      <ProRankBadge rank={prospectRank?.rank ?? null} className="shrink-0 text-brand-accent" />
     </Link>
   );
 }
