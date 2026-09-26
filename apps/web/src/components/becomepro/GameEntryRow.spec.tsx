@@ -168,6 +168,73 @@ describe("GameEntryRow", () => {
     });
   });
 
+  // A rejected save must not cost somebody the row they just typed.
+  it("keeps the row intact when the save is rejected", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("409"));
+    const user = userEvent.setup();
+    renderWithProviders(<GameEntryRow onSave={onSave} isSaving={false} />);
+
+    await fillValidGame(user);
+    await user.click(screen.getByRole("button", { name: /add game/i }));
+
+    expect(screen.getByLabelText("Opponent")).toHaveValue("Lincoln High");
+    expect(screen.getByLabelText("PTS")).toHaveValue(24);
+  });
+
+  describe("correcting a logged game", () => {
+    it("opens filled in with the game being corrected", () => {
+      renderWithProviders(
+        <GameEntryRow
+          onSave={vi.fn()}
+          isSaving={false}
+          editing={makeProspectGameInput({ opponent: "Riverside", points: 31 })}
+          onCancel={vi.fn()}
+        />
+      );
+
+      expect(screen.getByRole("form", { name: "Edit the game against Riverside" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Opponent")).toHaveValue("Riverside");
+      expect(screen.getByLabelText("PTS")).toHaveValue(31);
+    });
+
+    it("saves the corrected line and hands control back", async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      const onCancel = vi.fn();
+      const user = userEvent.setup();
+      renderWithProviders(
+        <GameEntryRow onSave={onSave} isSaving={false} editing={makeProspectGameInput()} onCancel={onCancel} />
+      );
+
+      const points = screen.getByLabelText("PTS");
+      await user.clear(points);
+      await user.type(points, "27");
+      await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ points: 27 }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    // Copying the last game over a correction would overwrite the game being
+    // fixed with a different one.
+    it("offers Cancel rather than Copy last game", async () => {
+      const onCancel = vi.fn();
+      const user = userEvent.setup();
+      renderWithProviders(
+        <GameEntryRow
+          onSave={vi.fn()}
+          isSaving={false}
+          editing={makeProspectGameInput()}
+          lastGame={makeProspectGameInput()}
+          onCancel={onCancel}
+        />
+      );
+
+      expect(screen.queryByRole("button", { name: /copy last game/i })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /cancel/i }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("surfaces a failed save from the API", () => {
     renderWithProviders(
       <GameEntryRow onSave={vi.fn()} isSaving={false} errorMessage="That game is already logged." />

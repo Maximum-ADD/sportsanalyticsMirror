@@ -19,61 +19,73 @@ warn you that it has gone stale — which is why every stored valuation records
 the year it was priced against, and why the API prints that year next to every
 figure it shows.
 
-Figures are the first-year salary at 100% of the scale amount, rounded to the
-nearest ten thousand dollars. They are approximations of the published table,
-not a contract database: a real deal is signed at 80-120% of the scale amount,
-and nothing here claims otherwise.
+Figures are the first-year salary at 100% of the scale amount, which is what
+"the rookie scale" means. A real first-round deal may be signed at 80-120% of
+that amount, and in practice almost every pick signs at 120%; the figure here
+is the scale itself, not a claim about any one negotiation.
+
+SOURCE: Hoops Rumors, "Rookie Scale Salaries For 2026 NBA First-Round Picks"
+(July 2026), which prints each pick's 120% first-year salary for 2026-27; each
+figure below is that amount divided by 1.2, which is exact for every pick.
+Cross-checked against the same outlet's 2025-26 table: every pick rises by
+6.67%, exactly the rise in the salary cap ($154,647,000 to $164,961,000), as
+the scale is tied to the cap.
+https://www.hoopsrumors.com/2026/07/rookie-scale-salaries-for-2026-nba-first-round-picks.html
 """
 
-ROOKIE_SCALE_YEAR = "2025-26"
+ROOKIE_SCALE_YEAR = "2026-27"
 
-# Pick number -> first-year scale salary in whole dollars.
+# Pick number -> first-year scale salary (100%) in whole dollars.
 FIRST_ROUND_SCALE = {
-    1: 12_800_000,
-    2: 11_450_000,
-    3: 10_290_000,
-    4: 9_280_000,
-    5: 8_390_000,
-    6: 7_600_000,
-    7: 6_900_000,
-    8: 6_280_000,
-    9: 5_730_000,
-    10: 5_240_000,
-    11: 4_800_000,
-    12: 4_600_000,
-    13: 4_490_000,
-    14: 4_400_000,
-    15: 4_150_000,
-    16: 3_920_000,
-    17: 3_710_000,
-    18: 3_520_000,
-    19: 3_350_000,
-    20: 3_190_000,
-    21: 3_050_000,
-    22: 2_920_000,
-    23: 2_800_000,
-    24: 2_700_000,
-    25: 2_610_000,
-    26: 2_530_000,
-    27: 2_460_000,
-    28: 2_400_000,
-    29: 2_350_000,
-    30: 2_300_000,
+    1: 12_290_000,
+    2: 10_996_100,
+    3: 9_874_800,
+    4: 8_903_100,
+    5: 8_062_300,
+    6: 7_322_500,
+    7: 6_684_700,
+    8: 6_123_900,
+    9: 5_629_000,
+    10: 5_347_800,
+    11: 5_080_200,
+    12: 4_826_400,
+    13: 4_585_000,
+    14: 4_356_000,
+    15: 4_137_900,
+    16: 3_931_100,
+    17: 3_734_400,
+    18: 3_547_900,
+    19: 3_388_100,
+    20: 3_252_300,
+    21: 3_122_300,
+    22: 2_997_600,
+    23: 2_877_800,
+    24: 2_762_800,
+    25: 2_651_900,
+    26: 2_564_100,
+    27: 2_490_100,
+    28: 2_474_600,
+    29: 2_456_900,
+    30: 2_439_000,
 }
 
 FIRST_ROUND_PICKS = 30
 DRAFT_PICKS = 60
 
 # Second-rounders sign a two-way or a minimum deal rather than a scale
-# contract, so there is no published per-pick figure for them. One flat
-# approximation of the two-way salary is more honest than inventing a
-# descending curve the league does not publish.
-SECOND_ROUND_VALUE = 600_000
+# contract, so there is no published per-pick figure for them. The two-way
+# player salary is the lower of the two and the most common landing spot, and
+# it is one published number rather than a descending curve the league does
+# not publish. 2026-27: $678,882, half the rookie minimum (Hoops Rumors,
+# "Salary Cap, Tax Line Set For 2026/27 NBA Season", June 2026).
+SECOND_ROUND_VALUE = 678_882
 
-# Outside the draft entirely: an Exhibit 10 / training-camp deal. Still a real
-# published figure, and still the honest bottom of this scale rather than zero
-# — "undrafted" is not "worthless".
-UNDRAFTED_VALUE = 85_000
+# Outside the draft entirely: an Exhibit 10 / training-camp deal, priced at
+# the maximum Exhibit 10 bonus — the guaranteed money such a deal can carry.
+# Still a real published figure, and still the honest bottom of this scale
+# rather than zero: "undrafted" is not "worthless". 2026-27: $91,000 (same
+# source as above).
+UNDRAFTED_VALUE = 91_000
 
 
 def value_for_slot(slot: int) -> int:

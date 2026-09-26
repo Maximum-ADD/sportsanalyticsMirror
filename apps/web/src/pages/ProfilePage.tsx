@@ -547,18 +547,10 @@ export function ProfilePage() {
 
         <Reveal delay={3}>
           <div className="mb-6">
-            <SectionHeading>Become Pro</SectionHeading>
+            {/* The card carries its own "Become Pro" heading and its own link
+                to the page, so it stands alone here rather than under a
+                SectionHeading that would repeat it. */}
             <MyProspectCard />
-            {/* A Link, not the local LockerButton — that helper takes onClick
-                rather than `to`, and widening it for one caller would be worse
-                than repeating its class string, which is what
-                PlayerProfilePage's LOCKER_BUTTON_CLASS already does. */}
-            <Link
-              to={me.username ? `/become-pro/${me.username}` : "/become-pro"}
-              className="mt-3 inline-block border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
-            >
-              Manage my season
-            </Link>
           </div>
         </Reveal>
 

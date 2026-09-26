@@ -1,29 +1,22 @@
-// Typed fixtures for the Become Pro feature.
+// Typed fixtures for Become Pro.
 //
-// These exist to be a compile-time contract pin as much as a convenience: each
-// one is annotated with the real response type, so if the backend's shape
-// drifts from src/types/nba.ts, `tsc -b` fails here before any test runs. That
-// is the whole reason the frontend can be built and merged while the API is
-// still unwritten.
+// A compile-time contract pin as much as a convenience: each one is annotated
+// with the real response type, so if the backend's shape drifts from
+// src/types/nba.ts, `tsc -b` fails here before any test runs.
 
 import type {
-  ProspectEvidence,
+  MyBecomePro,
+  MyBecomeProSummary,
+  Player,
+  ProspectComparable,
   ProspectGame,
   ProspectGameInput,
-  ProspectLeaderboard,
-  ProspectLeaderboardEntry,
-  ProspectProfile,
-  ProspectRankSummary,
-  ProspectReliability,
   ProspectSeason,
   ProspectValuation,
   SeasonAverages,
 } from "@/types/nba";
-import { deriveSeasonAverages } from "@/lib/prospectValue";
 
-export function makeProspectGameInput(
-  overrides: Partial<ProspectGameInput> = {}
-): ProspectGameInput {
+export function makeProspectGameInput(overrides: Partial<ProspectGameInput> = {}): ProspectGameInput {
   return {
     gameDate: "2026-01-15",
     opponent: "Lincoln High",
@@ -45,14 +38,7 @@ export function makeProspectGameInput(
 }
 
 export function makeProspectGame(overrides: Partial<ProspectGame> = {}): ProspectGame {
-  return {
-    ...makeProspectGameInput(),
-    id: "game-1",
-    seasonId: "season-1",
-    evidenceId: null,
-    evidenceStatus: null,
-    ...overrides,
-  };
+  return { ...makeProspectGameInput(), id: "game-1", seasonId: "season-1", ...overrides };
 }
 
 export function makeProspectSeason(overrides: Partial<ProspectSeason> = {}): ProspectSeason {
@@ -69,142 +55,145 @@ export function makeProspectSeason(overrides: Partial<ProspectSeason> = {}): Pro
   };
 }
 
-export function makeProspectEvidence(
-  overrides: Partial<ProspectEvidence> = {}
-): ProspectEvidence {
+/**
+ * The season line the API derives for fourteen of the default game above:
+ * 24 points on 9-for-17, 3-for-7 from three and 3-for-4 at the line.
+ */
+export function makeSeasonAverages(overrides: Partial<SeasonAverages> = {}): SeasonAverages {
   return {
-    id: "evidence-1",
-    seasonId: "season-1",
-    fileName: "scoresheet-jan.pdf",
-    fileUrl: "https://storage.example/signed/scoresheet-jan.pdf",
-    mimeType: "application/pdf",
-    status: "PENDING",
-    reviewedAt: null,
-    reviewNote: null,
-    gamesCovered: 4,
-    uploadedAt: "2026-02-01T10:00:00.000Z",
+    gamesPlayed: 14,
+    minutesPerGame: 32,
+    pointsPerGame: 24,
+    reboundsPerGame: 7,
+    assistsPerGame: 5,
+    stealsPerGame: 2,
+    blocksPerGame: 1,
+    turnoversPerGame: 3,
+    fieldGoalsMadePerGame: 9,
+    fieldGoalsAttemptedPerGame: 17,
+    fieldGoalPercentage: 52.9,
+    threesMadePerGame: 3,
+    threesAttemptedPerGame: 7,
+    threePointPercentage: 42.9,
+    freeThrowsMadePerGame: 3,
+    freeThrowsAttemptedPerGame: 4,
+    freeThrowPercentage: 75,
+    trueShootingPercentage: 64,
+    effectiveFieldGoalPercentage: 61.8,
+    assistToTurnoverRatio: 1.67,
+    plusMinusPerGame: null,
+    usagePercentage: null,
+    offensiveRating: null,
+    defensiveRating: null,
     ...overrides,
   };
 }
 
-export function makeProspectReliability(
-  overrides: Partial<ProspectReliability> = {}
-): ProspectReliability {
+export function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
-    gamesLogged: 14,
-    gamesVerified: 4,
-    gamesDocumented: 9,
-    verifiedCoverage: 4 / 14,
-    documentedCoverage: 9 / 14,
-    tier: "PARTIAL",
-    score: 38,
+    id: "player-1",
+    nbaPlayerId: 1642000,
+    firstName: "Real",
+    lastName: "Rookie",
+    position: "G",
+    heightInches: 76,
+    weightLbs: 200,
+    jerseyNumber: "7",
+    headshotUrl: null,
+    teamId: null,
+    team: null,
+    birthDate: null,
+    school: null,
+    country: null,
+    lastAffiliation: null,
+    seasonExp: null,
+    rosterStatus: null,
+    draftYear: 2024,
+    draftRound: 1,
+    draftNumber: 18,
     ...overrides,
   };
 }
 
-export function makeProspectValuation(
-  overrides: Partial<ProspectValuation> = {}
-): ProspectValuation {
+export function makeComparable(overrides: Partial<ProspectComparable> = {}): ProspectComparable {
+  return {
+    player: makePlayer(),
+    seasonAverages: makeSeasonAverages({ gamesPlayed: 62, pointsPerGame: 11.4 }),
+    rookieSeason: "2024-25",
+    similarity: 0.87,
+    ...overrides,
+  };
+}
+
+export function makeProspectValuation(overrides: Partial<ProspectValuation> = {}): ProspectValuation {
   return {
     seasonId: "season-1",
-    basis: "LOGGED",
     projectedDraftSlot: 18,
-    projectedValueUsd: 4_368_000,
-    projectedValueLowUsd: 3_100_000,
-    projectedValueHighUsd: 5_900_000,
+    projectedValueUsd: 3_520_000,
+    projectedValueLowUsd: 2_530_000,
+    projectedValueHighUsd: 4_500_000,
     rookieScaleYear: "2025-26",
     levelFactor: 0.62,
-    levelFactorBasis: "NCAA Division II scoring translated against D1 rookie production.",
-    modelVersion: "prospect-value-1.0.0",
+    levelFactorBasis: "NCAA Division II production is translated against Division I output.",
+    modelVersion: "prospect-value-2.0.0",
     computedAt: "2026-02-01T12:00:00.000Z",
     drivers: [
-      { label: "Scoring volume", detail: "24.1 points per game is top-decile for this level." },
-      { label: "Efficiency", detail: "58.2% true shooting holds up after the level adjustment." },
+      { label: "Scoring", detail: "24.0 points per game, counted as 14.9 after the level adjustment." },
+      { label: "Efficiency", detail: "64.0% true shooting on that scoring volume." },
     ],
-    minimumGamesRequired: 10,
+    levelAdjustedAverages: makeSeasonAverages({ pointsPerGame: 14.9 }),
     comparables: [],
     slotAlumni: [],
     ...overrides,
   };
 }
 
-/** The derived line for the default 14-game fixture season. */
-export function makeProspectSeasonAverages(): SeasonAverages {
-  return deriveSeasonAverages(Array.from({ length: 14 }, () => makeProspectGameInput()));
-}
-
-export function makeProspectProfile(overrides: Partial<ProspectProfile> = {}): ProspectProfile {
+export function makeMyBecomePro(overrides: Partial<MyBecomePro> = {}): MyBecomePro {
   return {
-    username: "kiran",
-    displayName: "Kiran",
-    avatarUrl: null,
-    isSelf: true,
-    rank: 12,
-    rankState: "RANKED",
     seasons: [makeProspectSeason()],
     activeSeasonId: "season-1",
-    seasonAverages: makeProspectSeasonAverages(),
+    seasonAverages: makeSeasonAverages(),
     gameLog: [{ gameId: "game-1", gameDate: "2026-01-15", points: 24, season: "2025-26" }],
     games: [makeProspectGame()],
-    evidence: [makeProspectEvidence()],
-    reliability: makeProspectReliability(),
+    valuationState: "VALUED",
     valuation: makeProspectValuation(),
+    valueHistory: [
+      { computedAt: "2026-01-20T12:00:00.000Z", valueUsd: 3_190_000 },
+      { computedAt: "2026-02-01T12:00:00.000Z", valueUsd: 3_520_000 },
+    ],
+    minimumGamesRequired: 10,
     ...overrides,
   };
 }
 
-export function makeProspectLeaderboardEntry(
-  overrides: Partial<ProspectLeaderboardEntry> = {}
-): ProspectLeaderboardEntry {
+/** A user who has not started a season: the page's empty state. */
+export function makeEmptyBecomePro(): MyBecomePro {
   return {
-    rank: 1,
-    username: "kiran",
-    displayName: "Kiran",
-    avatarUrl: null,
+    seasons: [],
+    activeSeasonId: null,
+    seasonAverages: null,
+    gameLog: [],
+    games: [],
+    valuationState: null,
+    valuation: null,
+    valueHistory: [],
+    minimumGamesRequired: 10,
+  };
+}
+
+export function makeMyBecomeProSummary(overrides: Partial<MyBecomeProSummary> = {}): MyBecomeProSummary {
+  return {
+    season: "2025-26",
     competitionLevel: "NCAA_D2",
     gamesLogged: 14,
-    pointsPerGame: 24.1,
+    valuationState: "VALUED",
     projectedDraftSlot: 18,
-    projectedValueUsd: 4_368_000,
-    reliabilityTier: "PARTIAL",
-    isSelf: false,
-    ...overrides,
-  };
-}
-
-export function makeProspectLeaderboard(
-  overrides: Partial<ProspectLeaderboard> = {}
-): ProspectLeaderboard {
-  return {
-    data: [makeProspectLeaderboardEntry()],
-    page: 1,
-    pageSize: 25,
-    total: 1,
-    minimumGamesRequired: 10,
-    rookieScaleYear: "2025-26",
-    references: [
-      { label: "Pick 1", draftSlot: 1, valueUsd: 12_500_000 },
-      { label: "Pick 30", draftSlot: 30, valueUsd: 2_800_000 },
-    ],
-    yourStanding: null,
-    ...overrides,
-  };
-}
-
-export function makeProspectRankSummary(
-  overrides: Partial<ProspectRankSummary> = {}
-): ProspectRankSummary {
-  return {
-    rank: 12,
-    rankState: "RANKED",
-    username: "kiran",
-    projectedValueUsd: 4_368_000,
-    gamesLogged: 14,
-    minimumGamesRequired: 10,
+    projectedValueUsd: 3_520_000,
     valueHistory: [
-      { computedAt: "2026-01-20T12:00:00.000Z", valueUsd: 3_900_000 },
-      { computedAt: "2026-02-01T12:00:00.000Z", valueUsd: 4_368_000 },
+      { computedAt: "2026-01-20T12:00:00.000Z", valueUsd: 3_190_000 },
+      { computedAt: "2026-02-01T12:00:00.000Z", valueUsd: 3_520_000 },
     ],
+    minimumGamesRequired: 10,
     ...overrides,
   };
 }

@@ -5,6 +5,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { createTestApp } from "./create-test-app.js";
 import { resetDatabase, testPrisma } from "./test-db.js";
 import { auth } from "../src/auth/auth.config.js";
+import { ResponseCacheService } from "../src/cache/response-cache.service.js";
+import type { ValuationModelBundle } from "../src/become-pro/valuation-model.js";
 
 vi.mock("../src/auth/auth.config.js", () => ({
   auth: { api: { getSession: vi.fn() } },
@@ -12,7 +14,6 @@ vi.mock("../src/auth/auth.config.js", () => ({
 
 const OWNER_ID = "user-prospect-owner";
 const OTHER_ID = "user-prospect-other";
-const ADMIN_ID = "user-prospect-admin";
 
 // A clean, internally consistent line: 9-for-17 with 3 threes and 3 free
 // throws is (9-3)*2 + 3*3 + 3 = 24 points.
@@ -37,17 +38,12 @@ function gameBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function createUser(id: string, username: string | null, role: "USER" | "ADMIN" = "USER"): Promise<User> {
-  return testPrisma.user.create({
-    data: { id, name: username ?? "No Name", email: `${id}@example.com`, username, role },
-  });
+async function createUser(id: string, username: string): Promise<User> {
+  return testPrisma.user.create({ data: { id, name: username, email: `${id}@example.com`, username } });
 }
 
-// The session carries the role because RolesGuard reads it straight off
-// request.user — in production BetterAuth puts it there as a custom field
-// (see auth.config.ts), so the mock has to as well or every admin route 403s.
-function signInAs(userId: string, role: "USER" | "ADMIN" = "USER"): void {
-  vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: userId, role } } as never);
+function signInAs(userId: string): void {
+  vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: userId, role: "USER" } } as never);
 }
 
 function signOut(): void {
@@ -59,17 +55,16 @@ async function createSeason(userId: string, overrides: Partial<ProspectSeason> =
     data: {
       userId,
       season: overrides.season ?? "2025-26",
-      competitionLevel: overrides.competitionLevel ?? "NCAA_D2",
+      competitionLevel: overrides.competitionLevel ?? "NCAA_D1",
       position: overrides.position ?? "G",
       teamName: overrides.teamName ?? "Riverside College",
-      isPublic: overrides.isPublic ?? true,
     },
   });
 }
 
-// Logs `count` internally consistent games on one day each, so the unique
-// (seasonId, gameDate, opponent) index is never hit by the fixture itself.
-async function logGames(seasonId: string, count: number, points = 24): Promise<void> {
+// Inserts games directly, bypassing the API — so no valuation runs. Use for
+// fixtures; use logGamesViaApi when a test is about valuing.
+async function insertGames(seasonId: string, count: number): Promise<void> {
   for (let index = 0; index < count; index += 1) {
     await testPrisma.prospectGame.create({
       data: {
@@ -77,7 +72,7 @@ async function logGames(seasonId: string, count: number, points = 24): Promise<v
         gameDate: new Date(Date.UTC(2026, 0, index + 1)),
         opponent: `Opponent ${index}`,
         minutes: 32,
-        points,
+        points: 24,
         rebounds: 7,
         assists: 5,
         steals: 2,
@@ -94,28 +89,127 @@ async function logGames(seasonId: string, count: number, points = 24): Promise<v
   }
 }
 
-async function valueSeason(seasonId: string, valueUsd: number | null, slot: number | null = 18): Promise<void> {
-  await testPrisma.prospectValuation.create({
+let nextNbaId = 900_000;
+
+// A real-shaped NBA rookie: a player drafted in `draftYear`, with the given
+// games, so tests can prove which rows a comparable's line is built from.
+async function seedRookie(options: {
+  draftYear: number;
+  draftNumber?: number;
+  games: { season: string; seasonType?: "REGULAR" | "PLAYOFFS"; points: number; batchStatus?: "COMPLETED" | "PENDING_REVIEW" }[];
+}) {
+  nextNbaId += 10;
+  const home = await testPrisma.team.create({
+    data: { nbaTeamId: nextNbaId, name: "Home", abbreviation: `H${nextNbaId % 100}`, city: "Home", conference: "East", division: "Atlantic" },
+  });
+  const away = await testPrisma.team.create({
+    data: { nbaTeamId: nextNbaId + 1, name: "Away", abbreviation: `A${nextNbaId % 100}`, city: "Away", conference: "West", division: "Pacific" },
+  });
+  const player = await testPrisma.player.create({
     data: {
-      seasonId,
-      projectedDraftSlot: slot,
-      projectedValueUsd: valueUsd,
-      projectedValueLowUsd: valueUsd === null ? null : Math.round(valueUsd * 0.7),
-      projectedValueHighUsd: valueUsd === null ? null : Math.round(valueUsd * 1.35),
-      rookieScaleYear: "2025-26",
-      levelFactor: 0.62,
-      levelFactorBasis: "NCAA Division II production translated against D1 rookie output.",
-      drivers: [{ label: "Scoring volume", detail: "24.0 points per game is top-decile for this level." }],
-      comparablePlayerIds: [],
-      comparableScores: [],
-      slotAlumniPlayerIds: [],
-      modelVersion: "test-1.0.0",
+      nbaPlayerId: nextNbaId + 2,
+      firstName: "Rookie",
+      lastName: `Comparable${nextNbaId}`,
+      position: "G",
+      teamId: home.id,
+      draftYear: options.draftYear,
+      draftRound: 1,
+      draftNumber: options.draftNumber ?? 20,
+    },
+  });
+
+  for (const [index, spec] of options.games.entries()) {
+    const game = await testPrisma.game.create({
+      data: {
+        nbaGameId: `CMP-${nextNbaId}-${index}`,
+        gameDate: new Date(Date.UTC(Number(spec.season.slice(0, 4)), 11, index + 1)),
+        season: spec.season,
+        seasonType: spec.seasonType ?? "REGULAR",
+        homeTeamId: home.id,
+        awayTeamId: away.id,
+      },
+    });
+    if (spec.batchStatus) {
+      await testPrisma.ingestionBatch.create({ data: { gameId: game.id, source: "nba_api", status: spec.batchStatus } });
+    }
+    await testPrisma.playerGameStat.create({
+      data: {
+        playerId: player.id,
+        gameId: game.id,
+        minutes: 30,
+        points: spec.points,
+        rebounds: 5,
+        assists: 4,
+        steals: 1,
+        blocks: 1,
+        turnovers: 2,
+        fieldGoalsMade: 8,
+        fieldGoalsAttempted: 16,
+        threesMade: 2,
+        threesAttempted: 5,
+        freeThrowsMade: 2,
+        freeThrowsAttempted: 2,
+      },
+    });
+  }
+  return player;
+}
+
+// A trained model with an obvious rule — slot = intercept - 2 * points —
+// written the way apps/valuation/train_valuation_model.py writes one.
+async function trainModel(comparablePlayerIds: string[] = [], intercept = 60, fittedAt?: Date) {
+  const firstRound: Record<string, number> = {};
+  for (let pick = 1; pick <= 30; pick += 1) firstRound[String(pick)] = 13_000_000 - pick * 350_000;
+  const bundle: ValuationModelBundle = {
+    modelVersion: "prospect-value-2.0.0",
+    featureNames: ["points_per_game", "rebounds_per_game", "assists_per_game", "true_shooting"],
+    coefficients: [intercept, -2, 0, 0, 0],
+    minimumGamesRequired: 10,
+    slotBounds: { min: 1, max: 75 },
+    rookieScale: { year: "2025-26", firstRoundPicks: 30, draftPicks: 60, firstRound, secondRoundValue: 600_000, undraftedValue: 85_000 },
+    levelFactors: {
+      NCAA_D1: { factor: 1, basis: "Division I is the reference level." },
+      NCAA_D2: { factor: 0.5, basis: "Division II production is translated against Division I output." },
+    },
+    unknownLevelFactor: { factor: 0.15, basis: "This competition level is not recognised." },
+    interval: { baseFraction: 0.28, shortLogGames: 25, shortLogExtraFraction: 0.15 },
+    comparableIndex: comparablePlayerIds.map((playerId, index) => ({
+      playerId,
+      draftNumber: 20,
+      features: [10 + index * 5, 5, 4, 55],
+    })),
+  };
+  return testPrisma.prospectValuationModel.create({
+    data: {
+      modelVersion: bundle.modelVersion,
+      bundle: bundle as unknown as object,
+      trainingRows: 30,
+      mae: 6.2,
+      rankCorrelation: 0.61,
+      ...(fittedAt ? { fittedAt } : {}),
     },
   });
 }
 
 describe("Become Pro", () => {
   let app: INestApplication;
+
+  // Logs `count` valid 24-point games through the real API, so every one runs
+  // the real valuation path.
+  async function logGamesViaApi(seasonId: string, count: number, startDay = 1) {
+    for (let index = 0; index < count; index += 1) {
+      await request(app.getHttpServer())
+        .post(`/v1/me/become-pro/seasons/${seasonId}/games`)
+        .send(gameBody({ gameDate: `2026-01-${String(startDay + index).padStart(2, "0")}`, opponent: `Team ${startDay + index}` }))
+        .expect(201);
+    }
+  }
+
+  // The trained model is cached briefly; tests that train a new one drop the
+  // cache rather than waiting out the TTL.
+  function forgetCachedModel() {
+    app.get(ResponseCacheService).invalidate("become-pro-model");
+  }
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -128,8 +222,8 @@ describe("Become Pro", () => {
   beforeEach(async () => {
     await createUser(OWNER_ID, "kiran");
     await createUser(OTHER_ID, "sam");
-    await createUser(ADMIN_ID, "boss", "ADMIN");
-    signOut();
+    signInAs(OWNER_ID);
+    forgetCachedModel();
   });
 
   afterEach(async () => {
@@ -137,49 +231,136 @@ describe("Become Pro", () => {
     vi.clearAllMocks();
   });
 
-  describe("logging a season", () => {
-    it("creates a season and derives its line from the games logged against it", async () => {
-      signInAs(OWNER_ID);
-
-      const created = await request(app.getHttpServer())
-        .post("/v1/me/become-pro/seasons")
-        .send({ season: "2025-26", competitionLevel: "NCAA_D2", position: "G" })
-        .expect(201);
-
+  describe("privacy", () => {
+    it("requires a session for every route", async () => {
+      signOut();
+      await request(app.getHttpServer()).get("/v1/me/become-pro").expect(401);
+      await request(app.getHttpServer()).get("/v1/me/become-pro/summary").expect(401);
       await request(app.getHttpServer())
-        .post(`/v1/me/become-pro/seasons/${created.body.id}/games`)
-        .send(gameBody())
-        .expect(201);
-
-      const profile = await request(app.getHttpServer())
-        .get("/v1/become-pro/prospects/kiran")
-        .expect(200);
-
-      expect(profile.body.seasonAverages.gamesPlayed).toBe(1);
-      expect(profile.body.seasonAverages.pointsPerGame).toBe(24);
-      // 9/17 from the field.
-      expect(profile.body.seasonAverages.fieldGoalPercentage).toBe(52.9);
+        .post("/v1/me/become-pro/seasons")
+        .send({ season: "2025-26", competitionLevel: "NCAA_D1", position: "G" })
+        .expect(401);
     });
 
-    // The four figures a self-reported box score cannot carry must be absent,
-    // not zero — a zero would be a real measurement nobody made.
-    it("returns null for the advanced figures an amateur sheet cannot carry", async () => {
-      signInAs(OWNER_ID);
+    // Become Pro compares a user with NBA players, never with each other, so
+    // there is nothing public to read — no board, no directory, no profiles.
+    it("exposes no public leaderboard, directory or profile", async () => {
+      signOut();
+      await request(app.getHttpServer()).get("/v1/become-pro/leaderboard").expect(404);
+      await request(app.getHttpServer()).get("/v1/become-pro/prospects").expect(404);
+      await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(404);
+    });
+
+    it("shows a user only their own seasons", async () => {
+      await createSeason(OTHER_ID, { season: "2024-25" });
+
+      const response = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(response.body.seasons).toEqual([]);
+    });
+
+    // 404 rather than 403: another user's season id must be indistinguishable
+    // from one that does not exist.
+    it("will not open another user's season by id", async () => {
+      const theirs = await createSeason(OTHER_ID);
+
+      const response = await request(app.getHttpServer()).get(`/v1/me/become-pro?seasonId=${theirs.id}`).expect(404);
+
+      expect(response.body.error.code).toBe("SEASON_NOT_FOUND");
+    });
+
+    it("will not log a game against another user's season", async () => {
+      const theirs = await createSeason(OTHER_ID);
+
+      await request(app.getHttpServer()).post(`/v1/me/become-pro/seasons/${theirs.id}/games`).send(gameBody()).expect(404);
+    });
+
+    it("will not delete another user's game", async () => {
+      const theirs = await createSeason(OTHER_ID);
+      await insertGames(theirs.id, 1);
+      const game = await testPrisma.prospectGame.findFirstOrThrow({ where: { seasonId: theirs.id } });
+
+      await request(app.getHttpServer()).delete(`/v1/me/become-pro/games/${game.id}`).expect(404);
+
+      expect(await testPrisma.prospectGame.count({ where: { id: game.id } })).toBe(1);
+    });
+  });
+
+  describe("starting a season", () => {
+    // A brand-new user's own page is empty, not an error.
+    it("returns an empty page before any season exists", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(response.body.seasons).toEqual([]);
+      expect(response.body.activeSeasonId).toBeNull();
+      expect(response.body.valuation).toBeNull();
+    });
+
+    it("creates a season", async () => {
+      const created = await request(app.getHttpServer())
+        .post("/v1/me/become-pro/seasons")
+        .send({ season: "2025-26", competitionLevel: "NCAA_D2", position: "G", teamName: "Riverside" })
+        .expect(201);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      expect(page.body.activeSeasonId).toBe(created.body.id);
+      expect(page.body.seasons[0].competitionLevel).toBe("NCAA_D2");
+    });
+
+    it("rejects a malformed league year", async () => {
+      await request(app.getHttpServer())
+        .post("/v1/me/become-pro/seasons")
+        .send({ season: "2025", competitionLevel: "NCAA_D1", position: "G" })
+        .expect(400);
+    });
+
+    it("refuses a second season for the same league year", async () => {
+      await createSeason(OWNER_ID, { season: "2025-26" });
+
+      const response = await request(app.getHttpServer())
+        .post("/v1/me/become-pro/seasons")
+        .send({ season: "2025-26", competitionLevel: "NCAA_D1", position: "F" })
+        .expect(409);
+
+      expect(response.body.error.code).toBe("SEASON_ALREADY_EXISTS");
+    });
+
+    it("deletes a season with its games", async () => {
       const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 3);
+      await insertGames(season.id, 3);
 
-      const profile = await request(app.getHttpServer())
-        .get("/v1/become-pro/prospects/kiran")
-        .expect(200);
+      await request(app.getHttpServer()).delete(`/v1/me/become-pro/seasons/${season.id}`).expect(200);
 
-      expect(profile.body.seasonAverages.plusMinusPerGame).toBeNull();
-      expect(profile.body.seasonAverages.usagePercentage).toBeNull();
-      expect(profile.body.seasonAverages.offensiveRating).toBeNull();
-      expect(profile.body.seasonAverages.defensiveRating).toBeNull();
+      expect(await testPrisma.prospectGame.count({ where: { seasonId: season.id } })).toBe(0);
+    });
+  });
+
+  describe("logging games", () => {
+    it("derives the season line from the games logged", async () => {
+      const season = await createSeason(OWNER_ID);
+      await request(app.getHttpServer()).post(`/v1/me/become-pro/seasons/${season.id}/games`).send(gameBody()).expect(201);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.seasonAverages.gamesPlayed).toBe(1);
+      expect(page.body.seasonAverages.pointsPerGame).toBe(24);
+      expect(page.body.seasonAverages.fieldGoalPercentage).toBe(52.9);
+    });
+
+    // Absent, not zero — a zero would be a real measurement nobody made.
+    it("returns null for the advanced figures an amateur sheet cannot carry", async () => {
+      const season = await createSeason(OWNER_ID);
+      await insertGames(season.id, 3);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.seasonAverages.plusMinusPerGame).toBeNull();
+      expect(page.body.seasonAverages.usagePercentage).toBeNull();
+      expect(page.body.seasonAverages.offensiveRating).toBeNull();
+      expect(page.body.seasonAverages.defensiveRating).toBeNull();
     });
 
     it("rejects a box score that cannot be right", async () => {
-      signInAs(OWNER_ID);
       const season = await createSeason(OWNER_ID);
 
       const response = await request(app.getHttpServer())
@@ -191,9 +372,8 @@ describe("Become Pro", () => {
     });
 
     // A real scoresheet sometimes disagrees with its own splits; refusing
-    // somebody's own sheet is worse than recording the disagreement.
+    // somebody's own sheet is worse than recording it.
     it("accepts a line whose points disagree with its shooting splits", async () => {
-      signInAs(OWNER_ID);
       const season = await createSeason(OWNER_ID);
 
       await request(app.getHttpServer())
@@ -203,12 +383,8 @@ describe("Become Pro", () => {
     });
 
     it("refuses the same game twice", async () => {
-      signInAs(OWNER_ID);
       const season = await createSeason(OWNER_ID);
-      await request(app.getHttpServer())
-        .post(`/v1/me/become-pro/seasons/${season.id}/games`)
-        .send(gameBody())
-        .expect(201);
+      await request(app.getHttpServer()).post(`/v1/me/become-pro/seasons/${season.id}/games`).send(gameBody()).expect(201);
 
       const response = await request(app.getHttpServer())
         .post(`/v1/me/become-pro/seasons/${season.id}/games`)
@@ -218,351 +394,237 @@ describe("Become Pro", () => {
       expect(response.body.error.code).toBe("DUPLICATE_GAME");
     });
 
-    it("refuses a second season for the same league year", async () => {
-      signInAs(OWNER_ID);
-      await createSeason(OWNER_ID, { season: "2025-26" });
-
-      const response = await request(app.getHttpServer())
-        .post("/v1/me/become-pro/seasons")
-        .send({ season: "2025-26", competitionLevel: "NCAA_D1", position: "F" })
-        .expect(409);
-
-      expect(response.body.error.code).toBe("SEASON_ALREADY_EXISTS");
-    });
-
-    // The board keys on username, so an account without one cannot be ranked.
-    it("refuses to log a season for an account with no username", async () => {
-      const namelessId = "user-prospect-nameless";
-      await createUser(namelessId, null);
-      signInAs(namelessId);
-
-      const response = await request(app.getHttpServer())
-        .post("/v1/me/become-pro/seasons")
-        .send({ season: "2025-26", competitionLevel: "REC", position: "G" })
-        .expect(409);
-
-      expect(response.body.error.code).toBe("USERNAME_REQUIRED");
-    });
-  });
-
-  describe("ownership", () => {
-    it("will not let one user log a game against another user's season", async () => {
-      const season = await createSeason(OTHER_ID);
-      signInAs(OWNER_ID);
-
-      const response = await request(app.getHttpServer())
-        .post(`/v1/me/become-pro/seasons/${season.id}/games`)
-        .send(gameBody())
-        .expect(404);
-
-      // 404 rather than 403 on purpose: the error must not reveal that the
-      // id is real but belongs to somebody else.
-      expect(response.body.error.code).toBe("SEASON_NOT_FOUND");
-    });
-
-    it("will not let one user delete another user's game", async () => {
-      const season = await createSeason(OTHER_ID);
-      await logGames(season.id, 1);
+    // A correction is checked against the merged row, not the patch alone.
+    it("rejects a correction that breaks the rest of the line", async () => {
+      const season = await createSeason(OWNER_ID);
+      await insertGames(season.id, 1);
       const game = await testPrisma.prospectGame.findFirstOrThrow({ where: { seasonId: season.id } });
-      signInAs(OWNER_ID);
+
+      await request(app.getHttpServer()).patch(`/v1/me/become-pro/games/${game.id}`).send({ fieldGoalsMade: 30 }).expect(400);
+    });
+  });
+
+  describe("valuation on write", () => {
+    it("values a season the moment its tenth game is logged", async () => {
+      await trainModel();
+      const season = await createSeason(OWNER_ID);
+
+      await logGamesViaApi(season.id, 9);
+      const before = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      expect(before.body.valuationState).toBe("BELOW_GAMES_FLOOR");
+      expect(before.body.valuation).toBeNull();
+
+      await logGamesViaApi(season.id, 1, 20);
+      const after = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(after.body.valuationState).toBe("VALUED");
+      // 60 - 2 * 24 = 12.
+      expect(after.body.valuation.projectedDraftSlot).toBe(12);
+      expect(after.body.valuation.projectedValueUsd).toBe(13_000_000 - 12 * 350_000);
+      expect(after.body.valuation.projectedValueLowUsd).toBeLessThan(after.body.valuation.projectedValueUsd);
+      expect(after.body.valuation.rookieScaleYear).toBe("2025-26");
+    });
+
+    // The system's gap must not read as the prospect's own shortfall.
+    it("says a model has not been trained rather than showing nothing", async () => {
+      const season = await createSeason(OWNER_ID);
+      await insertGames(season.id, 12);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.valuationState).toBe("AWAITING_MODEL");
+      expect(page.body.valuation).toBeNull();
+    });
+
+    it("re-values when the competition level changes", async () => {
+      await trainModel();
+      const season = await createSeason(OWNER_ID, { competitionLevel: "NCAA_D1" });
+      await logGamesViaApi(season.id, 10);
 
       await request(app.getHttpServer())
-        .delete(`/v1/me/become-pro/games/${game.id}`)
-        .expect(404);
-
-      expect(await testPrisma.prospectGame.count({ where: { id: game.id } })).toBe(1);
-    });
-
-    it("marks a profile as the caller's own only for its owner", async () => {
-      await createSeason(OWNER_ID);
-
-      signInAs(OWNER_ID);
-      const own = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-      expect(own.body.isSelf).toBe(true);
-
-      signInAs(OTHER_ID);
-      const theirs = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-      expect(theirs.body.isSelf).toBe(false);
-    });
-
-    it("hides a private season from everyone but its owner", async () => {
-      await createSeason(OWNER_ID, { isPublic: false });
-
-      signInAs(OTHER_ID);
-      await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(404);
-
-      signInAs(OWNER_ID);
-      await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-    });
-  });
-
-  describe("the value board", () => {
-    it("is readable signed out", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 12);
-      await valueSeason(season.id, 4_000_000);
-      signOut();
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/leaderboard").expect(200);
-
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].username).toBe("kiran");
-    });
-
-    it("keeps a season below the games floor off the board", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 5);
-      await valueSeason(season.id, 9_000_000);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/leaderboard").expect(200);
-
-      expect(response.body.data).toHaveLength(0);
-      expect(response.body.minimumGamesRequired).toBe(10);
-    });
-
-    it("ranks by projected value, highest first", async () => {
-      const mine = await createSeason(OWNER_ID);
-      const theirs = await createSeason(OTHER_ID);
-      await logGames(mine.id, 12);
-      await logGames(theirs.id, 12);
-      await valueSeason(mine.id, 2_000_000);
-      await valueSeason(theirs.id, 8_000_000);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/leaderboard").expect(200);
-
-      expect(response.body.data.map((row: { username: string }) => row.username)).toEqual(["sam", "kiran"]);
-      expect(response.body.data.map((row: { rank: number }) => row.rank)).toEqual([1, 2]);
-    });
-
-    it("carries the rookie-scale reference rows so a new board still reads", async () => {
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/leaderboard").expect(200);
-
-      expect(response.body.references.length).toBeGreaterThan(0);
-      expect(response.body.rookieScaleYear).toBeTruthy();
-    });
-
-    it("returns the caller's own standing even when it is off the page", async () => {
-      const mine = await createSeason(OWNER_ID);
-      const theirs = await createSeason(OTHER_ID);
-      await logGames(mine.id, 12);
-      await logGames(theirs.id, 12);
-      await valueSeason(mine.id, 1_000_000);
-      await valueSeason(theirs.id, 9_000_000);
-      signInAs(OWNER_ID);
-
-      const response = await request(app.getHttpServer())
-        .get("/v1/become-pro/leaderboard?pageSize=1")
+        .patch(`/v1/me/become-pro/seasons/${season.id}`)
+        .send({ competitionLevel: "NCAA_D2" })
         .expect(200);
 
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].username).toBe("sam");
-      expect(response.body.yourStanding.username).toBe("kiran");
-      expect(response.body.yourStanding.rank).toBe(2);
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      // D2 halves the 24 points to 12: 60 - 2 * 12 = 36 -> second round.
+      expect(page.body.valuation.projectedDraftSlot).toBe(36);
+      expect(page.body.valuation.projectedValueUsd).toBe(600_000);
+      expect(page.body.valuation.levelFactor).toBe(0.5);
     });
-  });
 
-  describe("the directory", () => {
-    // The whole reason it exists: somebody below the floor is invisible on
-    // the board but is still a person you can look up.
-    it("lists a prospect who is nowhere near qualifying", async () => {
+    it("clears the figure when games are deleted back under the floor", async () => {
+      await trainModel();
       const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 2);
-
-      const board = await request(app.getHttpServer()).get("/v1/become-pro/leaderboard").expect(200);
-      const directory = await request(app.getHttpServer()).get("/v1/become-pro/prospects").expect(200);
-
-      expect(board.body.data).toHaveLength(0);
-      expect(directory.body.data).toHaveLength(1);
-      expect(directory.body.data[0].rank).toBeNull();
-    });
-  });
-
-  describe("rank state", () => {
-    it("says a short season is below the games floor", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 4);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-
-      expect(response.body.rankState).toBe("BELOW_GAMES_FLOOR");
-      expect(response.body.rank).toBeNull();
-      // No figure at all — never a zero.
-      expect(response.body.valuation.projectedValueUsd).toBeNull();
-    });
-
-    // A qualified prospect waiting on the model must be distinguishable from
-    // one who simply has not logged enough games.
-    it("says a qualified but unvalued season is awaiting valuation", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 12);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-
-      expect(response.body.rankState).toBe("AWAITING_VALUATION");
-    });
-
-    it("says a valued, qualified season is ranked", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 12);
-      await valueSeason(season.id, 4_000_000);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-
-      expect(response.body.rankState).toBe("RANKED");
-      expect(response.body.rank).toBe(1);
-    });
-  });
-
-  describe("the header rank summary", () => {
-    it("reports the caller's standing and value history", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 12);
-      await valueSeason(season.id, 3_000_000);
-      await valueSeason(season.id, 4_000_000);
-      signInAs(OWNER_ID);
-
-      const response = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
-
-      expect(response.body.rank).toBe(1);
-      expect(response.body.projectedValueUsd).toBe(4_000_000);
-      // Oldest first, so the sparkline reads left to right in time.
-      expect(response.body.valueHistory.map((point: { valueUsd: number }) => point.valueUsd)).toEqual([
-        3_000_000, 4_000_000,
-      ]);
-    });
-
-    it("requires a session", async () => {
-      signOut();
-      await request(app.getHttpServer()).get("/v1/me/become-pro").expect(401);
-    });
-  });
-
-  describe("verification", () => {
-    async function uploadedEvidence(seasonId: string) {
-      return testPrisma.prospectEvidence.create({
-        data: {
-          seasonId,
-          fileName: "scoresheet.pdf",
-          objectPath: `${OWNER_ID}/${seasonId}/doc.pdf`,
-          mimeType: "application/pdf",
-          sizeBytes: 1024,
-        },
-      });
-    }
-
-    it("counts a season with nothing uploaded as undocumented", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 10);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-
-      expect(response.body.reliability.tier).toBe("UNDOCUMENTED");
-      // A measured zero, not an absence — games ARE on record.
-      expect(response.body.reliability.score).toBe(0);
-    });
-
-    it("raises reliability once an admin verifies a document", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 10);
-      const evidence = await uploadedEvidence(season.id);
-      await testPrisma.prospectGame.updateMany({
-        where: { seasonId: season.id },
-        data: { evidenceId: evidence.id },
-      });
-
-      signInAs(ADMIN_ID, "ADMIN");
-      await request(app.getHttpServer())
-        .patch(`/v1/admin/become-pro/evidence/${evidence.id}`)
-        .send({ status: "VERIFIED" })
-        .expect(200);
-
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-      expect(response.body.reliability.tier).toBe("STRONG");
-      expect(response.body.reliability.gamesVerified).toBe(10);
-    });
-
-    it("shows a rejection reason verbatim", async () => {
-      const season = await createSeason(OWNER_ID);
-      const evidence = await uploadedEvidence(season.id);
-      signInAs(ADMIN_ID, "ADMIN");
-
-      await request(app.getHttpServer())
-        .patch(`/v1/admin/become-pro/evidence/${evidence.id}`)
-        .send({ status: "REJECTED", note: "The scan is unreadable." })
-        .expect(200);
-
-      signInAs(OWNER_ID);
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-      expect(response.body.evidence[0].reviewNote).toBe("The scan is unreadable.");
-    });
-
-    // Without this, reliability is farmable: log a modest game, get it
-    // verified, then edit the numbers upward and keep the credit.
-    it("clears a game's verification when its numbers are edited", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 1);
-      const evidence = await uploadedEvidence(season.id);
+      await logGamesViaApi(season.id, 10);
       const game = await testPrisma.prospectGame.findFirstOrThrow({ where: { seasonId: season.id } });
-      await testPrisma.prospectGame.update({ where: { id: game.id }, data: { evidenceId: evidence.id } });
 
-      signInAs(OWNER_ID);
+      await request(app.getHttpServer()).delete(`/v1/me/become-pro/games/${game.id}`).expect(200);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      expect(page.body.valuationState).toBe("BELOW_GAMES_FLOOR");
+      expect(page.body.valuation).toBeNull();
+    });
+
+    // A newly trained model takes effect on the owner's next visit, with no
+    // restart and no admin action.
+    it("re-values against a newly trained model on the next read", async () => {
+      await trainModel([], 60, new Date(Date.UTC(2020, 0, 1)));
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+
+      await trainModel([], 70);
+      forgetCachedModel();
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      // 70 - 2 * 24 = 22.
+      expect(page.body.valuation.projectedDraftSlot).toBe(22);
+    });
+
+    // The sparkline shows movement, not a flat point for every typo fixed.
+    it("records a new history point only when the figure changes", async () => {
+      await trainModel();
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+      const game = await testPrisma.prospectGame.findFirstOrThrow({ where: { seasonId: season.id } });
+
       await request(app.getHttpServer())
         .patch(`/v1/me/become-pro/games/${game.id}`)
-        .send({ points: 40 })
+        .send({ opponent: "Renamed Opponent" })
         .expect(200);
 
-      const after = await testPrisma.prospectGame.findFirstOrThrow({ where: { id: game.id } });
-      expect(after.evidenceId).toBeNull();
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      expect(page.body.valueHistory).toHaveLength(1);
     });
 
-    // A scoresheet carries other people's names, so the public gets the
-    // status and never the file.
-    it("never hands a document's URL to somebody who does not own it", async () => {
+    // A game can change the explanation (here: efficiency, via free-throw
+    // attempts) without changing the value. That is a new valuation row, but
+    // not a new point on a line of the value.
+    it("keeps a run of unchanged values as one history point", async () => {
+      await trainModel();
       const season = await createSeason(OWNER_ID);
-      await uploadedEvidence(season.id);
-
-      signInAs(OTHER_ID);
-      const response = await request(app.getHttpServer()).get("/v1/become-pro/prospects/kiran").expect(200);
-
-      expect(response.body.evidence[0].fileUrl).toBeNull();
-      expect(response.body.evidence[0].status).toBe("PENDING");
-    });
-
-    it("keeps the review queue to admins", async () => {
-      signInAs(OWNER_ID);
-      await request(app.getHttpServer()).get("/v1/admin/become-pro/evidence").expect(403);
-    });
-
-    it("lists pending uploads with their owner for an admin", async () => {
-      const season = await createSeason(OWNER_ID);
-      await uploadedEvidence(season.id);
-      signInAs(ADMIN_ID, "ADMIN");
-
-      const response = await request(app.getHttpServer())
-        .get("/v1/admin/become-pro/evidence")
-        .expect(200);
-
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].owner.username).toBe("kiran");
-    });
-
-    // Deleting a scoresheet stops it vouching for games; it must not delete
-    // the games themselves.
-    it("keeps the games when their document is removed", async () => {
-      const season = await createSeason(OWNER_ID);
-      await logGames(season.id, 3);
-      const evidence = await uploadedEvidence(season.id);
-      await testPrisma.prospectGame.updateMany({
-        where: { seasonId: season.id },
-        data: { evidenceId: evidence.id },
-      });
-      signInAs(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
 
       await request(app.getHttpServer())
-        .delete(`/v1/me/become-pro/evidence/${evidence.id}`)
-        .expect(200);
+        .post(`/v1/me/become-pro/seasons/${season.id}/games`)
+        .send(gameBody({ gameDate: "2026-01-20", opponent: "Team 20", freeThrowsAttempted: 8 }))
+        .expect(201);
 
-      expect(await testPrisma.prospectGame.count({ where: { seasonId: season.id } })).toBe(3);
+      expect(await testPrisma.prospectValuation.count({ where: { seasonId: season.id } })).toBe(2);
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+      expect(page.body.valueHistory).toHaveLength(1);
+      const summary = await request(app.getHttpServer()).get("/v1/me/become-pro/summary").expect(200);
+      expect(summary.body.valueHistory).toHaveLength(1);
+    });
+  });
+
+  describe("NBA comparables", () => {
+    // The model compares against a player's ROOKIE REGULAR SEASON, derived
+    // from their draft year — a later season and a playoff game must both stay
+    // out of the line the page plots beside the similarity score.
+    it("builds a comparable's line from their rookie regular season only", async () => {
+      const rookie = await seedRookie({
+        draftYear: 2024,
+        games: [
+          { season: "2024-25", points: 10 },
+          { season: "2024-25", seasonType: "PLAYOFFS", points: 40 },
+          { season: "2025-26", points: 30 },
+        ],
+      });
+      await trainModel([rookie.id]);
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      const [entry] = page.body.valuation.comparables;
+      expect(entry.player.id).toBe(rookie.id);
+      expect(entry.rookieSeason).toBe("2024-25");
+      expect(entry.seasonAverages.gamesPlayed).toBe(1);
+      expect(entry.seasonAverages.pointsPerGame).toBe(10);
+    });
+
+    // The same gate every other public PlayerGameStat read carries.
+    it("keeps games from an unreviewed ingestion batch out of a comparable's line", async () => {
+      const rookie = await seedRookie({
+        draftYear: 2024,
+        games: [
+          { season: "2024-25", points: 10, batchStatus: "COMPLETED" },
+          { season: "2024-25", points: 50, batchStatus: "PENDING_REVIEW" },
+        ],
+      });
+      await trainModel([rookie.id]);
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.valuation.comparables[0].seasonAverages.pointsPerGame).toBe(10);
+    });
+
+    // A zeroed shape would read as a real, absurd rookie season.
+    it("drops a comparable with no published rookie season", async () => {
+      const rookie = await seedRookie({
+        draftYear: 2024,
+        games: [{ season: "2024-25", points: 10, batchStatus: "PENDING_REVIEW" }],
+      });
+      await trainModel([rookie.id]);
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.valuation.comparables).toEqual([]);
+    });
+
+    it("names players actually drafted at the projected slot", async () => {
+      // 24 points projects to slot 12.
+      const alumnus = await seedRookie({ draftYear: 2023, draftNumber: 12, games: [] });
+      await trainModel();
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.valuation.slotAlumni[0].player.id).toBe(alumnus.id);
+      expect(page.body.valuation.slotAlumni[0].draftYear).toBe(2023);
+    });
+
+    // The radar must plot the line the similarity was measured on.
+    it("returns the level-adjusted line alongside the raw one", async () => {
+      await trainModel();
+      const season = await createSeason(OWNER_ID, { competitionLevel: "NCAA_D2" });
+      await logGamesViaApi(season.id, 10);
+
+      const page = await request(app.getHttpServer()).get("/v1/me/become-pro").expect(200);
+
+      expect(page.body.seasonAverages.pointsPerGame).toBe(24);
+      expect(page.body.valuation.levelAdjustedAverages.pointsPerGame).toBe(12);
+      expect(page.body.valuation.levelAdjustedAverages.fieldGoalPercentage).toBe(
+        page.body.seasonAverages.fieldGoalPercentage
+      );
+    });
+  });
+
+  describe("summary", () => {
+    it("reports the latest season's value and its trend", async () => {
+      await trainModel();
+      const season = await createSeason(OWNER_ID);
+      await logGamesViaApi(season.id, 10);
+
+      const response = await request(app.getHttpServer()).get("/v1/me/become-pro/summary").expect(200);
+
+      expect(response.body.valuationState).toBe("VALUED");
+      expect(response.body.projectedDraftSlot).toBe(12);
+      expect(response.body.gamesLogged).toBe(10);
+      expect(response.body.valueHistory).toHaveLength(1);
+    });
+
+    it("is empty for a user who has not started", async () => {
+      const response = await request(app.getHttpServer()).get("/v1/me/become-pro/summary").expect(200);
+
+      expect(response.body.season).toBeNull();
+      expect(response.body.projectedValueUsd).toBeNull();
     });
   });
 });

@@ -33,8 +33,11 @@ const MAX_OVERLAY_PLAYERS = 2;
 
 const SERIES_COLORS = COMPARISON_PLAYER_COLORS;
 
+// Joined rather than templated so a subject with no last name (Become Pro's
+// "You") reads "You", not "You " — the trailing space would otherwise reach
+// the screen-reader summary as "You : Scoring …".
 function playerLabel(entry: TraitsComparisonEntry): string {
-  return `${entry.player.firstName} ${entry.player.lastName}`;
+  return [entry.player.firstName, entry.player.lastName].filter(Boolean).join(" ");
 }
 
 // One player's normalised traits as prose, for the screen-reader summary:

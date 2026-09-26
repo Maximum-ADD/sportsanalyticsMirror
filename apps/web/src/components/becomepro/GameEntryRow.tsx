@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   findBoxScoreIssues,
   hasBlockingIssue,
   issueForField,
 } from "@/lib/boxScoreValidation";
+import { BUTTON_CLASS, LABEL_CLASS, QUIET_BUTTON_CLASS } from "@/components/becomepro/styles";
 import type { ProspectGameInput } from "@/types/nba";
 
 interface GameEntryRowProps {
@@ -13,6 +14,13 @@ interface GameEntryRowProps {
   lastGame?: ProspectGameInput;
   /** Surfaced verbatim from the API's error envelope when a save fails. */
   errorMessage?: string | null;
+  /**
+   * An existing game to CORRECT rather than a new one to add. The row opens
+   * filled in with it, saves under "Save changes", and hands back via
+   * onCancel instead of resetting for the next entry.
+   */
+  editing?: ProspectGameInput;
+  onCancel?: () => void;
 }
 
 const EMPTY_GAME: ProspectGameInput = {
@@ -66,12 +74,17 @@ const NUMBER_FIELDS: { field: keyof ProspectGameInput; label: string }[] = [
  * disagrees with its own shooting splits is flagged and still saveable,
  * because real scoresheets do that and refusing the user's own sheet is worse.
  */
-export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameEntryRowProps) {
-  const [draft, setDraft] = useState<ProspectGameInput>(EMPTY_GAME);
+export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage, editing, onCancel }: GameEntryRowProps) {
+  const isEditing = editing !== undefined;
+  const [draft, setDraft] = useState<ProspectGameInput>(editing ?? EMPTY_GAME);
   // Issues are held back until a save is attempted, so the row does not shout
   // at somebody who has simply not finished typing it yet.
   const [showIssues, setShowIssues] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  // Scopes every input id to this row. The add row and an edit row can be on
+  // screen together, and fixed ids would collide — breaking each label's link
+  // to its input for screen readers and failing axe's duplicate-id rule.
+  const idPrefix = useId();
 
   const issues = findBoxScoreIssues(draft);
   const isBlocked = hasBlockingIssue(issues);
@@ -94,6 +107,13 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
       return;
     }
 
+    // A correction is finished once it saves; there is no "next" row to
+    // prepare, so hand control back to the table.
+    if (isEditing) {
+      onCancel?.();
+      return;
+    }
+
     // Carry the date forward: the next game is far more often in the same week
     // than on no date at all, and re-typing it twenty times is the single
     // biggest cost of logging a season.
@@ -109,7 +129,7 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
 
   return (
     <form
-      aria-label="Add a game"
+      aria-label={isEditing ? `Edit the game against ${editing.opponent}` : "Add a game"}
       onSubmit={(event) => {
         event.preventDefault();
         void handleSubmit();
@@ -118,7 +138,7 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
     >
       <div className="flex flex-wrap items-end gap-2.5">
         <TextField
-          id="game-date"
+          id={`${idPrefix}-date`}
           label="Date"
           type="date"
           value={draft.gameDate}
@@ -127,7 +147,7 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
           issue={fieldError("gameDate")}
         />
         <TextField
-          id="game-opponent"
+          id={`${idPrefix}-opponent`}
           label="Opponent"
           type="text"
           value={draft.opponent}
@@ -140,7 +160,7 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
         {NUMBER_FIELDS.map(({ field, label }) => (
           <NumberField
             key={field}
-            id={`game-${field}`}
+            id={`${idPrefix}-${field}`}
             label={label}
             value={draft[field] as number}
             onChange={(value) => set(field, value as never)}
@@ -180,15 +200,24 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
         <button
           type="submit"
           disabled={isSaving || (showIssues && isBlocked)}
-          className="min-h-11 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
+          className={BUTTON_CLASS}
         >
-          {isSaving ? "Saving…" : "Add game"}
+          {isSaving ? "Saving…" : isEditing ? "Save changes" : "Add game"}
         </button>
-        {lastGame && (
+        {isEditing && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className={QUIET_BUTTON_CLASS}
+          >
+            Cancel
+          </button>
+        )}
+        {!isEditing && lastGame && (
           <button
             type="button"
             onClick={() => setDraft({ ...lastGame, gameDate: draft.gameDate || lastGame.gameDate })}
-            className="min-h-11 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-locker-ink-muted uppercase transition-colors hover:border-locker-leather hover:text-landing-ink sm:min-h-0"
+            className={QUIET_BUTTON_CLASS}
           >
             Copy last game
           </button>
@@ -198,8 +227,10 @@ export function GameEntryRow({ onSave, isSaving, lastGame, errorMessage }: GameE
   );
 }
 
-const LABEL_CLASS = "font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase";
-const INPUT_CLASS =
+// Inputs sit inside a recessed landing-hero panel, so they take the raised
+// locker-surface fill — the same figure/ground inversion StatTile uses — and
+// a tighter padding than the shared INPUT_CLASS so thirteen of them fit a row.
+const FIELD_INPUT_CLASS =
   "border bg-locker-surface px-2 py-1.5 text-[13px] text-landing-ink focus:border-locker-leather focus:outline-none";
 
 function TextField({
@@ -231,7 +262,7 @@ function TextField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={issue ? true : undefined}
-        className={`${INPUT_CLASS} ${issue ? "border-locker-bad" : "border-landing-light"} w-40`}
+        className={`${FIELD_INPUT_CLASS} ${issue ? "border-locker-bad" : "border-landing-light"} w-40`}
       />
     </div>
   );
@@ -251,7 +282,10 @@ function NumberField({
   issue?: { message: string };
 }) {
   return (
-    <div className="flex w-[4.25rem] flex-col gap-1">
+    // 3.5rem: wide enough for a three-digit figure beside the spinner, narrow
+    // enough that all thirteen sit on one row in the desktop column, so a row
+    // reads straight across like the scoresheet it is copied from.
+    <div className="flex w-14 flex-col gap-1">
       <label htmlFor={id} className={LABEL_CLASS}>
         {label}
       </label>
@@ -264,7 +298,7 @@ function NumberField({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
         aria-invalid={issue ? true : undefined}
-        className={`${INPUT_CLASS} ${issue ? "border-locker-bad" : "border-landing-light"} w-full tabular-nums`}
+        className={`${FIELD_INPUT_CLASS} ${issue ? "border-locker-bad" : "border-landing-light"} w-full tabular-nums`}
       />
     </div>
   );

@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Sparkline } from "@/components/Sparkline";
-import { ProRankBadge } from "@/components/becomepro/ProRankBadge";
-import { PROSPECT_RANK_QUERY_KEY, fetchMyProspectRank } from "@/lib/becomeProApi";
-import { describeRankState, formatProjectedValue } from "@/lib/prospectValue";
 import { useSession } from "@/lib/authClient";
+import { MY_BECOME_PRO_SUMMARY_QUERY_KEY, fetchMyBecomeProSummary } from "@/lib/becomeProApi";
+import {
+  COMPETITION_LEVEL_LABELS,
+  describeValuationState,
+  formatDraftSlot,
+  formatProjectedValue,
+} from "@/lib/prospectValue";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -20,25 +24,27 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+const LINK_CLASS =
+  "mt-3 inline-block border border-landing-light bg-landing-hero px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather";
+
 /**
- * The signed-in user's own standing, small enough for the Home rail and the
- * profile page.
+ * The signed-in user's own projected value, small enough for the Home rail
+ * and the profile page.
  *
- * Self-fetching like every other module on /home, and deliberately reading the
- * lean GET /v1/me/become-pro rather than a whole prospect profile — this card
- * shows a figure and a rank, not a breakdown, so pulling a profile (with its
- * game log, evidence list and comparables) to render four lines would be waste
- * on two of the most-visited pages in the app.
+ * Self-fetching like every other module on /home, and reading the lean
+ * GET /v1/me/become-pro/summary rather than the whole Become Pro page — this
+ * card shows a figure and a trend, not the NBA comparables, and pulling those
+ * on two of the most-visited pages in the app to render four lines would be
+ * waste.
  *
- * Signed out it renders nothing at all: the Home page is already gated behind
- * a session, and an invitation on a page you cannot reach signed out would be
- * dead copy.
+ * Signed out it renders nothing: both pages it sits on are already behind a
+ * session, and an invitation nobody signed out can reach would be dead copy.
  */
 export function MyProspectCard() {
   const { data: session } = useSession();
   const { data, isPending, isError, refetch } = useQuery({
-    queryKey: PROSPECT_RANK_QUERY_KEY,
-    queryFn: fetchMyProspectRank,
+    queryKey: MY_BECOME_PRO_SUMMARY_QUERY_KEY,
+    queryFn: fetchMyBecomeProSummary,
     enabled: Boolean(session),
   });
 
@@ -47,7 +53,7 @@ export function MyProspectCard() {
   if (isPending) {
     return (
       <Shell>
-        <div role="status" aria-label="Loading your Become Pro standing" className="animate-pulse space-y-1.5">
+        <div role="status" aria-label="Loading your Become Pro value" className="animate-pulse space-y-1.5">
           {Array.from({ length: 3 }, (_, index) => (
             <div key={index} className="h-6 bg-landing-hero" />
           ))}
@@ -59,7 +65,7 @@ export function MyProspectCard() {
   if (isError) {
     return (
       <Shell>
-        <p className="text-[12px] text-locker-bad">Could not load your standing.</p>
+        <p className="text-[12px] text-locker-bad">Could not load your projected value.</p>
         <button
           type="button"
           onClick={() => refetch()}
@@ -71,50 +77,61 @@ export function MyProspectCard() {
     );
   }
 
-  const shortfall = describeRankState(data.rankState, data.gamesLogged, data.minimumGamesRequired);
-  // No figure below the floor — the same rule the full card follows. A zero
-  // here would be a valuation the model never produced.
-  const hasFigure = data.projectedValueUsd !== null;
-  // Two points is the minimum a line can be drawn through; one valuation is a
-  // dot, not a trend, so the sparkline waits rather than drawing something
-  // that implies movement.
+  // Not started: an invitation, never an empty figure.
+  if (data.season === null) {
+    return (
+      <Shell>
+        <p className="text-[12.5px] text-locker-ink-muted">
+          Log your own games and see what your season projects to against the NBA rookie salary scale —
+          and which real NBA rookies your game looks most like.
+        </p>
+        <Link to="/become-pro" className={LINK_CLASS}>
+          Start a season
+        </Link>
+      </Shell>
+    );
+  }
+
   const history = data.valueHistory.map((point) => point.valueUsd);
+  const hasFigure = data.projectedValueUsd !== null;
 
   return (
     <Shell>
+      <p className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+        {data.season} · {data.competitionLevel ? COMPETITION_LEVEL_LABELS[data.competitionLevel] : ""}
+      </p>
+
       {hasFigure ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
-              Projection · self-reported
+          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="font-display text-[30px] leading-tight text-landing-ink tabular-nums">
+              {formatProjectedValue(data.projectedValueUsd)}
             </span>
-            <ProRankBadge rank={data.rank} className="text-locker-leather" />
+            <span className="font-display text-[15px] text-locker-ink-muted tabular-nums">
+              {formatDraftSlot(data.projectedDraftSlot)}
+            </span>
           </div>
-          <p className="mt-1 font-display text-[30px] text-landing-ink tabular-nums">
-            {formatProjectedValue(data.projectedValueUsd)}
-          </p>
+          {/* A single valuation is a dot, not a trend — the sparkline waits
+              for a second one rather than implying movement. */}
           {history.length > 1 && (
             <Sparkline
               points={history}
-              label={`Your projected value across the last ${history.length} valuations`}
+              label={`Your projected value across your last ${history.length} valuations`}
               className="mt-2"
             />
           )}
           <p className="mt-2 text-[11px] text-locker-ink-muted">
-            From {data.gamesLogged} self-reported {data.gamesLogged === 1 ? "game" : "games"}.
+            Projection · self-reported · {data.gamesLogged} {data.gamesLogged === 1 ? "game" : "games"}
           </p>
         </>
       ) : (
-        <p className="border border-dashed border-landing-light bg-landing-hero px-4 py-3 text-[12.5px] text-locker-ink-muted">
-          {shortfall ?? "Log a season to see what it projects to."}
+        <p className="mt-2 border border-dashed border-landing-light bg-landing-hero px-4 py-3 text-[12.5px] text-locker-ink-muted">
+          {describeValuationState(data.valuationState, data.gamesLogged, data.minimumGamesRequired)}
         </p>
       )}
 
-      <Link
-        to={data.username ? `/become-pro/${data.username}` : "/become-pro"}
-        className="mt-3 inline-block border border-landing-light bg-landing-hero px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
-      >
-        {hasFigure ? "My season" : "Start a season"}
+      <Link to="/become-pro" className={LINK_CLASS}>
+        {hasFigure ? "My season" : "Log games"}
       </Link>
     </Shell>
   );

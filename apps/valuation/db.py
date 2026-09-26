@@ -7,12 +7,23 @@ anything NestJS itself writes to.
 """
 
 import os
+from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
-load_dotenv()
+# An EXPLICIT path, never a bare load_dotenv(). With no argument python-dotenv
+# walks UP the directory tree until it finds any .env — and the repository's
+# root .env points DATABASE_URL at the production database. A developer who
+# ran this script before creating apps/valuation/.env would silently write
+# valuations into production. Reading only this directory's own .env means a
+# missing file fails loudly (see get_connection) instead.
+#
+# Not override=True either: a DATABASE_URL already set in the environment —
+# how CI and a deliberate one-off run point this at a specific database —
+# wins over the file.
+load_dotenv(Path(__file__).with_name(".env"))
 
 
 def get_connection():

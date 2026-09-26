@@ -6,10 +6,11 @@ every stored valuation carries both the factor applied and a one-sentence
 basis string, and the UI prints both next to the figure rather than folding
 them silently into the dollars.
 
-Why it has to exist at all: without it the board ranks whoever plays the
-weakest opposition. Thirty points a game in a recreational league and thirty
-in Division I are not the same claim, and a leaderboard that treats them alike
-is measuring the schedule rather than the player.
+Why it has to exist at all: the model was fitted on NBA rookies, so a line
+has to be put on something like that footing before it is compared. Thirty
+points a game in a recreational league and thirty in Division I are not the
+same claim, and a valuation that treats them alike is measuring the schedule
+rather than the player.
 
 Why the numbers are what they are: they are a coarse ordering of competition
 strength, anchored on NCAA Division I as the level from which NBA draftees

@@ -1,19 +1,18 @@
-"""Unit tests for the valuation model.
+"""Unit tests for the valuation trainer.
 
 Every test here runs on literals — no database, no app boot — the same way
 apps/optimizer/test_predict.py and apps/predictor's tests do.
+
+Applying the model (slot projection, interval, comparables, explanation) is
+tested in the API, where it now runs: see
+apps/api/src/become-pro/valuation-model.spec.ts.
 """
+
+import json
 
 import pytest
 
-from draft_slot_model import (
-    MAX_PROJECTED_SLOT,
-    MIN_PROJECTED_SLOT,
-    describe_drivers,
-    fit_slot_model,
-    project_slot,
-    value_interval,
-)
+from draft_slot_model import FEATURE_NAMES, fit_slot_model
 from level_factors import LEVEL_FACTORS, factor_for
 from rookie_scale import (
     DRAFT_PICKS,
@@ -23,15 +22,21 @@ from rookie_scale import (
     UNDRAFTED_VALUE,
     value_for_slot,
 )
-from value_prospects import MINIMUM_GAMES_REQUIRED, adjust_for_level, true_shooting
+from train_valuation_model import (
+    MINIMUM_GAMES_REQUIRED,
+    MODEL_VERSION,
+    build_bundle,
+    rookie_season_label,
+    true_shooting,
+)
 
 
 def make_training_rows():
     """Drafted players whose production falls off as the pick number rises.
 
     Deliberately a clean signal: these tests check the model's MECHANICS
-    (does it fit, does it invert, does it clamp), not how well it does on real
-    NBA data, which is what the MAE it records at run time is for.
+    (does it fit, does it rank), not how well it does on real NBA data, which
+    is what the MAE it records at training time is for.
     """
     rows = []
     for pick in range(1, 31):
@@ -101,8 +106,8 @@ class TestLevelFactors:
 
 
 class TestTrueShooting:
-    # Must match apps/api/src/players/season-averages.ts exactly, or a
-    # prospect's efficiency is not comparable with an NBA player's.
+    # Must match apps/api/src/players/season-averages.ts exactly: a rookie's
+    # efficiency is measured here and a prospect's there.
     def test_matches_the_api_formula(self):
         # 24 points on 17 FGA and 4 FTA:
         #   24 / (2 * (17 + 0.44*4)) * 100 = 24 / 37.52 * 100 = 63.97 -> 64.0
@@ -112,23 +117,17 @@ class TestTrueShooting:
         assert true_shooting(0, 0, 0) == 0.0
 
 
-class TestLevelAdjustment:
-    def test_volume_is_discounted(self):
-        adjusted = adjust_for_level(
-            {"points_per_game": 24.0, "rebounds_per_game": 8.0, "assists_per_game": 4.0, "true_shooting": 58.0},
-            0.5,
-        )
-        assert adjusted["points_per_game"] == 12.0
-        assert adjusted["rebounds_per_game"] == 4.0
+class TestRookieSeasonLabel:
+    # Must match rookieSeasonLabel in apps/api/src/become-pro/rookie-season.ts:
+    # the model trains on this season and the profile page labels it.
+    def test_a_june_draftee_is_a_rookie_the_following_season(self):
+        assert rookie_season_label(2023) == "2023-24"
 
-    # A rate is not discounted: shooting 58% against weaker opposition still
-    # means the shots went in.
-    def test_efficiency_is_a_rate_and_is_not_discounted(self):
-        adjusted = adjust_for_level(
-            {"points_per_game": 24.0, "rebounds_per_game": 8.0, "assists_per_game": 4.0, "true_shooting": 58.0},
-            0.5,
-        )
-        assert adjusted["true_shooting"] == 58.0
+    def test_zero_pads_the_second_year(self):
+        assert rookie_season_label(2008) == "2008-09"
+
+    def test_wraps_the_century(self):
+        assert rookie_season_label(1999) == "1999-00"
 
 
 class TestSlotModel:
@@ -143,94 +142,56 @@ class TestSlotModel:
         # A clean signal should rank almost perfectly.
         assert model["rank_correlation"] > 0.9
 
-    def test_stronger_production_projects_to_an_earlier_pick(self):
+    # Better production must mean an EARLIER pick. If this ever flipped, the
+    # API would project the best prospects to the worst picks.
+    def test_better_production_lowers_the_projected_pick(self):
         model = fit_slot_model(make_training_rows())
-        strong = project_slot(
-            model,
-            {"points_per_game": 23.0, "rebounds_per_game": 7.5, "assists_per_game": 5.5, "true_shooting": 59.0},
-        )
-        weak = project_slot(
-            model,
-            {"points_per_game": 7.0, "rebounds_per_game": 2.2, "assists_per_game": 1.2, "true_shooting": 49.0},
-        )
+        intercept, *weights = model["coefficients"]
+        strong = intercept + sum(w * f for w, f in zip(weights, [23.0, 7.5, 5.5, 59.0]))
+        weak = intercept + sum(w * f for w, f in zip(weights, [7.0, 2.2, 1.2, 49.0]))
         assert strong < weak
 
-    # A linear fit would otherwise extrapolate a spectacular line to pick zero
-    # or a negative one, which is not a pick.
-    def test_clamps_into_the_range_of_real_picks(self):
-        model = fit_slot_model(make_training_rows())
-        absurd = project_slot(
-            model,
-            {"points_per_game": 90.0, "rebounds_per_game": 40.0, "assists_per_game": 30.0, "true_shooting": 99.0},
-        )
-        nothing = project_slot(
-            model,
-            {"points_per_game": 0.0, "rebounds_per_game": 0.0, "assists_per_game": 0.0, "true_shooting": 0.0},
-        )
-        assert absurd >= MIN_PROJECTED_SLOT
-        assert nothing <= MAX_PROJECTED_SLOT
 
+class TestBundle:
+    def setup_method(self):
+        rows = make_training_rows()
+        self.bundle = build_bundle(fit_slot_model(rows), rows)
 
-class TestValueInterval:
-    def test_brackets_the_point_estimate(self):
-        low, high = value_interval(4_000_000, games_logged=40, has_verified_evidence=True)
-        assert low < 4_000_000 < high
+    # The API reads this bundle as JSON; anything that does not survive a
+    # round trip would silently arrive as something else.
+    def test_survives_a_json_round_trip(self):
+        assert json.loads(json.dumps(self.bundle)) == self.bundle
 
-    # The frontend promotes the interval over the point estimate when nothing
-    # is verified, so the interval has to actually widen or that promotion is
-    # decoration.
-    def test_widens_when_nothing_is_verified(self):
-        verified = value_interval(4_000_000, games_logged=40, has_verified_evidence=True)
-        unverified = value_interval(4_000_000, games_logged=40, has_verified_evidence=False)
-        assert unverified[1] - unverified[0] > verified[1] - verified[0]
+    def test_carries_one_coefficient_per_feature_plus_the_intercept(self):
+        assert self.bundle["featureNames"] == list(FEATURE_NAMES)
+        assert len(self.bundle["coefficients"]) == len(FEATURE_NAMES) + 1
 
-    def test_widens_for_a_short_game_log(self):
-        long_log = value_interval(4_000_000, games_logged=40, has_verified_evidence=True)
-        short_log = value_interval(4_000_000, games_logged=11, has_verified_evidence=True)
-        assert short_log[1] - short_log[0] > long_log[1] - long_log[0]
+    # The rookie scale is defined once, here, and shipped — the API must not
+    # need its own copy.
+    def test_ships_the_whole_first_round_scale(self):
+        first_round = self.bundle["rookieScale"]["firstRound"]
+        assert len(first_round) == FIRST_ROUND_PICKS
+        assert first_round["1"] == FIRST_ROUND_SCALE[1]
+        assert first_round[str(FIRST_ROUND_PICKS)] == FIRST_ROUND_SCALE[FIRST_ROUND_PICKS]
 
-    def test_never_goes_below_zero(self):
-        low, _ = value_interval(85_000, games_logged=10, has_verified_evidence=False)
-        assert low >= 0
+    def test_ships_every_level_factor_with_its_basis(self):
+        assert set(self.bundle["levelFactors"]) == set(LEVEL_FACTORS)
+        for entry in self.bundle["levelFactors"].values():
+            assert 0 < entry["factor"] <= 1
+            assert entry["basis"]
 
+    def test_comparables_are_drawn_from_the_training_rookies(self):
+        index = self.bundle["comparableIndex"]
+        assert len(index) == 30
+        assert index[0]["playerId"] == "player-1"
+        assert len(index[0]["features"]) == len(FEATURE_NAMES)
 
-class TestDrivers:
-    def test_names_scoring_efficiency_and_level(self):
-        drivers = describe_drivers(
-            {"points_per_game": 24.0, "rebounds_per_game": 7.0, "assists_per_game": 2.0, "true_shooting": 58.0},
-            0.62,
-            "NCAA Division II production is translated against Division I output.",
-        )
-        labels = [driver["label"] for driver in drivers]
-        assert labels == ["Scoring", "Efficiency", "Level"]
-
-    def test_shows_the_level_adjusted_scoring_figure(self):
-        drivers = describe_drivers(
-            {"points_per_game": 24.0, "rebounds_per_game": 7.0, "assists_per_game": 2.0, "true_shooting": 58.0},
-            0.5,
-            "basis",
-        )
-        assert "12.0" in drivers[0]["detail"]
-
-    # "1.1 assists per game" is noise, not a driver.
-    def test_playmaking_only_appears_when_there_is_something_to_say(self):
-        quiet = describe_drivers(
-            {"points_per_game": 24.0, "rebounds_per_game": 7.0, "assists_per_game": 1.1, "true_shooting": 58.0},
-            1.0,
-            "basis",
-        )
-        loud = describe_drivers(
-            {"points_per_game": 24.0, "rebounds_per_game": 7.0, "assists_per_game": 6.4, "true_shooting": 58.0},
-            1.0,
-            "basis",
-        )
-        assert "Playmaking" not in [driver["label"] for driver in quiet]
-        assert "Playmaking" in [driver["label"] for driver in loud]
+    def test_records_the_model_version(self):
+        assert self.bundle["modelVersion"] == MODEL_VERSION
 
 
 class TestFloorAgreement:
-    # This constant must match MINIMUM_GAMES_REQUIRED in
-    # apps/api/src/become-pro/prospect-ranking.ts. If they drift, a prospect
-    # can be ranked by the API without this service ever giving them a figure.
+    # Must equal MINIMUM_GAMES_REQUIRED in
+    # apps/api/src/become-pro/valuation-state.ts, which the API enforces.
     def test_games_floor_matches_the_api(self):
         assert MINIMUM_GAMES_REQUIRED == 10

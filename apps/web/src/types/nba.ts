@@ -634,20 +634,25 @@ export interface SavedComparison {
 // API nor the profile page could satisfy.
 
 // ── Become Pro ────────────────────────────────────────────────────────────
-// A user's own season: self-reported, per-game box scores. The season line is
-// DERIVED from those rows and never typed directly, so every published
-// prospect figure traces back to a game record exactly as every NBA figure in
-// this file does (see the README's opening paragraph).
+// A user's own season: self-reported, per-game box scores, priced against the
+// published NBA rookie salary scale and compared with real NBA rookies.
 //
-// The derived line is `SeasonAverages` VERBATIM — the same type the NBA
-// endpoints return. That is what lets StatTile, PlayerTraitsRadar,
-// ComparisonTraitsRadar, PointsTrendChart and the formatters in
-// lib/advancedStats.ts carry this feature with no new chart or table code.
+// PRIVATE to its owner. There is no leaderboard and no comparison between
+// users — only between a user and real NBA players — which is also why
+// nothing a user enters is verified: it only ever reaches them. Every endpoint
+// lives under /v1/me/become-pro.
+//
+// The season line is DERIVED from the logged games and never typed directly,
+// so every figure traces back to a game record exactly as every NBA figure in
+// this file does. It is `SeasonAverages` VERBATIM — the same type the NBA
+// endpoints return — which is what lets StatTile, PlayerTraitsRadar,
+// ComparisonTraitsRadar, PointsTrendChart and lib/advancedStats.ts carry this
+// feature with no new chart or table code.
 
 /**
  * Where a season was played. Required on every season, because it scales the
- * valuation: without it the board would rank whoever plays the weakest
- * opposition rather than whoever is the best prospect.
+ * valuation: 30 points a game in a recreational league and 30 in Division I
+ * are not the same claim about professional potential.
  */
 export type CompetitionLevel =
   | "NCAA_D1"
@@ -695,12 +700,6 @@ export interface ProspectGameInput {
 export interface ProspectGame extends ProspectGameInput {
   id: string;
   seasonId: string;
-  // Which uploaded document covers this game. null means self-reported with
-  // nothing behind it — a real state that must render as such, not as a gap.
-  evidenceId: string | null;
-  // Denormalised from that document so a game row can show its own standing
-  // without the caller joining the evidence list itself.
-  evidenceStatus: EvidenceStatus | null;
 }
 
 export interface CreateProspectSeasonBody {
@@ -710,60 +709,25 @@ export interface CreateProspectSeasonBody {
   teamName?: string | null;
 }
 
-export type EvidenceStatus = "PENDING" | "VERIFIED" | "REJECTED";
-
-export interface ProspectEvidence {
-  id: string;
-  seasonId: string;
-  fileName: string;
-  // Signed, directly renderable URL — the API never exposes the underlying
-  // private storage path, exactly as MeProfile.avatarUrl already works.
-  // NULL for anyone who is not the owner or an admin: a scorecard carries
-  // other people's names, so the public gets the status and never the file.
-  fileUrl: string | null;
-  mimeType: string;
-  status: EvidenceStatus;
-  reviewedAt: string | null;
-  /** Shown verbatim when REJECTED, so a rejection is never unexplained. */
-  reviewNote: string | null;
-  gamesCovered: number;
-  uploadedAt: string;
-}
-
-/** GET /v1/admin/become-pro/evidence's row — the review queue needs an owner. */
-export interface AdminProspectEvidence extends ProspectEvidence {
-  owner: { username: string; displayName: string };
-}
-
 /**
- * The "reliability score": how much of a season's line is backed by uploaded,
- * admin-verified documents.
+ * Whether a season has a projected value yet, and if not, why not.
  *
- * Deliberately named apart from lib/reliability.ts, which already means
- * PREDICTION reliability (how close a player's last N games landed to today's
- * predicted points). The two are unrelated and must not share a vocabulary.
+ * VALUED            the season has a projected value.
+ * BELOW_GAMES_FLOOR not enough games logged yet — the user's to fix.
+ * AWAITING_MODEL    enough games, but no valuation model has been trained yet
+ *                   — the system's to fix, and said so rather than hidden.
  */
-export interface ProspectReliability {
-  gamesLogged: number;
-  gamesVerified: number;
-  gamesDocumented: number;
-  /** 0-1, share of logged games covered by VERIFIED evidence. */
-  verifiedCoverage: number;
-  /** 0-1, share covered by evidence of any status. */
-  documentedCoverage: number;
-  // Computed server-side so the tier boundaries cannot drift between the
-  // valuation model and this UI.
-  tier: ProspectReliabilityTier;
-  // NULL only when gamesLogged === 0. With games on record a score of 0 is a
-  // REAL measurement (nothing documented yet) and renders as 0, never "—".
-  score: number | null;
-}
-
-export type ProspectReliabilityTier = "UNDOCUMENTED" | "PARTIAL" | "STRONG";
+export type ValuationState = "VALUED" | "BELOW_GAMES_FLOOR" | "AWAITING_MODEL";
 
 export interface ProspectComparable {
   player: Player;
+  // The comparable's ROOKIE REGULAR SEASON — the line the valuation model
+  // actually compared against — not their career. A career blend with the
+  // postseason mixed in would be a different measurement from the one the
+  // similarity score describes.
   seasonAverages: SeasonAverages;
+  /** Which league year that rookie line is, e.g. "2024-25". */
+  rookieSeason: string;
   /** 0-1, the model's own distance metric — not a claim of equivalence. */
   similarity: number;
 }
@@ -776,131 +740,38 @@ export interface DraftSlotAlumnus {
   draftYear: number;
 }
 
+export interface ProspectValuationDriver {
+  label: string;
+  detail: string;
+}
+
 export interface ProspectValuation {
   /** Echoed so an already-rendered figure cannot be mislabelled. */
   seasonId: string;
-  // HYPOTHETICAL is reserved for the deferred what-if preview; everything
-  // persisted is LOGGED. The discriminator exists so a figure no model
-  // produced could never be presented as one that was.
-  basis: "LOGGED" | "HYPOTHETICAL";
-  // NULL — never 0 — when the games floor is unmet. The UI renders the
-  // shortfall sentence instead of a figure.
-  projectedDraftSlot: number | null;
-  /** Whole USD, first-year rookie scale. */
-  projectedValueUsd: number | null;
-  // An honest interval, widened by a short game log and thin evidence.
-  projectedValueLowUsd: number | null;
-  projectedValueHighUsd: number | null;
+  /** The draft slot the model projects — what it actually computes. */
+  projectedDraftSlot: number;
+  /** Whole USD: the published first-year rookie scale for that slot. */
+  projectedValueUsd: number;
+  // An honest interval, widened for a short game log.
+  projectedValueLowUsd: number;
+  projectedValueHighUsd: number;
   /** Which published scale this figure came from, e.g. "2025-26". */
   rookieScaleYear: string;
   levelFactor: number;
   /** One sentence naming where that factor comes from. */
   levelFactorBasis: string;
   modelVersion: string;
-  // Null when the model has never run for this season. The payload still
-  // carries a valuation OBJECT in that case — with null figures — so the
-  // client renders one shape and reads the nulls as "not valued yet" rather
-  // than branching on a missing key.
-  computedAt: string | null;
+  computedAt: string;
   // SERVER-AUTHORED. The client renders these verbatim and never composes
   // one — a client-written explanation of a server-side model is invention.
   drivers: ProspectValuationDriver[];
-  minimumGamesRequired: number;
+  // The season line translated to the level the model compares against —
+  // volume discounted by levelFactor, rates untouched — so the comparison
+  // radar plots the same line the similarity score was computed on. Computed
+  // server-side: the client never applies the level factor itself.
+  levelAdjustedAverages: SeasonAverages;
   comparables: ProspectComparable[];
   slotAlumni: DraftSlotAlumnus[];
-}
-
-export interface ProspectValuationDriver {
-  label: string;
-  detail: string;
-}
-
-/**
- * Why a prospect has no rank. Carried so the UI never shows a dead "unranked"
- * chip with no explanation — absence always arrives with its reason.
- */
-export type ProspectRankState =
-  | "RANKED"
-  | "BELOW_GAMES_FLOOR"
-  | "AWAITING_VALUATION"
-  | "HIDDEN";
-
-export interface ProspectProfile {
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-  /** True when the signed-in caller owns this profile — gates every write. */
-  isSelf: boolean;
-  rank: number | null;
-  rankState: ProspectRankState;
-  seasons: ProspectSeason[];
-  activeSeasonId: string;
-  /** DERIVED server-side from `games`; authoritative over any client preview. */
-  seasonAverages: SeasonAverages;
-  /** Reuses the existing type verbatim so PointsTrendChart needs no change. */
-  gameLog: GameLogEntry[];
-  games: ProspectGame[];
-  evidence: ProspectEvidence[];
-  reliability: ProspectReliability;
-  valuation: ProspectValuation;
-}
-
-// GET /v1/become-pro/prospects — everyone with a public season, ranked or
-// not. Separate from the leaderboard on purpose: a prospect below the games
-// floor never appears on the board, and without this endpoint "view other
-// players' stats" would silently mean "view the top of a value board".
-export interface ProspectDirectoryEntry {
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-  competitionLevel: CompetitionLevel;
-  gamesLogged: number;
-  pointsPerGame: number;
-  rank: number | null;
-}
-
-export interface ProspectLeaderboardEntry extends ProspectDirectoryEntry {
-  /** Always present here — an unranked prospect is not on the board. */
-  rank: number;
-  projectedDraftSlot: number | null;
-  projectedValueUsd: number;
-  reliabilityTier: ProspectReliabilityTier;
-  isSelf: boolean;
-}
-
-// A rookie-scale anchor (pick 1 / 14 / 30) shown on the board as a benchmark,
-// excluded from `total` and from ranking. The same move LeaderboardCard makes
-// with the Elo model, and it gives a day-one board something to read against
-// instead of rendering blank.
-export interface ProspectLeaderboardReference {
-  label: string;
-  draftSlot: number;
-  valueUsd: number;
-}
-
-export interface ProspectLeaderboard extends PagedResult<ProspectLeaderboardEntry> {
-  /** Echoed, never hardcoded client-side — same rule as the accuracy board. */
-  minimumGamesRequired: number;
-  rookieScaleYear: string;
-  references: ProspectLeaderboardReference[];
-  // The signed-in user's own standing even when it falls outside this page of
-  // results, so "where am I" costs no second request. Null when signed out or
-  // unranked.
-  yourStanding: ProspectLeaderboardEntry | null;
-}
-
-// GET /v1/me/become-pro — backs the header rank badge, which mounts on every
-// page. Deliberately join-free and separate from the leaderboard so the header
-// never pulls a paged list.
-export interface ProspectRankSummary {
-  rank: number | null;
-  rankState: ProspectRankState;
-  username: string | null;
-  projectedValueUsd: number | null;
-  gamesLogged: number;
-  minimumGamesRequired: number;
-  /** Oldest first — the Home card's value-over-time sparkline. */
-  valueHistory: ProspectValuePoint[];
 }
 
 export interface ProspectValuePoint {
@@ -908,7 +779,41 @@ export interface ProspectValuePoint {
   valueUsd: number;
 }
 
-// Widened radar input. A prospect has no nbaPlayerId and must never be given a
+// GET /v1/me/become-pro — the signed-in user's whole Become Pro page. Before
+// they start a season everything here is empty or null: that is a normal
+// state for your own page, not an error, and it is where the page offers to
+// start one.
+export interface MyBecomePro {
+  seasons: ProspectSeason[];
+  activeSeasonId: string | null;
+  /** DERIVED server-side from `games`; null until a season exists. */
+  seasonAverages: SeasonAverages | null;
+  /** Reuses the existing type verbatim so PointsTrendChart needs no change. */
+  gameLog: GameLogEntry[];
+  games: ProspectGame[];
+  valuationState: ValuationState | null;
+  /** Null unless valuationState is VALUED — never a figure no model made. */
+  valuation: ProspectValuation | null;
+  /** Oldest first — the value-over-time sparkline. */
+  valueHistory: ProspectValuePoint[];
+  /** Echoed rather than hardcoded client-side. */
+  minimumGamesRequired: number;
+}
+
+// GET /v1/me/become-pro/summary — the small card on Home and Profile: a
+// figure and a trend, not the whole breakdown.
+export interface MyBecomeProSummary {
+  season: string | null;
+  competitionLevel: CompetitionLevel | null;
+  gamesLogged: number;
+  valuationState: ValuationState | null;
+  projectedDraftSlot: number | null;
+  projectedValueUsd: number | null;
+  valueHistory: ProspectValuePoint[];
+  minimumGamesRequired: number;
+}
+
+// Widened radar input. A user has no nbaPlayerId and must never be given a
 // fabricated one, so ComparisonTraitsRadar takes this narrower subject instead
 // of a full Player. PlayerComparisonEntry satisfies it structurally, which is
 // why ComparePage needs no change.

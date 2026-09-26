@@ -1,7 +1,6 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/apiClient";
-import { fetchProspectLeaderboard } from "@/lib/becomeProApi";
 import {
   fetchLeaderboard,
   fetchModelAccuracy,
@@ -32,14 +31,12 @@ vi.mock("@/lib/nbaApi", () => ({
 
 vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn(), fetchSavedLineups: vi.fn() }));
 
-// The Become Pro rail. MyProspectCard renders nothing while signed out (see
-// the session mock below), but the compact value board is public and fetches
-// regardless, so its module has to be replaced like every other.
+// The Become Pro card. It renders nothing while signed out (see the session
+// mock below) and so never fetches here, but its module is still replaced so
+// nothing in this file can reach a real server.
 vi.mock("@/lib/becomeProApi", () => ({
-  PROSPECT_RANK_QUERY_KEY: ["prospectRank"],
-  PROSPECT_LEADERBOARD_QUERY_KEY: ["prospectLeaderboard"],
-  fetchMyProspectRank: vi.fn(),
-  fetchProspectLeaderboard: vi.fn(),
+  MY_BECOME_PRO_SUMMARY_QUERY_KEY: ["myBecomeProSummary"],
+  fetchMyBecomeProSummary: vi.fn(),
 }));
 
 // YourTeamsList reads the profile through useMe(), which gates its own query
@@ -63,16 +60,6 @@ const MODEL_ACCURACY_REPORT = {
 };
 
 beforeEach(() => {
-  vi.mocked(fetchProspectLeaderboard).mockResolvedValue({
-    data: [],
-    page: 1,
-    pageSize: 5,
-    total: 0,
-    minimumGamesRequired: 10,
-    rookieScaleYear: "2025-26",
-    references: [],
-    yourStanding: null,
-  });
   vi.mocked(fetchModelAccuracy).mockResolvedValue(MODEL_ACCURACY_REPORT);
   vi.mocked(fetchLeaderboard).mockResolvedValue({
     minimumCallsRequired: 5,

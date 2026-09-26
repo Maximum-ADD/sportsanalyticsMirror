@@ -15,7 +15,6 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { AdminPage } from "./pages/AdminPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
 import { BecomeProPage } from "./pages/BecomeProPage";
-import { ProspectPage } from "./pages/ProspectPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProfileGate } from "./components/ProfileGate";
 import { AdminGate } from "./components/AdminGate";
@@ -50,13 +49,13 @@ function App() {
           <Route path="/teams" element={<TeamsListPage />} />
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
-          {/* Deliberately ungated, matching the accuracy leaderboard's own
-              reasoning (apps/api/src/analytics/analytics.controller.ts): a
-              board nobody can see until they sign in is not a board. The
-              write affordances are gated inside the components on whether
-              the viewer owns the season, not by the router. */}
-          <Route path="/become-pro" element={<BecomeProPage />} />
-          <Route path="/become-pro/:username" element={<ProspectPage />} />
+          {/* The user's own Become Pro page. Private to them — there is no
+              public Become Pro route, because the feature compares a user
+              with real NBA players and never with each other. */}
+          <Route
+            path="/become-pro"
+            element={<ProtectedRoute><ProfileGate><BecomeProPage /></ProfileGate></ProtectedRoute>}
+          />
           <Route
             path="/optimizer"
             element={<ProtectedRoute><ProfileGate><OptimizerPage /></ProfileGate></ProtectedRoute>}

@@ -1,17 +1,17 @@
-"""Maps a season line onto a projected NBA draft slot.
+"""Fits a draft slot against NBA rookie production.
 
 WHAT THIS MODEL ACTUALLY DOES, stated plainly because the feature's honesty
 depends on it: it does NOT learn "amateur season -> draft slot". No such
 dataset exists in this project. There is no table anywhere here pairing a
 college or high-school season with what happened to that player in the draft.
 
-What this project DOES have is every NBA player's rookie production
+What this project DOES have is recent draftees' rookie production
 (PlayerGameStat) alongside the pick they were taken at (Player.draftNumber).
 So the model is fitted the other way round: it learns the relationship between
 ROOKIE-SEASON PRODUCTION and DRAFT POSITION among players who were actually
-drafted, then inverts it — a prospect's level-adjusted line is scored on the
-same production index, and the slot whose typical rookie production is closest
-is the slot they project to.
+drafted, and the API then inverts it — a prospect's level-adjusted line is
+scored on the same production index, and the slot whose typical rookie
+production is closest is the slot they project to.
 
 That inversion is a real assumption and a real limitation:
 
@@ -21,13 +21,15 @@ That inversion is a real assumption and a real limitation:
   - It is fitted on players who were drafted, so it says nothing reliable about
     lines far below the weakest rookie season in the data.
   - Rookie minutes are partly a consequence of draft position rather than only
-    a cause of it: high picks play more because they were high picks. The
-    model uses per-minute-aware inputs to blunt that, but cannot remove it.
+    a cause of it: high picks play more because they were high picks.
 
-The API prints the level factor and its basis next to every figure, and the
-frontend leads with the SLOT rather than the dollars, precisely because the
-slot is what this computes and the money is the published scale's consequence
-of it.
+TRAINING lives here and only here. APPLYING the fitted model — the slot
+projection, the interval, the comparables, the explanation — lives in the API
+(apps/api/src/become-pro/valuation-model.ts), because it has to run the moment
+a prospect's season changes and only the always-on API can do that. The
+parameters the API needs to apply it (slot bounds, interval widths) are
+defined in this module and shipped to the API inside the model bundle, so
+they are defined exactly once.
 
 No language model is involved anywhere in this path. This is ordinary least
 squares over four features, fitted with numpy, and every coefficient is
@@ -37,9 +39,10 @@ inspectable in the row it writes.
 import numpy as np
 
 # The production index the fit runs over. Deliberately small and interpretable
-# rather than every column available: with a few hundred drafted players, four
-# features is already close to as much as the data can support, and each of
-# these is something a self-reported amateur box score can actually supply.
+# rather than every column available: with the number of recent draftees this
+# database holds, four features is already close to as much as the data can
+# support, and each of these is something a self-reported amateur box score
+# can actually supply.
 FEATURE_NAMES = ("points_per_game", "rebounds_per_game", "assists_per_game", "true_shooting")
 
 # Minimum rookie games before a player is a usable training row. A five-game
@@ -51,29 +54,20 @@ MINIMUM_ROOKIE_GAMES = 20
 MAX_PROJECTED_SLOT = 75
 MIN_PROJECTED_SLOT = 1
 
-# How wide the reported interval is, as a fraction of the point estimate,
-# before the widening below. Chosen to be visibly wide: the honest reading of
-# this model is "somewhere in this neighbourhood", and a narrow band would
-# overstate it.
+# How wide the reported interval is, as a fraction of the point estimate.
+# Chosen to be visibly wide: the honest reading of this model is "somewhere in
+# this neighbourhood", and a narrow band would overstate it.
 BASE_INTERVAL_FRACTION = 0.28
 
-# Extra width for a short game log and for a season nobody has documented.
-# Both are real reasons to trust the figure less, and the UI promotes the
-# interval over the point estimate when evidence is absent — so the interval
-# has to actually widen, or that promotion would be decoration.
+# Extra width for a short game log, where the season line itself is still
+# settling and so genuinely supports less.
 SHORT_LOG_GAMES = 25
 SHORT_LOG_EXTRA_FRACTION = 0.15
-UNDOCUMENTED_EXTRA_FRACTION = 0.20
 
 
 def build_feature_row(line: dict) -> list[float]:
     """The four model inputs, in FEATURE_NAMES order, from one season line."""
-    return [
-        float(line["points_per_game"]),
-        float(line["rebounds_per_game"]),
-        float(line["assists_per_game"]),
-        float(line["true_shooting"]),
-    ]
+    return [float(line[name]) for name in FEATURE_NAMES]
 
 
 def fit_slot_model(rows: list[dict]) -> dict:
@@ -86,8 +80,8 @@ def fit_slot_model(rows: list[dict]) -> dict:
     Returns:
         A dict with the fitted "coefficients" (intercept first), the training
         row count, and in-sample "mae" and Spearman "rank_correlation" — all
-        stored on the valuation row so a figure can always be traced back to
-        how good the model behind it was.
+        stored with the model so a figure can always be traced back to how
+        good the model behind it was.
 
     Raises:
         ValueError: when there are fewer training rows than features, where a
@@ -137,70 +131,3 @@ def _rank(values: np.ndarray) -> np.ndarray:
     ranks = np.empty_like(order, dtype=float)
     ranks[order] = np.arange(len(values), dtype=float)
     return ranks
-
-
-def project_slot(model: dict, line: dict) -> int:
-    """The draft slot one level-adjusted line projects to.
-
-    Clamped into [MIN_PROJECTED_SLOT, MAX_PROJECTED_SLOT]: the fit is linear
-    and a spectacular line would otherwise extrapolate to pick zero or a
-    negative one, which is not a pick.
-    """
-    coefficients = np.array(model["coefficients"], dtype=float)
-    design = np.array([1.0, *build_feature_row(line)], dtype=float)
-    raw = float(design @ coefficients)
-    return int(min(MAX_PROJECTED_SLOT, max(MIN_PROJECTED_SLOT, round(raw))))
-
-
-def value_interval(value_usd: int, games_logged: int, has_verified_evidence: bool) -> tuple[int, int]:
-    """A low/high band around a point estimate.
-
-    Widened for a short game log and for a season with nothing verified behind
-    it. Both are genuine reasons for less confidence, and the frontend promotes
-    this interval over the point estimate when evidence is absent — so it has
-    to be a real change in the model's claim, not a styling choice.
-    """
-    fraction = BASE_INTERVAL_FRACTION
-    if games_logged < SHORT_LOG_GAMES:
-        fraction += SHORT_LOG_EXTRA_FRACTION
-    if not has_verified_evidence:
-        fraction += UNDOCUMENTED_EXTRA_FRACTION
-
-    low = int(round(value_usd * (1 - fraction)))
-    high = int(round(value_usd * (1 + fraction)))
-    return max(0, low), high
-
-
-def describe_drivers(line: dict, level_factor: float, level_basis: str) -> list[dict]:
-    """Two or three sentences naming what moved this figure most.
-
-    Authored here rather than in the browser on purpose: a client-written
-    explanation of a server-side model would be invention. The client renders
-    these verbatim.
-    """
-    drivers = [
-        {
-            "label": "Scoring",
-            "detail": (
-                f"{line['points_per_game']:.1f} points per game, counted as "
-                f"{line['points_per_game'] * level_factor:.1f} after the level adjustment."
-            ),
-        },
-        {
-            "label": "Efficiency",
-            "detail": f"{line['true_shooting']:.1f}% true shooting on that scoring volume.",
-        },
-        {"label": "Level", "detail": level_basis},
-    ]
-
-    # Playmaking only earns a line when there is something to say about it —
-    # "1.1 assists per game" is noise, not a driver.
-    if line["assists_per_game"] >= 4:
-        drivers.insert(
-            2,
-            {
-                "label": "Playmaking",
-                "detail": f"{line['assists_per_game']:.1f} assists per game is a real part of this profile.",
-            },
-        )
-    return drivers
