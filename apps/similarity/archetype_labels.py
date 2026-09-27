@@ -25,9 +25,16 @@ stops existing, the nearest surviving centroid inherits its name, which is
 correct behaviour and wrong output. A re-fit therefore needs a human to
 re-read the clusters, not merely a re-run of the matcher.
 
-Deliberately not re-named yet: the older-postseason backfill has still to
-load, which will move 2025-26 again. Re-name once, against the final data,
-with explore_fit.py --emit-labels.
+RE-NAME BEFORE THE FIRST WRITE TO PRODUCTION. 2025-26 is now final: the
+2026-09-23 re-ingestion is complete, and the older-postseason load touches
+only 2023-24 and 2024-25, so nothing further will move this season's fit.
+(An earlier version of this note said the older-postseason load would move
+2025-26 again, and that the names should wait for it. That was wrong.)
+build_archetypes.py --apply stores whatever names this file holds, so
+running it before a re-name would put "Defensive guard" on a combo-guard
+group on the live site. To re-name: delete this file, run
+explore_fit.py --k 9 --emit-labels archetype_labels.py, and read the
+clusters before typing the names.
 
 The names come from standard basketball vernacular. Seven of the nine match
 role names in the Athlore archetype taxonomy
