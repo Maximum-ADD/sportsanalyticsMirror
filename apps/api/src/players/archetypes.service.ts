@@ -49,6 +49,24 @@ export interface ArchetypeSummary {
   memberCount: number;
 }
 
+// One point on the style map. Deliberately thin: this is fetched for every
+// eligible player at once, so it carries only what a point needs to be
+// drawn, coloured and named on hover.
+export interface StyleMapPoint {
+  playerId: string;
+  firstName: string;
+  lastName: string;
+  clusterId: number;
+  plotX: number;
+  plotY: number;
+}
+
+export interface StyleMapResponse {
+  season: string;
+  players: StyleMapPoint[];
+  archetypes: ArchetypeSummary[];
+}
+
 @Injectable()
 export class ArchetypesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -92,6 +110,57 @@ export class ArchetypesService {
       select: { clusterId: true, label: true, memberCount: true },
     });
     return archetypes;
+  }
+
+  /**
+   * Reads every placed player's position on the style map for a season.
+   *
+   * One query for the whole league rather than a page: the map's entire
+   * point is seeing everyone at once, and a few hundred thin rows is a
+   * smaller payload than one page of full player records. It changes only
+   * when the model is re-fit, so it is cheap to cache hard.
+   *
+   * The coordinates are the first two principal components of the same
+   * standardized features the clustering used, computed and stored by
+   * apps/similarity — never recomputed here, so the map and the archetype
+   * labels cannot drift apart.
+   */
+  async getStyleMap(season: string): Promise<StyleMapResponse> {
+    const [placements, archetypes] = await Promise.all([
+      this.prisma.playerArchetype.findMany({
+        where: { season },
+        select: {
+          playerId: true,
+          plotX: true,
+          plotY: true,
+          player: { select: { firstName: true, lastName: true } },
+          memberships: {
+            where: { rank: 1 },
+            select: { archetype: { select: { clusterId: true } } },
+          },
+        },
+      }),
+      this.listArchetypes(season),
+    ]);
+
+    return {
+      season,
+      players: placements
+        // A placement with no rank 1 membership cannot be coloured or
+        // explained, so it is dropped rather than drawn as an unexplained
+        // point. The writer never produces one; this is a guard against a
+        // partially written model rather than an expected case.
+        .filter((placement) => placement.memberships.length > 0)
+        .map((placement) => ({
+          playerId: placement.playerId,
+          firstName: placement.player.firstName,
+          lastName: placement.player.lastName,
+          clusterId: placement.memberships[0].archetype.clusterId,
+          plotX: placement.plotX,
+          plotY: placement.plotY,
+        })),
+      archetypes,
+    };
   }
 
   /**

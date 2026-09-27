@@ -169,6 +169,89 @@ describe("ArchetypesService", () => {
     });
   });
 
+  describe("the style map", () => {
+    function makeMapPrisma(placements: unknown[]) {
+      return makePrisma({
+        playerArchetype: { findMany: vi.fn().mockResolvedValue(placements) },
+        archetype: {
+          findMany: vi
+            .fn()
+            .mockResolvedValue([{ clusterId: 2, label: "Scoring wing", memberCount: 53 }]),
+        },
+      });
+    }
+
+    function makePlacementRow(overrides: Record<string, unknown> = {}) {
+      return {
+        playerId: "player-1",
+        plotX: -1.62,
+        plotY: 1.44,
+        player: { firstName: "LeBron", lastName: "James" },
+        memberships: [{ archetype: { clusterId: 3 } }],
+        ...overrides,
+      };
+    }
+
+    it("flattens each placement into a drawable point", async () => {
+      service = new ArchetypesService(makeMapPrisma([makePlacementRow()]));
+
+      const result = await service.getStyleMap("2025-26");
+
+      expect(result.players).toEqual([
+        {
+          playerId: "player-1",
+          firstName: "LeBron",
+          lastName: "James",
+          clusterId: 3,
+          plotX: -1.62,
+          plotY: 1.44,
+        },
+      ]);
+    });
+
+    it("colours a point by the player's strongest archetype", async () => {
+      // rank 1 is the cluster the player was assigned to, so it is the one
+      // the map colours by — a lower-ranked membership would put them in a
+      // group they are not actually in.
+      const prisma = makeMapPrisma([makePlacementRow()]);
+      service = new ArchetypesService(prisma);
+
+      await service.getStyleMap("2025-26");
+
+      expect(prisma.playerArchetype.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            memberships: expect.objectContaining({ where: { rank: 1 } }),
+          }),
+        })
+      );
+    });
+
+    it("drops a placement with no memberships rather than drawing it uncoloured", async () => {
+      // Only reachable from a half-written model. Better an absent point
+      // than one nothing can explain.
+      service = new ArchetypesService(
+        makeMapPrisma([makePlacementRow(), makePlacementRow({ playerId: "player-2", memberships: [] })])
+      );
+
+      const result = await service.getStyleMap("2025-26");
+
+      expect(result.players).toHaveLength(1);
+      expect(result.players[0].playerId).toBe("player-1");
+    });
+
+    it("returns the archetype legend alongside the points", async () => {
+      service = new ArchetypesService(makeMapPrisma([makePlacementRow()]));
+
+      const result = await service.getStyleMap("2025-26");
+
+      expect(result.season).toBe("2025-26");
+      expect(result.archetypes).toEqual([
+        { clusterId: 2, label: "Scoring wing", memberCount: 53 },
+      ]);
+    });
+  });
+
   describe("listing a season's archetypes", () => {
     it("returns them with member counts, largest first", async () => {
       const findMany = vi.fn().mockResolvedValue([
