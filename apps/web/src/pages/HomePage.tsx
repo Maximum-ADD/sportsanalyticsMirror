@@ -1,4 +1,5 @@
 import { BeatTheModelCard } from "@/components/home/BeatTheModelCard";
+import { MyProspectCard } from "@/components/becomepro/MyProspectCard";
 import { LeaderboardCard } from "@/components/home/LeaderboardCard";
 import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
@@ -64,6 +65,12 @@ export function HomePage() {
             </Reveal>
             <Reveal delay={2}>
               <SavedShelfCard />
+            </Reveal>
+            {/* Your own Become Pro value. Private to you — Become Pro compares
+                you with NBA rookies, never with other users, so there is no
+                board to sit beside it. */}
+            <Reveal delay={2}>
+              <MyProspectCard />
             </Reveal>
           </div>
         </div>

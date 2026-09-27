@@ -44,14 +44,14 @@ enum SeasonType {
 // defaulted here and marked non-writable in the BetterAuth config so a
 // Google profile can never grant itself elevated access.
 model User {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  emailVerified Boolean  @default(false)
-  image         String?
-  role          Role     @default(USER)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String            @id @default(uuid())
+  name             String
+  email            String            @unique
+  emailVerified    Boolean           @default(false)
+  image            String?
+  role             Role              @default(USER)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   customStatistics CustomStatistic[]
 
   // Below fields are this project's own additions on top of BetterAuth's
@@ -101,8 +101,8 @@ model User {
   savedLineups     SavedLineup[]
 
   // Admin actions: batch reviews, event corrections, dataset releases.
-  reviewedBatches   IngestionBatch[]  @relation("BatchReviewer")
-  deletedBatches    IngestionBatch[]  @relation("BatchDeleter")
+  reviewedBatches   IngestionBatch[]   @relation("BatchReviewer")
+  deletedBatches    IngestionBatch[]   @relation("BatchDeleter")
   eventCorrections  EventCorrection[]
   publishedReleases DatasetRelease[]
   ingestionSchedule IngestionSchedule?
@@ -111,17 +111,22 @@ model User {
   // The personal API consumer auto-provisioned the first time this user
   // creates an API key (see ApiConsumer.userId) — null until then.
   apiConsumer ApiConsumer?
+
+  // Become Pro: the user's own self-reported playing seasons, visible to
+  // nobody but them.
+  prospectSeasons ProspectSeason[]
 }
 
 model CustomStatistic {
-  id String @id @default(uuid())
-  name String
+  id         String   @id @default(uuid())
+  name       String
   expression String
-  version Int @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  authorId String
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
   @@unique([authorId, name])
 }
 
@@ -297,9 +302,9 @@ model Game {
 // PERIOD_START/PERIOD_END bookend rows per game that predate real
 // play-by-play ingestion. See apps/ingestion/play_by_play.py.
 model GameEvent {
-  id          String   @id @default(uuid())
-  gameId      String
-  game        Game     @relation(fields: [gameId], references: [id])
+  id     String @id @default(uuid())
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id])
 
   // Both together are the platform's own event schema a submitted row is
   // checked against before acceptance — see event_validation.py.
@@ -321,7 +326,7 @@ model GameEvent {
   // not a false "not made".
   success Boolean?
   // Point value of a made shot/free throw (1, 2 or 3) — null otherwise.
-  value Int?
+  value   Int?
 
   description String
 
@@ -365,11 +370,11 @@ model IngestionBatch {
   // the pipeline itself moves on to a different one.
   source String
 
-  status         IngestionBatchStatus @default(RUNNING)
-  startedAt      DateTime             @default(now())
-  completedAt    DateTime?
-  eventsAccepted Int                  @default(0)
-  eventsRejected Int                  @default(0)
+  status              IngestionBatchStatus @default(RUNNING)
+  startedAt           DateTime             @default(now())
+  completedAt         DateTime?
+  eventsAccepted      Int                  @default(0)
+  eventsRejected      Int                  @default(0)
   resumeAfterSequence Int?
 
   // Reason code -> count (e.g. {"UNKNOWN_ACTION_TYPE": 2}), from
@@ -383,15 +388,15 @@ model IngestionBatch {
   // run with --review, and an admin promotes it to COMPLETED or marks it
   // REJECTED. Null reviewedById means "no human has looked at it yet".
   reviewedById String?
-  reviewedBy   User?   @relation("BatchReviewer", fields: [reviewedById], references: [id])
+  reviewedBy   User?     @relation("BatchReviewer", fields: [reviewedById], references: [id])
   reviewedAt   DateTime?
   reviewNotes  String?
 
   // Soft-delete — an admin can remove a batch and its associated data
   // without cascading deletes on the Game/PlayerGameStat rows.
-  deletedAt     DateTime?
-  deletedById   String?
-  deletedBy     User?    @relation("BatchDeleter", fields: [deletedById], references: [id])
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?     @relation("BatchDeleter", fields: [deletedById], references: [id])
 
   events GameEvent[]
 
@@ -1018,7 +1023,7 @@ model EventCorrection {
   newValues      Json
 
   correctedById String?
-  correctedBy   User?  @relation(fields: [correctedById], references: [id])
+  correctedBy   User?   @relation(fields: [correctedById], references: [id])
   reason        String? // why the correction was made
 
   correctedAt DateTime @default(now())
@@ -1067,22 +1072,22 @@ model ApiConsumer {
 // never stored — only its SHA-256 hash lives here, so a database leak
 // doesn't expose usable keys.
 model ApiKey {
-  id         String @id @default(uuid())
+  id         String      @id @default(uuid())
   consumerId String
   consumer   ApiConsumer @relation(fields: [consumerId], references: [id], onDelete: Cascade)
 
-  keyHash    String @unique
+  keyHash    String    @unique
   label      String? // e.g. "Production key"
-  isActive   Boolean  @default(true)
+  isActive   Boolean   @default(true)
   lastUsedAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 }
 
 // Per-request usage log for rate limit and quota enforcement. Indexed
 // on (consumerId, calledAt) so the sliding-window count is a fast
 // index-only scan.
 model ApiUsageLog {
-  id         String @id @default(uuid())
+  id         String      @id @default(uuid())
   consumerId String
   consumer   ApiConsumer @relation(fields: [consumerId], references: [id], onDelete: Cascade)
 
@@ -1099,8 +1104,8 @@ model ApiUsageLog {
 // and a field schema so an analysis run against one release can be
 // repeated against the next and produce the same numbers.
 model DatasetRelease {
-  id          String   @id @default(uuid())
-  version     String   @unique // e.g. "2025-26.1"
+  id          String @id @default(uuid())
+  version     String @unique // e.g. "2025-26.1"
   description String // human-readable release notes
   season      String // e.g. "2025-26"
 
@@ -1189,7 +1194,7 @@ model IngestionRequest {
   claimedAt  DateTime?
   finishedAt DateTime?
   // The failure reason, or the tail of ingest.py's output on success.
-  message String?
+  message    String?
 
   @@index([status, requestedAt])
 }
@@ -1208,4 +1213,193 @@ enum IngestionFrequency {
   HOURLY
   DAILY
   WEEKLY
+}
+
+// ── Become Pro ─────────────────────────────────────────────────────────────
+// A user's own playing career, self-reported, priced against the published NBA
+// rookie salary scale and compared with real NBA rookies.
+//
+// PRIVATE to its owner. Nobody else can see another user's seasons, and there
+// is no leaderboard or any other comparison between users — only between a
+// user and real NBA players. That is also why nothing here is verified: a
+// self-reported figure only ever reaches the person who reported it, so it
+// cannot mislead anyone else.
+//
+// These rows are the one place in this database where a statistic is typed in
+// by a human rather than derived from an ingested GameEvent. The exception is
+// deliberate and contained: a ProspectGame is a BOX SCORE, never a season
+// total, and the season line every surface reads is derived from those rows at
+// request time by the same code that derives an NBA player's
+// (src/players/season-averages.ts). So the project's rule still holds one
+// level down — nothing shown is a figure that cannot be traced to a per-game
+// record.
+
+// Where a season was played. Required on every season because it scales the
+// valuation: 30 points a game in a recreational league and 30 in Division I
+// are not the same claim about professional potential.
+enum CompetitionLevel {
+  NCAA_D1
+  NCAA_D2
+  NCAA_D3
+  NAIA
+  JUCO
+  INTERNATIONAL_PRO
+  SEMI_PRO
+  HIGH_SCHOOL
+  REC
+}
+
+model ProspectSeason {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // League year in the same "2025-26" format Game.season uses, so a prospect
+  // season and an NBA season are labelled identically wherever the two are
+  // shown side by side.
+  season           String
+  competitionLevel CompetitionLevel
+  position         String
+  teamName         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  games      ProspectGame[]
+  valuations ProspectValuation[]
+
+  // One season per league year per user: logging "2025-26" twice is a
+  // mistake rather than two careers, and the unique index is what makes it a
+  // 409 instead of a silently split game log.
+  @@unique([userId, season])
+  @@index([userId, createdAt])
+}
+
+// One self-reported box score. Mirrors the columns of PlayerGameStat that a
+// person can actually know about their own game — deliberately WITHOUT
+// plusMinus, usagePercentage or the two ratings, which need the full
+// possession context of a tracked game. Their absence is why a prospect's
+// derived line returns null for those four rather than a zero.
+model ProspectGame {
+  id       String         @id @default(uuid())
+  seasonId String
+  season   ProspectSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  gameDate DateTime
+  opponent String
+
+  minutes             Int
+  points              Int
+  rebounds            Int
+  assists             Int
+  steals              Int
+  blocks              Int
+  turnovers           Int
+  fieldGoalsMade      Int
+  fieldGoalsAttempted Int
+  threesMade          Int
+  threesAttempted     Int
+  freeThrowsMade      Int
+  freeThrowsAttempted Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Two games against the same opponent on the same day is a double entry,
+  // not a doubleheader — the 409 this produces is what stops a season being
+  // inflated by resubmitting the same night.
+  @@unique([seasonId, gameDate, opponent])
+  @@index([seasonId, gameDate])
+}
+
+// What one season is projected to be worth.
+//
+// Written by the API, not by Python: every time a prospect adds, edits or
+// deletes a game the API applies the CURRENT ProspectValuationModel (below)
+// and records the result here, so a prospect is valued the instant they log
+// their tenth game rather than whenever somebody next runs a script. The
+// model itself — the actual machine learning — is still trained in Python;
+// see ProspectValuationModel for why the split falls where it does.
+//
+// Append-and-take-latest-by-computedAt rather than one upserted row per
+// season, matching PlayerPrediction: the value card plots a prospect's value
+// over time, which needs the history rather than only today's number. A row is
+// only appended when the figure actually changes, so correcting a typo in an
+// opponent's name does not add a flat point to the sparkline.
+model ProspectValuation {
+  id       String         @id @default(uuid())
+  seasonId String
+  season   ProspectSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  // Null — never 0 — when the season has dropped below the games floor. A
+  // zero here would be a valuation the model never made.
+  projectedDraftSlot    Int?
+  projectedValueUsd     Int?
+  projectedValueLowUsd  Int?
+  projectedValueHighUsd Int?
+
+  // Which published scale produced the dollar figure, e.g. "2025-26", so a
+  // stored valuation can never be silently re-read against a newer table.
+  rookieScaleYear  String
+  levelFactor      Float
+  levelFactorBasis String
+
+  // Two to four sentences naming what moved the figure most, authored by the
+  // API and rendered verbatim by the client — a client-written explanation of
+  // a server-side model would be invention.
+  drivers Json
+
+  // Real NBA players whose rookie season sits closest to this one, and who
+  // was actually drafted at the projected slot. Stored as ids the API
+  // resolves, so the comparables survive a player being re-ingested.
+  comparablePlayerIds String[]
+  comparableScores    Float[]
+  slotAlumniPlayerIds String[]
+
+  modelVersion String
+  computedAt   DateTime @default(now())
+
+  // The exact trained model this figure came from. A version string alone
+  // cannot say that: re-training after an ingestion keeps the code version
+  // but changes every coefficient. Comparing this id with the latest model's
+  // is how the API notices a valuation has gone stale and re-values it.
+  // SetNull so pruning old models never deletes a prospect's history.
+  modelId String?
+  model   ProspectValuationModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+
+  @@index([seasonId, computedAt])
+}
+
+// One trained draft-slot model, written by apps/valuation/train_valuation_model.py.
+//
+// The split between Python and the API is deliberate: TRAINING needs the whole
+// NBA rookie dataset and numpy's least-squares solver, and only has to happen
+// when NBA data changes (after an ingestion) — the same cadence as the
+// predictor. APPLYING a trained linear model is a dot product, and has to
+// happen the moment a prospect's season changes, which only the always-on API
+// can do. So Python writes this row and the API reads it.
+//
+// `bundle` carries EVERYTHING needed to apply the model, not just the
+// coefficients: the published rookie scale, the competition-level factors with
+// their stated bases, the interval widths, and the rookie training index the
+// comparables are drawn from. That keeps each of those tables defined exactly
+// once, in Python, rather than hand-copied into TypeScript where the two
+// copies could drift apart.
+model ProspectValuationModel {
+  id           String @id @default(uuid())
+  modelVersion String
+  bundle       Json
+
+  // Recorded on the row so every figure can be traced back to how good the
+  // model behind it was — the same honesty the predictor's accuracy ledger
+  // applies to game predictions.
+  trainingRows    Int
+  mae             Float
+  rankCorrelation Float
+
+  fittedAt DateTime @default(now())
+
+  valuations ProspectValuation[]
+
+  @@index([fittedAt])
 }

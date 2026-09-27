@@ -702,3 +702,198 @@ export interface StyleMapResponse {
   players: StyleMapPoint[];
   archetypes: ArchetypeSummary[];
 }
+
+// ── Become Pro ────────────────────────────────────────────────────────────
+// A user's own season: self-reported, per-game box scores, priced against the
+// published NBA rookie salary scale and compared with real NBA rookies.
+//
+// PRIVATE to its owner. There is no leaderboard and no comparison between
+// users — only between a user and real NBA players — which is also why
+// nothing a user enters is verified: it only ever reaches them. Every endpoint
+// lives under /v1/me/become-pro.
+//
+// The season line is DERIVED from the logged games and never typed directly,
+// so every figure traces back to a game record exactly as every NBA figure in
+// this file does. It is `SeasonAverages` VERBATIM — the same type the NBA
+// endpoints return — which is what lets StatTile, PlayerTraitsRadar,
+// ComparisonTraitsRadar, PointsTrendChart and lib/advancedStats.ts carry this
+// feature with no new chart or table code.
+
+/**
+ * Where a season was played. Required on every season, because it scales the
+ * valuation: 30 points a game in a recreational league and 30 in Division I
+ * are not the same claim about professional potential.
+ */
+export type CompetitionLevel =
+  | "NCAA_D1"
+  | "NCAA_D2"
+  | "NCAA_D3"
+  | "NAIA"
+  | "JUCO"
+  | "INTERNATIONAL_PRO"
+  | "SEMI_PRO"
+  | "HIGH_SCHOOL"
+  | "REC";
+
+export interface ProspectSeason {
+  id: string;
+  /** League year, e.g. "2025-26" — the same format Game.season carries. */
+  season: string;
+  competitionLevel: CompetitionLevel;
+  position: string;
+  teamName: string | null;
+  gamesLogged: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The body of a single logged game — what the entry form posts. */
+export interface ProspectGameInput {
+  /** ISO date. The API rejects a future date. */
+  gameDate: string;
+  opponent: string;
+  minutes: number;
+  points: number;
+  rebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
+  turnovers: number;
+  fieldGoalsMade: number;
+  fieldGoalsAttempted: number;
+  threesMade: number;
+  threesAttempted: number;
+  freeThrowsMade: number;
+  freeThrowsAttempted: number;
+}
+
+export interface ProspectGame extends ProspectGameInput {
+  id: string;
+  seasonId: string;
+}
+
+export interface CreateProspectSeasonBody {
+  season: string;
+  competitionLevel: CompetitionLevel;
+  position: string;
+  teamName?: string | null;
+}
+
+/**
+ * Whether a season has a projected value yet, and if not, why not.
+ *
+ * VALUED            the season has a projected value.
+ * BELOW_GAMES_FLOOR not enough games logged yet — the user's to fix.
+ * AWAITING_MODEL    enough games, but no valuation model has been trained yet
+ *                   — the system's to fix, and said so rather than hidden.
+ */
+export type ValuationState = "VALUED" | "BELOW_GAMES_FLOOR" | "AWAITING_MODEL";
+
+export interface ProspectComparable {
+  player: Player;
+  // The comparable's ROOKIE REGULAR SEASON — the line the valuation model
+  // actually compared against — not their career. A career blend with the
+  // postseason mixed in would be a different measurement from the one the
+  // similarity score describes.
+  seasonAverages: SeasonAverages;
+  /** Which league year that rookie line is, e.g. "2024-25". */
+  rookieSeason: string;
+  /** 0-1, the model's own distance metric — not a claim of equivalence. */
+  similarity: number;
+}
+
+// Real players actually drafted at the projected slot, built from
+// Player.draftYear/draftRound/draftNumber which this repo already carries.
+// Turns an abstract dollar figure into "Pick 24 — a real name, a real year".
+export interface DraftSlotAlumnus {
+  player: Player;
+  draftYear: number;
+}
+
+export interface ProspectValuationDriver {
+  label: string;
+  detail: string;
+}
+
+export interface ProspectValuation {
+  /** Echoed so an already-rendered figure cannot be mislabelled. */
+  seasonId: string;
+  /** The draft slot the model projects — what it actually computes. */
+  projectedDraftSlot: number;
+  /** Whole USD: the published first-year rookie scale for that slot. */
+  projectedValueUsd: number;
+  // An honest interval, widened for a short game log.
+  projectedValueLowUsd: number;
+  projectedValueHighUsd: number;
+  /** Which published scale this figure came from, e.g. "2025-26". */
+  rookieScaleYear: string;
+  levelFactor: number;
+  /** One sentence naming where that factor comes from. */
+  levelFactorBasis: string;
+  modelVersion: string;
+  computedAt: string;
+  // SERVER-AUTHORED. The client renders these verbatim and never composes
+  // one — a client-written explanation of a server-side model is invention.
+  drivers: ProspectValuationDriver[];
+  // The season line translated to the level the model compares against —
+  // volume discounted by levelFactor, rates untouched — so the comparison
+  // radar plots the same line the similarity score was computed on. Computed
+  // server-side: the client never applies the level factor itself.
+  levelAdjustedAverages: SeasonAverages;
+  comparables: ProspectComparable[];
+  slotAlumni: DraftSlotAlumnus[];
+}
+
+export interface ProspectValuePoint {
+  computedAt: string;
+  valueUsd: number;
+}
+
+// GET /v1/me/become-pro — the signed-in user's whole Become Pro page. Before
+// they start a season everything here is empty or null: that is a normal
+// state for your own page, not an error, and it is where the page offers to
+// start one.
+export interface MyBecomePro {
+  seasons: ProspectSeason[];
+  activeSeasonId: string | null;
+  /** DERIVED server-side from `games`; null until a season exists. */
+  seasonAverages: SeasonAverages | null;
+  /** Reuses the existing type verbatim so PointsTrendChart needs no change. */
+  gameLog: GameLogEntry[];
+  games: ProspectGame[];
+  valuationState: ValuationState | null;
+  /** Null unless valuationState is VALUED — never a figure no model made. */
+  valuation: ProspectValuation | null;
+  /** Oldest first — the value-over-time sparkline. */
+  valueHistory: ProspectValuePoint[];
+  /** Echoed rather than hardcoded client-side. */
+  minimumGamesRequired: number;
+}
+
+// GET /v1/me/become-pro/summary — the small card on Home and Profile: a
+// figure and a trend, not the whole breakdown.
+export interface MyBecomeProSummary {
+  season: string | null;
+  competitionLevel: CompetitionLevel | null;
+  gamesLogged: number;
+  valuationState: ValuationState | null;
+  projectedDraftSlot: number | null;
+  projectedValueUsd: number | null;
+  valueHistory: ProspectValuePoint[];
+  minimumGamesRequired: number;
+}
+
+// Widened radar input. A user has no nbaPlayerId and must never be given a
+// fabricated one, so ComparisonTraitsRadar takes this narrower subject instead
+// of a full Player. PlayerComparisonEntry satisfies it structurally, which is
+// why ComparePage needs no change.
+export interface TraitsRadarSubject {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface TraitsComparisonEntry {
+  player: TraitsRadarSubject;
+  seasonAverages: SeasonAverages;
+}
