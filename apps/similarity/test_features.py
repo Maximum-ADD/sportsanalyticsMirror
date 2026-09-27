@@ -140,14 +140,37 @@ class TestSeasonAggregation:
         rows = [make_game_stat_row(usagePercentage=None)]
         assert aggregate_player_season_totals(rows)["usage_percentage"] is None
 
-    def test_null_rebound_split_contributes_nothing_rather_than_breaking(self):
+    def test_the_rebound_split_is_summed_only_from_games_that_recorded_it(self):
         rows = [
-            make_game_stat_row(offensiveRebounds=None, defensiveRebounds=None),
-            make_game_stat_row(offensiveRebounds=3, defensiveRebounds=6),
+            make_game_stat_row(minutes=30, offensiveRebounds=None, defensiveRebounds=None),
+            make_game_stat_row(minutes=30, offensiveRebounds=3, defensiveRebounds=6),
         ]
         totals = aggregate_player_season_totals(rows)
         assert totals["offensive_rebounds"] == 3
         assert totals["defensive_rebounds"] == 6
+        # Only the game that carries the split counts towards its minutes.
+        assert totals["minutes_with_rebound_split"] == 30
+        # Every game still counts towards the rest of the season.
+        assert totals["minutes"] == 60
+
+    def test_a_game_with_only_half_the_split_does_not_count_towards_it(self):
+        # The two halves are a pair; one without the other is not a split.
+        rows = [
+            make_game_stat_row(minutes=30, offensiveRebounds=4, defensiveRebounds=None),
+            make_game_stat_row(minutes=30, offensiveRebounds=3, defensiveRebounds=6),
+        ]
+        totals = aggregate_player_season_totals(rows)
+        assert totals["offensive_rebounds"] == 3
+        assert totals["minutes_with_rebound_split"] == 30
+
+    def test_no_recorded_split_at_all_is_unknown_not_zero(self):
+        # A season whose plays were never processed. The rebounding is not
+        # zero; nobody measured it.
+        rows = [make_game_stat_row(offensiveRebounds=None, defensiveRebounds=None) for _ in range(3)]
+        totals = aggregate_player_season_totals(rows)
+        assert totals["offensive_rebounds"] is None
+        assert totals["defensive_rebounds"] is None
+        assert totals["minutes_with_rebound_split"] == 0
 
 
 class TestEligibility:
@@ -178,6 +201,32 @@ class TestFeatureRow:
         # featureVector and centroid matching both depend on it.
         assert row[FEATURE_NAMES.index("points_per_36")] == pytest.approx(24.0)
         assert row[FEATURE_NAMES.index("height_inches")] == pytest.approx(78.0)
+
+    def test_a_partly_recorded_split_is_a_rate_over_the_recorded_minutes(self):
+        # The regression this guards against: dividing by ALL minutes counts
+        # every unrecorded game as a game without a rebound. Three offensive
+        # rebounds in the one 30-minute game that recorded them is 3.6 per
+        # 36 — not the 1.8 you get by spreading them over both games.
+        rows = [make_game_stat_row(minutes=30, offensiveRebounds=None, defensiveRebounds=None)]
+        rows += [make_game_stat_row(minutes=30, offensiveRebounds=3, defensiveRebounds=6)]
+        rows += [make_game_stat_row(minutes=30) for _ in range(8)]
+        totals = aggregate_player_season_totals(rows)
+        row = build_feature_row(totals, make_player())
+
+        # 9 recorded games: 3 + 8*2 = 19 offensive rebounds over 270 minutes.
+        expected = 19 / 270 * 36
+        assert row[FEATURE_NAMES.index("offensive_rebounds_per_36")] == pytest.approx(expected)
+
+    def test_a_season_with_no_rebound_split_drops_the_player(self):
+        # Rather than placing every player as a non-rebounder. With usage
+        # present and the split absent, this is the realistic state of any
+        # season whose plays were never processed.
+        rows = [
+            make_game_stat_row(offensiveRebounds=None, defensiveRebounds=None) for _ in range(10)
+        ]
+        totals = aggregate_player_season_totals(rows)
+        assert totals["usage_percentage"] is not None
+        assert build_feature_row(totals, make_player()) is None
 
     def test_a_missing_height_drops_the_player_rather_than_imputing_one(self):
         totals = aggregate_player_season_totals([make_game_stat_row() for _ in range(10)])

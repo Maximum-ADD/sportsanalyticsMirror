@@ -58,20 +58,22 @@ def fetch_available_seasons(connection) -> list[dict]:
     is absent entirely, because the query starts from PlayerGameStat rather
     than from Game.
 
-    `rows_with_usage` is reported because it is the column most likely to
-    be missing wholesale: it arrived later than the counting stats, and a
-    season ingested before it existed carries none. Such a season produces
-    zero eligible players — every one of them fails on an uncomputable
-    feature — so a caller can warn about it instead of presenting an empty
-    fit as a modelling failure. apps/ingestion/backfill_advanced_stats.py
-    is what fills it in.
+    `rows_with_usage` and `rows_with_rebound_split` are reported because
+    they are the columns most likely to be missing wholesale. Usage arrived
+    later than the counting stats, and the offensive/defensive rebound split
+    is derived from play-by-play, so a season whose plays were never
+    processed carries none of it. A season missing either produces zero
+    eligible players — every one of them fails on an uncomputable feature —
+    so a caller can say which is missing instead of presenting an empty fit
+    as a modelling failure.
 
     Args:
         connection: an open psycopg2 connection.
 
     Returns:
         One dict per season with `season`, `game_count`, `stat_rows`,
-        `player_count` and `rows_with_usage`, newest season first.
+        `player_count`, `rows_with_usage` and `rows_with_rebound_split`,
+        newest season first.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -80,7 +82,11 @@ def fetch_available_seasons(connection) -> list[dict]:
                    count(DISTINCT g.id) AS game_count,
                    count(*) AS stat_rows,
                    count(DISTINCT s."playerId") AS player_count,
-                   count(s."usagePercentage") AS rows_with_usage
+                   count(s."usagePercentage") AS rows_with_usage,
+                   count(*) FILTER (
+                       WHERE s."offensiveRebounds" IS NOT NULL
+                         AND s."defensiveRebounds" IS NOT NULL
+                   ) AS rows_with_rebound_split
             FROM "PlayerGameStat" s
             JOIN "Game" g ON g.id = s."gameId"
             GROUP BY g.season

@@ -295,18 +295,26 @@ def print_available_seasons(seasons) -> None:
     """Prints the seasons that have box scores, and whether each can be fit.
 
     This is what a season picker in the UI would be built from. A season
-    missing usagePercentage entirely cannot produce a single eligible
-    player, so it is called out here rather than left to look like a
-    modelling failure when the fit comes back empty.
+    missing usage or the rebound split entirely cannot produce a single
+    eligible player, so it is called out here — with which one is missing —
+    rather than left to look like a modelling failure when the fit comes
+    back empty.
     """
-    print(f"\n  {'season':<9} {'games':>6} {'players':>8} {'rows':>7}  usage%")
+    print(f"\n  {'season':<9} {'games':>6} {'players':>8} {'rows':>7}  usage%  rebound split%")
     for season in seasons:
         stat_rows = season["stat_rows"]
-        coverage = season["rows_with_usage"] / stat_rows if stat_rows else 0
-        note = "" if coverage > 0 else "   <- no usage%, cannot be fit until backfilled"
+        usage_coverage = season["rows_with_usage"] / stat_rows if stat_rows else 0
+        split_coverage = season["rows_with_rebound_split"] / stat_rows if stat_rows else 0
+        missing = [
+            name
+            for name, coverage in (("usage", usage_coverage), ("rebound split", split_coverage))
+            if coverage == 0
+        ]
+        note = f"   <- no {' or '.join(missing)}, cannot be fit" if missing else ""
         print(
             f"  {season['season']:<9} {season['game_count']:>6} "
-            f"{season['player_count']:>8} {stat_rows:>7}  {coverage:>5.0%}{note}"
+            f"{season['player_count']:>8} {stat_rows:>7}  {usage_coverage:>5.0%}  "
+            f"{split_coverage:>13.0%}{note}"
         )
 
 

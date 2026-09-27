@@ -220,13 +220,26 @@ def aggregate_player_season_totals(game_stat_rows):
     only, so they still contribute their counting stats instead of dropping
     the player altogether.
 
+    The offensive/defensive rebound split gets the same treatment, and for
+    the same reason: it is nullable, because it is derived from
+    play-by-play and only games whose plays were processed carry it. Its
+    totals are summed over the games that recorded it, and its per-36 rate
+    must be divided by THOSE games' minutes only — returned separately as
+    `minutes_with_rebound_split`. Dividing by all minutes instead would
+    count every unrecorded game as a game with no rebounds: a player
+    missing the split for half their games would have their rebounding
+    halved, and a season with no split at all would give every player
+    0.0, a measurement nobody took.
+
     Args:
         game_stat_rows: PlayerGameStat rows for ONE player, as dicts keyed
             by the Prisma column names.
 
     Returns:
-        A dict of season totals, plus `games_played` and the minutes-weighted
-        `usage_percentage`, which is None when no row recorded one.
+        A dict of season totals, plus `games_played`, the minutes-weighted
+        `usage_percentage` (None when no row recorded one), and
+        `minutes_with_rebound_split`. `offensive_rebounds` and
+        `defensive_rebounds` are None when no row recorded the split.
     """
     totals = {
         "games_played": len(game_stat_rows),
@@ -245,24 +258,41 @@ def aggregate_player_season_totals(game_stat_rows):
 
     usage_minutes_product = 0.0
     minutes_carrying_usage = 0
+    minutes_carrying_rebound_split = 0
+    games_carrying_rebound_split = 0
 
     for row in game_stat_rows:
         for total_name, column_name in _COUNTING_STAT_COLUMNS.items():
             totals[total_name] += row.get(column_name) or 0
 
-        # Nullable, unlike the counting stats above: rows ingested before
-        # the offensive/defensive rebound split existed carry a genuine
-        # "never recorded" that must not be read as zero offensive rebounds.
-        totals["offensive_rebounds"] += row.get("offensiveRebounds") or 0
-        totals["defensive_rebounds"] += row.get("defensiveRebounds") or 0
+        minutes = row.get("minutes") or 0
+
+        # Nullable, unlike the counting stats above: a game whose plays were
+        # never processed carries a genuine "never recorded", which must not
+        # be read as zero rebounds. The two halves of the split are taken as
+        # a pair — a row with one and not the other has no usable split.
+        offensive_rebounds = row.get("offensiveRebounds")
+        defensive_rebounds = row.get("defensiveRebounds")
+        if offensive_rebounds is not None and defensive_rebounds is not None:
+            totals["offensive_rebounds"] += offensive_rebounds
+            totals["defensive_rebounds"] += defensive_rebounds
+            minutes_carrying_rebound_split += minutes
+            games_carrying_rebound_split += 1
 
         usage_percentage = row.get("usagePercentage")
         if usage_percentage is not None:
-            minutes = row.get("minutes") or 0
             usage_minutes_product += usage_percentage * minutes
             minutes_carrying_usage += minutes
 
     totals["usage_percentage"] = divide_or_none(usage_minutes_product, minutes_carrying_usage)
+    totals["minutes_with_rebound_split"] = minutes_carrying_rebound_split
+    if games_carrying_rebound_split == 0:
+        # No game recorded the split at all: the player's rebounding is
+        # unknown, not zero, so the features built from it are uncomputable
+        # and the player is excluded as incomplete data rather than placed
+        # as a non-rebounder.
+        totals["offensive_rebounds"] = None
+        totals["defensive_rebounds"] = None
     return totals
 
 
@@ -311,11 +341,13 @@ def build_feature_row(season_totals, player):
 
     feature_by_name = {
         "points_per_36": calculate_per_36(season_totals["points"], minutes_total),
+        # Over the minutes that carry the split, not all minutes — see
+        # aggregate_player_season_totals for why the difference matters.
         "offensive_rebounds_per_36": calculate_per_36(
-            season_totals["offensive_rebounds"], minutes_total
+            season_totals["offensive_rebounds"], season_totals["minutes_with_rebound_split"]
         ),
         "defensive_rebounds_per_36": calculate_per_36(
-            season_totals["defensive_rebounds"], minutes_total
+            season_totals["defensive_rebounds"], season_totals["minutes_with_rebound_split"]
         ),
         "assists_per_36": calculate_per_36(season_totals["assists"], minutes_total),
         "steals_per_36": calculate_per_36(season_totals["steals"], minutes_total),
