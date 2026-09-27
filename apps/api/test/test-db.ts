@@ -55,6 +55,14 @@ export async function resetDatabase() {
   await testPrisma.savedLineup.deleteMany();
   await testPrisma.gamePick.deleteMany();
 
+  // Become Pro, deepest first: valuations and games point at a season (and a
+  // valuation at the model that produced it), so they go before the seasons,
+  // the seasons before User, and the models once nothing references them.
+  await testPrisma.prospectValuation.deleteMany();
+  await testPrisma.prospectGame.deleteMany();
+  await testPrisma.prospectSeason.deleteMany();
+  await testPrisma.prospectValuationModel.deleteMany();
+
   await testPrisma.lineupSlot.deleteMany();
   await testPrisma.lineup.deleteMany();
   await testPrisma.playerPrediction.deleteMany();

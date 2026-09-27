@@ -14,6 +14,7 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { AdminPage } from "./pages/AdminPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
+import { BecomeProPage } from "./pages/BecomeProPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProfileGate } from "./components/ProfileGate";
 import { AdminGate } from "./components/AdminGate";
@@ -48,6 +49,13 @@ function App() {
           <Route path="/teams" element={<TeamsListPage />} />
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
+          {/* The user's own Become Pro page. Private to them — there is no
+              public Become Pro route, because the feature compares a user
+              with real NBA players and never with each other. */}
+          <Route
+            path="/become-pro"
+            element={<ProtectedRoute><ProfileGate><BecomeProPage /></ProfileGate></ProtectedRoute>}
+          />
           <Route
             path="/optimizer"
             element={<ProtectedRoute><ProfileGate><OptimizerPage /></ProfileGate></ProtectedRoute>}
