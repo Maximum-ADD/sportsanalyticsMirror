@@ -5,7 +5,7 @@ import type { Player } from "@/types/nba";
 
 interface PlayerHeadshotProps {
   player: Pick<Player, "nbaPlayerId" | "firstName" | "lastName">;
-  size?: "sm" | "lg";
+  size?: "sm" | "md" | "lg";
   className?: string;
   // Defaults to the player's name — right for a headshot presented on its
   // own (profile hero, prediction cards), where the image IS the label.
@@ -18,6 +18,10 @@ interface PlayerHeadshotProps {
 
 const SIZE_CLASSES = {
   sm: "size-10 text-sm",
+  // Between the two: large enough to recognise a face in a grid tile,
+  // small enough that five of them across a panel still read as a row of
+  // tiles rather than as a gallery.
+  md: "size-14 text-lg",
   lg: "size-20 text-2xl",
 };
 

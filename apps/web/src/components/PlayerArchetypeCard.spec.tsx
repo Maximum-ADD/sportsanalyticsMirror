@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PlayerArchetypeCard } from "./PlayerArchetypeCard";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import { expectNoAccessibilityViolations } from "@/test/accessibility";
-import type { Player, PlayerArchetypeResponse, Team } from "@/types/nba";
+import type { Player, PlayerArchetypeResponse, StyleMapResponse, Team } from "@/types/nba";
 
 const TEAM: Team = {
   id: "team-1",
@@ -96,6 +96,34 @@ describe("PlayerArchetypeCard", () => {
       expect(link).toHaveAttribute("href", "/players/player-2");
     });
 
+    it("names the closest match rather than numbering it", () => {
+      // "#1" beside a face reads as a ranking of the players themselves,
+      // which is the one thing this card must not imply.
+      renderWithProviders(<PlayerArchetypeCard data={makeResponse()} />);
+
+      expect(screen.getByText("Most similar")).toBeInTheDocument();
+      expect(screen.getByText("#2")).toBeInTheDocument();
+      expect(screen.queryByText("#1")).not.toBeInTheDocument();
+    });
+
+    it("shows the listed position beside the archetype", () => {
+      // Position is not a feature of the model, so about a third of
+      // players land in an archetype that does not match their listed
+      // slot. Showing it makes that deliberate rather than a mistake.
+      renderWithProviders(
+        <PlayerArchetypeCard data={makeResponse()} listedPosition="F" />
+      );
+
+      expect(screen.getByText(/Listed F\./)).toBeInTheDocument();
+    });
+
+    it("reads fine when no position is known", () => {
+      renderWithProviders(<PlayerArchetypeCard data={makeResponse()} />);
+
+      expect(screen.queryByText(/Listed/)).not.toBeInTheDocument();
+      expect(screen.getByText(/Sits between archetypes/)).toBeInTheDocument();
+    });
+
     it("says the similarity is of style rather than of quality", () => {
       // The single most misreadable thing on this card: a high score means
       // they play alike, never that they are equally good.
@@ -116,6 +144,53 @@ describe("PlayerArchetypeCard", () => {
 
     it("has no accessibility violations", async () => {
       const { container } = renderWithProviders(<PlayerArchetypeCard data={makeResponse()} />);
+      await expectNoAccessibilityViolations(container);
+    });
+  });
+
+  describe("the style map", () => {
+    const styleMap: StyleMapResponse = {
+      season: "2025-26",
+      players: [
+        { playerId: "player-1", firstName: "LeBron", lastName: "James", clusterId: 3, plotX: -1.6, plotY: 1.4 },
+        { playerId: "player-2", firstName: "Giannis", lastName: "Antetokounmpo", clusterId: 3, plotX: -1.9, plotY: 1.0 },
+        { playerId: "player-9", firstName: "Stephen", lastName: "Curry", clusterId: 1, plotX: 1.9, plotY: 1.2 },
+      ],
+      archetypes: [{ clusterId: 3, label: "Point forward", memberCount: 19 }],
+    };
+
+    it("is left out entirely when the map has not loaded", () => {
+      // Supplementary, not a third source of truth: the bars and tiles say
+      // everything it shows, so its absence must cost nothing.
+      renderWithProviders(<PlayerArchetypeCard data={makeResponse()} />);
+      expect(screen.queryByText("Style map")).not.toBeInTheDocument();
+    });
+
+    it("is left out when the season has no placed players", () => {
+      renderWithProviders(
+        <PlayerArchetypeCard
+          data={makeResponse()}
+          styleMap={{ ...styleMap, players: [] }}
+        />
+      );
+      expect(screen.queryByText("Style map")).not.toBeInTheDocument();
+    });
+
+    it("names each mark, so identity is never colour alone", () => {
+      renderWithProviders(<PlayerArchetypeCard data={makeResponse()} styleMap={styleMap} />);
+
+      expect(screen.getByText("Style map")).toBeInTheDocument();
+      expect(screen.getByText("This player")).toBeInTheDocument();
+      // The legend names the player's own archetype rather than saying
+      // "your group", so the colour ties back to the bars beside it.
+      expect(screen.getAllByText("Point forward").length).toBeGreaterThan(1);
+      expect(screen.getByText("Everyone else")).toBeInTheDocument();
+    });
+
+    it("has no accessibility violations with the map shown", async () => {
+      const { container } = renderWithProviders(
+        <PlayerArchetypeCard data={makeResponse()} styleMap={styleMap} />
+      );
       await expectNoAccessibilityViolations(container);
     });
   });

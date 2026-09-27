@@ -1,7 +1,13 @@
 import { Link } from "react-router-dom";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
-import type { ArchetypeMembership, PlayerArchetypeResponse, SimilarPlayer } from "@/types/nba";
+import { PlayerStyleMap } from "@/components/PlayerStyleMap";
+import type {
+  ArchetypeMembership,
+  PlayerArchetypeResponse,
+  SimilarPlayer,
+  StyleMapResponse,
+} from "@/types/nba";
 
 // Opacity per rank, so the primary archetype reads as the headline and the
 // rest as supporting detail. Deliberately NOT a colour per archetype: the
@@ -57,23 +63,37 @@ function ArchetypeBars({ archetypes }: { archetypes: ArchetypeMembership[] }) {
   );
 }
 
-function SimilarPlayerRow({ entry }: { entry: SimilarPlayer }) {
+/**
+ * One similar player, as a tile in the same locker language as StatTile:
+ * sharp border, recessed ground, mono micro-label, no rounded corners.
+ *
+ * Unlike a stat tile, the NAME is the figure here rather than the number —
+ * the similarity score is supporting detail, and a deliberately quiet one,
+ * since the scores compress into a narrow band and say much less than
+ * their ordering does.
+ */
+function SimilarPlayerTile({ entry }: { entry: SimilarPlayer }) {
   const { player } = entry;
   return (
     <li>
       <Link
         to={`/players/${player.id}`}
-        className="flex items-center gap-3 border border-transparent px-2 py-2 transition hover:border-landing-light hover:bg-landing-light/30"
+        className="flex h-full flex-col items-center gap-2 border border-landing-light bg-landing-hero px-3 py-3 text-center transition hover:border-locker-leather"
       >
+        <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
+          {entry.rank === 1 ? "Most similar" : `#${entry.rank}`}
+        </span>
         {/* Empty alt: the player's name is right there as text, and
             duplicating it makes screen readers announce it twice. */}
-        <PlayerHeadshot player={player} size="sm" alt="" />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-locker-ink">
+        <PlayerHeadshot player={player} size="md" alt="" />
+        <span className="font-display text-[13px] leading-tight text-landing-ink">
           {player.firstName} {player.lastName}
         </span>
-        {player.team && <TeamBadge team={player.team} size="sm" />}
-        <span className="w-10 text-right text-[11px] tabular-nums text-locker-ink-muted">
-          {Math.round(entry.similarityScore)}
+        <span className="mt-auto flex items-center gap-2 pt-1">
+          {player.team && <TeamBadge team={player.team} size="sm" />}
+          <span className="font-display text-[15px] tabular-nums text-locker-ink-muted">
+            {Math.round(entry.similarityScore)}
+          </span>
         </span>
       </Link>
     </li>
@@ -92,7 +112,24 @@ function SimilarPlayerRow({ entry }: { entry: SimilarPlayer }) {
  * The middle one is the common case for deep-bench players and has to read
  * as an explanation rather than as an error.
  */
-export function PlayerArchetypeCard({ data }: { data: PlayerArchetypeResponse }) {
+export function PlayerArchetypeCard({
+  data,
+  styleMap,
+  listedPosition,
+}: {
+  data: PlayerArchetypeResponse;
+  // The player's listed position, shown beside the archetype rather than
+  // used to produce it. Position is NOT a feature of the model — height
+  // and weight are — so a third of the league lands in an archetype whose
+  // name does not match the slot they are listed in. Showing the listed
+  // position makes that visible and deliberate instead of looking like a
+  // mistake, and the section's info panel says why.
+  listedPosition?: string;
+  // Optional: the card is complete without it. The map is supplementary to
+  // the bars and tiles rather than a third source of information, so it
+  // simply does not render while it is loading or if it fails.
+  styleMap?: StyleMapResponse;
+}) {
   if (!data.season) {
     return (
       <p className="text-[12.5px] text-locker-ink-muted">
@@ -114,17 +151,37 @@ export function PlayerArchetypeCard({ data }: { data: PlayerArchetypeResponse })
   const { archetypes, similarPlayers } = data.archetype;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div>
-        <h3 className="mb-2 text-[11px] tracking-[0.18em] text-locker-ink-muted uppercase">
-          Playing style · {data.season}
-        </h3>
-        <p className="mb-3 text-[12.5px] text-locker-ink-muted">
-          {archetypes.length > 1
-            ? "Most players sit between archetypes rather than inside one — these are the closest, strongest first."
-            : "This player sits clearly inside one archetype."}
-        </p>
-        <ArchetypeBars archetypes={archetypes} />
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div>
+          <h3 className="mb-2 text-[11px] tracking-[0.18em] text-locker-ink-muted uppercase">
+            Playing style · {data.season}
+          </h3>
+          <p className="mb-3 text-[12.5px] text-locker-ink-muted">
+            {listedPosition && <>Listed {listedPosition}. </>}
+            {archetypes.length > 1
+              ? "Sits between archetypes — closest first."
+              : "Sits clearly inside one archetype."}
+          </p>
+          <ArchetypeBars archetypes={archetypes} />
+        </div>
+
+        {styleMap && styleMap.players.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-[11px] tracking-[0.18em] text-locker-ink-muted uppercase">
+              Style map
+            </h3>
+            <p className="mb-1 text-[12.5px] text-locker-ink-muted">
+              Every player with enough minutes, placed by how they play. Near means alike.
+            </p>
+            <PlayerStyleMap
+              points={styleMap.players}
+              subjectPlayerId={data.playerId}
+              subjectClusterId={archetypes[0].clusterId}
+              subjectArchetypeLabel={archetypes[0].label}
+            />
+          </div>
+        )}
       </div>
 
       <div>
@@ -132,15 +189,17 @@ export function PlayerArchetypeCard({ data }: { data: PlayerArchetypeResponse })
           Similar players
         </h3>
         <p className="mb-3 text-[12.5px] text-locker-ink-muted">
-          Closest in playing style, not in quality — a high score means they play alike, never that
-          they are equally good.
+          Closest in playing style, not in quality.
         </p>
         {similarPlayers.length === 0 ? (
           <p className="text-[12.5px] text-locker-ink-muted">No similar players for this season.</p>
         ) : (
-          <ul className="-mx-2">
+          // Two across on a phone, five on a wide screen — the same
+          // breakpoint rhythm as the stat tiles above, so the section reads
+          // as part of the same page rather than as its own layout.
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {similarPlayers.map((entry) => (
-              <SimilarPlayerRow key={entry.player.id} entry={entry} />
+              <SimilarPlayerTile key={entry.player.id} entry={entry} />
             ))}
           </ul>
         )}

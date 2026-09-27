@@ -1,6 +1,7 @@
 import { fetchJson, sendJson } from "./apiClient";
 import type {
   PlayerArchetypeResponse,
+  StyleMapResponse,
   Game,
   GameDetail,
   GamePrediction,
@@ -325,4 +326,13 @@ export function fetchPlayerArchetype(
 ): Promise<PlayerArchetypeResponse> {
   const seasonParam = season ? `?season=${encodeURIComponent(season)}` : "";
   return fetchJson<PlayerArchetypeResponse>(`/v1/players/${playerId}/archetype${seasonParam}`);
+}
+
+// Every placed player's position in a season's style space, for the map on
+// the profile card. Unpaginated: the point of a map is seeing everyone at
+// once, and the rows are thin. It changes only when the model is re-fit,
+// so it is safe to cache for a long time.
+export function fetchStyleMap(season?: string): Promise<StyleMapResponse> {
+  const seasonParam = season ? `?season=${encodeURIComponent(season)}` : "";
+  return fetchJson<StyleMapResponse>(`/v1/archetypes/map${seasonParam}`);
 }

@@ -678,3 +678,27 @@ export interface PlayerArchetypeResponse {
   season: string | null;
   archetype: PlayerArchetype | null;
 }
+
+// One point on the style map. Thin on purpose: fetched for every eligible
+// player at once, so it carries only what a point needs to be drawn,
+// coloured and named on hover.
+export interface StyleMapPoint {
+  playerId: string;
+  firstName: string;
+  lastName: string;
+  clusterId: number;
+  plotX: number;
+  plotY: number;
+}
+
+export interface ArchetypeSummary {
+  clusterId: number;
+  label: string;
+  memberCount: number;
+}
+
+export interface StyleMapResponse {
+  season: string;
+  players: StyleMapPoint[];
+  archetypes: ArchetypeSummary[];
+}
