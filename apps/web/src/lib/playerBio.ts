@@ -55,3 +55,32 @@ export function formatHeight(heightInches: number | null): string {
   const inches = heightInches % 12;
   return `${feet}'${inches}"`;
 }
+
+// The roster feed abbreviates every position, and hyphenates the hybrids:
+// the full set in the data is C, C-F, F, F-C, F-G, G, G-F.
+const POSITION_NAMES: Record<string, string> = {
+  G: "Guard",
+  F: "Forward",
+  C: "Center",
+};
+
+/**
+ * Expands a roster position code into words.
+ *
+ * Hybrids are expanded on each side and re-joined, so "G-F" reads
+ * "Guard-Forward" and the order the feed gives — which puts the primary
+ * position first — is preserved rather than normalised away.
+ *
+ * @param position The code from Player.position, e.g. "F" or "G-F".
+ * @returns The expanded name, or the original string for any code not in
+ *   the map. Returning the input rather than a dash matters: an
+ *   unrecognised code is still more useful to a reader than nothing, and
+ *   silently blanking it would hide a feed change instead of surfacing it.
+ */
+export function formatPosition(position: string | null | undefined): string {
+  if (!position) return NO_VALUE;
+  return position
+    .split("-")
+    .map((part) => POSITION_NAMES[part.trim().toUpperCase()] ?? part.trim())
+    .join("-");
+}
