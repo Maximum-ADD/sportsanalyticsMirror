@@ -5,7 +5,28 @@ centroids come from the model, the names come from a person. See
 labeling.py for why the names are stored against centroids rather
 than against cluster numbers.
 
-Reference fit: 2025-26 regular season, k=9.
+Reference fit: 2025-26, whole season (all segments), k=9. Named
+2026-09-28 against the fit made after 2025-26 was re-ingested on 23
+September.
+
+Seven names are standard basketball vernacular, used from the Athlore
+archetype taxonomy (https://athlore.app/discover/archetypes) as a naming
+vocabulary only; it has no statistics behind it and did not define these
+groups. Judgement calls worth recording:
+
+  - "Catch-and-shoot wing" is the group most people would call 3-and-D. It
+    is named for the shooting because a three-point attempt rate of 0.66 is
+    measured and the defence is not: point-of-attack defence produces no
+    box-score event.
+  - "Low-usage forward" is invented. It has the highest steal rate of any
+    group (1.9 per 36), but steals alone do not justify a defensive name.
+  - "Combo guard" returned in this fit. An earlier fit had a tight group of
+    ball-hawking guards named "Defensive guard"; after the re-ingestion that
+    group no longer exists, and the guards between the pass-first and
+    scoring groups form a genuine combo-guard cluster.
+  - Names describe style, not listed position: about a third of players sit
+    in a group whose name does not match their roster position, and the
+    profile card shows the listed position beside the archetype.
 
 Re-generating this file discards the names. To re-fit while keeping
 them, leave this file alone — labeling.assign_archetype_names matches
@@ -15,47 +36,47 @@ the new clusters to these centroids.
 ARCHETYPE_LABELS = [
     {
         # 36 players. Closest: Kentavious Caldwell-Pope, VJ Edgecombe, Walter Clayton Jr., Malik Monk.
-        "name": "TODO name cluster 0",
+        "name": "Combo guard",
         "reference_centroid": [17.0944, 0.8876, 3.8014, 5.0215, 1.3834, 0.5421, 2.5703, 7.5302, 0.5143, 0.1829, 0.5390, 1.9984, 20.5807, 76.1944, 195.5000],
     },
     {
         # 19 players. Closest: Alperen Sengun, Karl-Anthony Towns, Derik Queen, Julius Randle.
-        "name": "TODO name cluster 1",
+        "name": "Point forward",
         "reference_centroid": [23.1458, 2.7494, 8.1682, 5.5723, 1.2894, 1.0211, 3.1220, 3.4560, 0.2070, 0.3939, 0.5927, 1.7657, 25.5638, 82.1579, 253.4737],
     },
     {
         # 53 players. Closest: Harrison Barnes, Devin Vassell, Svi Mykhailiuk, Landry Shamet.
-        "name": "TODO name cluster 2",
+        "name": "Catch-and-shoot wing",
         "reference_centroid": [14.0464, 1.0673, 3.5942, 2.6937, 1.0448, 0.3905, 1.2342, 7.2788, 0.6566, 0.1646, 0.5929, 2.2673, 14.6339, 77.6981, 209.3962],
     },
     {
         # 32 players. Closest: Ajay Mitchell, De'Aaron Fox, Dylan Harper, Javon Small.
-        "name": "TODO name cluster 3",
+        "name": "Pass-first point guard",
         "reference_centroid": [17.1196, 1.1943, 3.7992, 6.7176, 1.3875, 0.3362, 2.2756, 4.3629, 0.3396, 0.2660, 0.5743, 3.0361, 19.2811, 75.2188, 196.7188],
     },
     {
         # 42 players. Closest: Jamir Watkins, Jake LaRavia, Ryan Dunn, Bruce Brown.
-        "name": "TODO name cluster 4",
+        "name": "Low-usage forward",
         "reference_centroid": [12.3060, 1.9144, 4.4428, 2.8289, 1.8993, 0.7525, 1.6215, 4.5852, 0.4506, 0.2221, 0.5509, 1.7698, 14.2413, 77.9762, 206.9524],
     },
     {
         # 53 players. Closest: Kyle Kuzma, Desmond Bane, RJ Barrett, Cedric Coward.
-        "name": "TODO name cluster 5",
+        "name": "Scoring wing",
         "reference_centroid": [20.6691, 1.3752, 4.6819, 3.2257, 1.0997, 0.5472, 2.1818, 6.5537, 0.4187, 0.2739, 0.5865, 1.5141, 22.2078, 79.1698, 213.9811],
     },
     {
         # 34 players. Closest: Onyeka Okongwu, Sandro Mamukelashvili, Santi Aldama, Jabari Smith Jr..
-        "name": "TODO name cluster 6",
+        "name": "Stretch big",
         "reference_centroid": [17.4992, 2.3432, 6.6756, 2.6544, 0.9741, 1.3759, 1.7450, 5.6887, 0.4300, 0.2357, 0.5931, 1.5342, 18.6112, 82.1765, 240.0294],
     },
     {
         # 31 players. Closest: Keyonte George, James Harden, Donovan Mitchell, Devin Booker.
-        "name": "TODO name cluster 7",
+        "name": "Scoring guard",
         "reference_centroid": [26.1605, 0.8175, 4.6545, 7.0382, 1.3605, 0.4056, 3.4222, 7.7639, 0.3997, 0.3469, 0.5873, 2.0786, 28.9085, 76.4516, 202.2258],
     },
     {
         # 31 players. Closest: Neemias Queta, Mark Williams, Marvin Bagley III, Daniel Gafford.
-        "name": "TODO name cluster 8",
+        "name": "Traditional big",
         "reference_centroid": [14.3991, 4.7159, 7.3069, 2.4547, 1.0910, 1.6814, 1.9106, 0.5015, 0.0480, 0.4068, 0.6529, 1.3792, 14.5138, 83.1613, 246.3871],
     },
 ]
