@@ -948,6 +948,73 @@ describe("Players API", () => {
       expect(response.body.career.seasonBreakdown).toHaveLength(2);
     });
 
+    describe("keeps each segment separate", () => {
+      // One season with two 20-point regular-season games and one 40-point
+      // playoff game: a blended row would read 3 games at 26.7 PPG.
+      async function createPlayerWithPlayoffGame() {
+        const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+        const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+        const player = await createPlayer({ teamId: home.id, lastName: "James" });
+        const gamePointsBySeasonType = [
+          { seasonType: "REGULAR", points: 20 },
+          { seasonType: "REGULAR", points: 20 },
+          { seasonType: "PLAYOFFS", points: 40 },
+        ] as const;
+        for (const [index, { seasonType, points }] of gamePointsBySeasonType.entries()) {
+          const game = await testPrisma.game.create({
+            data: {
+              nbaGameId: `CAREER-SEGMENT-${uniqueId()}`,
+              gameDate: new Date(Date.UTC(2025, 3, 10 + index)),
+              season: "2024-25",
+              seasonType,
+              homeTeamId: home.id,
+              awayTeamId: away.id,
+            },
+          });
+          await createGameStat(player.id, game.id, { points });
+        }
+        return player;
+      }
+
+      it("counts only regular-season games by default", async () => {
+        const player = await createPlayerWithPlayoffGame();
+
+        const response = await request(app.getHttpServer()).get(`/v1/players/${player.id}/stats/career`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.career.seasonType).toBe("REGULAR");
+        expect(response.body.career.careerAverages.gamesPlayed).toBe(2);
+        expect(response.body.career.careerAverages.pointsPerGame).toBe(20);
+        expect(response.body.career.seasonBreakdown).toEqual([
+          expect.objectContaining({ season: "2024-25", averages: expect.objectContaining({ gamesPlayed: 2 }) }),
+        ]);
+      });
+
+      it("returns only the segment asked for", async () => {
+        const player = await createPlayerWithPlayoffGame();
+
+        const response = await request(app.getHttpServer()).get(
+          `/v1/players/${player.id}/stats/career?seasonType=PLAYOFFS`
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.body.career.seasonType).toBe("PLAYOFFS");
+        expect(response.body.career.careerAverages.gamesPlayed).toBe(1);
+        expect(response.body.career.careerAverages.pointsPerGame).toBe(40);
+      });
+
+      it("rejects an unknown segment rather than falling back to the regular season", async () => {
+        const player = await createPlayer({ lastName: "Typo" });
+
+        const response = await request(app.getHttpServer()).get(
+          `/v1/players/${player.id}/stats/career?seasonType=playoffs`
+        );
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe("BAD_REQUEST");
+      });
+    });
+
     it("returns zeroed career for a player with no games", async () => {
       const player = await createPlayer({ lastName: "Rookie" });
 
