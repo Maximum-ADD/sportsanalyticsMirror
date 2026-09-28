@@ -148,7 +148,7 @@ def format_labels_file(clusters, season: str) -> str:
         "labeling.py for why the names are stored against centroids rather",
         "than against cluster numbers.",
         "",
-        f"Reference fit: {season} regular season, k={len(clusters)}.",
+        f"Reference fit: {season}, whole season (all segments), k={len(clusters)}.",
         "",
         "Re-generating this file discards the names. To re-fit while keeping",
         "them, leave this file alone — labeling.assign_archetype_names matches",
