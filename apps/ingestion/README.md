@@ -153,13 +153,20 @@ python ingest.py --from-date 2026-04-14 --to-date 2026-04-18  # only games in th
 | Flag | Default | Effect |
 |---|---|---|
 | `--review` | off | Batches land as `PENDING_REVIEW` for approval in the admin Batches tab, instead of `COMPLETED`. The admin **Pull Data** button always passes this. |
-| `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. |
+| `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. A season before the default leaves rosters and bios alone (see below). |
 | `--from-date` | none | Only games on or after this date (`YYYY-MM-DD`, inclusive). |
 | `--to-date` | none | Only games on or before this date (`YYYY-MM-DD`, inclusive). |
 
 Either date bound can be given alone. Malformed or inverted dates are
 rejected at startup, before any API call. The admin Batches tab exposes the
 same three options next to **Pull Data**.
+
+**A past season never touches rosters.** Rosters set each player's current
+team, so pulling 2023-24's would move everyone traded since back to their
+old team and put retired players on current rosters. A pull for a season
+older than the default instead uses the players already in the database, and
+skips plays and stat rows by anyone no longer in the league
+(`UNKNOWN_PLAYER`), the same trade-off `ingest_historical_season.py` makes.
 
 **A windowed pull only pays for what it fetches.** With a date window:
 
@@ -275,6 +282,18 @@ instead of re-fetching them, so it makes no calls beyond the postseason
 data itself: 2 leaguewide `LeagueGameLog` calls plus ~90 boxscores.
 Running the full `ingest.py` instead would re-fetch every player bio
 (~450-500 calls) to reach the same result.
+
+It is also the way to add an **older season's postseason**, since it never
+writes rosters:
+
+```bash
+python ingest_postseason.py --season 2023-24 --skip-play-storage
+```
+
+| Flag | Default | Effect |
+|---|---|---|
+| `--season` | `2025-26` | Whose postseason to ingest, as `YYYY-YY`. |
+| `--skip-play-storage` | off | Derive each game's stats from its play-by-play, then discard the plays instead of saving them to `GameEvent`. A postseason's plays take ~22 MB; without them the admin corrections tools and `GET /games/:id/events` have nothing to show for those games. |
 
 Existing regular-season rows are untouched either way — the migration
 defaults them to `seasonType = REGULAR`, which is accurate, since they were

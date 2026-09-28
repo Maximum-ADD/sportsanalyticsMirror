@@ -18,7 +18,7 @@ export const UNPUBLISHED_BATCH_STATUSES: IngestionBatchStatus[] = [
 // hasn't been approved — the brief's "submissions should pass a review
 // before publication" requirement. Re-ingesting an already-published game
 // reassigns every current event to the new batch (see
-// apps/ingestion/play_by_play.py's upsert_game_event), so at most one batch
+// apps/ingestion/play_by_play.py's upsert_game_events), so at most one batch
 // row is ever the one actually behind a game's current events; "no batch in
 // a blocking status" and "the latest batch is COMPLETED" agree in practice.
 export const PUBLISHED_GAME_FILTER: Prisma.GameWhereInput = {
