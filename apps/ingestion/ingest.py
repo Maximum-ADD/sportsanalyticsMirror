@@ -482,11 +482,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="to_date",
         help="Only ingest games on or before this date (YYYY-MM-DD).",
     )
+    parser.add_argument(
+        "--skip-play-storage",
+        dest="skip_play_storage",
+        action="store_true",
+        help="Derive stats from the play-by-play without saving the plays to GameEvent.",
+    )
     return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
 
     # --review: sets the ingestion batch status to PENDING_REVIEW instead
     # of COMPLETED, so the admin must approve the events in the review
@@ -494,6 +500,14 @@ def main() -> None:
     batch_status = "PENDING_REVIEW" if args.review else "COMPLETED"
     if args.review:
         print("Running with --review: batches will be set to PENDING_REVIEW for admin approval.")
+
+    # --skip-play-storage: each game's stats are still derived from its
+    # play-by-play, but the plays aren't saved to GameEvent, so the admin
+    # play-by-play and corrections tools have nothing to show for the games
+    # this pull writes. See play_by_play.run_ingestion_batch.
+    store_events = not args.skip_play_storage
+    if not store_events:
+        print("Running with --skip-play-storage: stats are derived from the play-by-play, but the plays aren't saved.")
 
     # Fails fast on a malformed or inverted window, before any API call.
     window = build_game_window(args.from_date, args.to_date)
@@ -519,7 +533,7 @@ def main() -> None:
         with connection.cursor() as cursor:
             ingest_games_and_stats(
                 cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, regular_season_figures,
-                final_status=batch_status, season=season,
+                final_status=batch_status, season=season, store_events=store_events,
             )
         connection.commit()
 
@@ -533,7 +547,7 @@ def main() -> None:
         with connection.cursor() as cursor:
             ingest_games_and_stats(
                 cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures,
-                final_status=batch_status, season=season,
+                final_status=batch_status, season=season, store_events=store_events,
             )
         connection.commit()
 

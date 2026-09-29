@@ -20,14 +20,14 @@ import pull_worker
 
 
 class TestBuildIngestCommand:
-    def test_always_asks_for_review(self):
+    def test_always_asks_for_review_without_saving_plays(self):
         command = pull_worker.build_ingest_command({}, python_executable="py")
-        assert command == ["py", str(pull_worker.INGEST_SCRIPT), "--review"]
+        assert command == ["py", str(pull_worker.INGEST_SCRIPT), "--review", "--skip-play-storage"]
 
     def test_passes_only_the_options_the_request_set(self):
         request = {"season": "2024-25", "fromDate": "2026-04-14", "toDate": None}
         command = pull_worker.build_ingest_command(request, python_executable="py")
-        assert command[2:] == ["--review", "--season", "2024-25", "--from-date", "2026-04-14"]
+        assert command[2:] == ["--review", "--skip-play-storage", "--season", "2024-25", "--from-date", "2026-04-14"]
 
     def test_matches_ingest_py_flags(self):
         # The same flags ingest.parse_args accepts; see test_ingest_args.py.
@@ -35,7 +35,9 @@ class TestBuildIngestCommand:
 
         request = {"season": "2024-25", "fromDate": "2026-04-14", "toDate": "2026-04-18"}
         args = ingest.parse_args(pull_worker.build_ingest_command(request)[2:])
-        assert (args.review, args.season, args.from_date, args.to_date) == (True, "2024-25", "2026-04-14", "2026-04-18")
+        assert (args.review, args.skip_play_storage, args.season, args.from_date, args.to_date) == (
+            True, True, "2024-25", "2026-04-14", "2026-04-18",
+        )
 
 
 class TestSummariseOutput:
@@ -269,7 +271,7 @@ class TestQueueAgainstPostgres:
         assert ran is True
         outcome = status_of(connection, request_id)
         assert outcome["status"] == "SUCCEEDED"
-        assert f"args: --review --season {marker}" in outcome["message"]
+        assert f"args: --review --skip-play-storage --season {marker}" in outcome["message"]
         with connection.cursor() as cursor:
             cursor.execute('SELECT "lastSeenAt" FROM "IngestionWorker" WHERE "name" = %s', (f"{marker}-worker",))
             assert cursor.fetchone() is not None

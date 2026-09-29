@@ -53,6 +53,8 @@ TRIMMED_OUTPUT_MARKER = "[earlier output trimmed]"
 
 # Maps IngestionRequest columns to ingest.py flags.
 OPTION_FLAGS = (("season", "--season"), ("fromDate", "--from-date"), ("toDate", "--to-date"))
+# Flags every queued pull runs with, whatever the request set.
+FIXED_INGEST_FLAGS = ("--review", "--skip-play-storage")
 
 
 def describe_database_target(database_url: str | None) -> str:
@@ -81,10 +83,17 @@ def build_ingest_command(request: dict, python_executable: str = sys.executable)
 
     Always --review, so the batches land as PENDING_REVIEW for an admin to
     approve — the same as a pull started from the admin page directly.
+
+    Always --skip-play-storage, so each game's stats are still derived from
+    its play-by-play but the plays (~250 KB a game) aren't saved to
+    GameEvent. The admin play-by-play and corrections tools therefore have
+    nothing to show for games a queued pull writes. A pull started from the
+    admin page in direct mode still saves them.
+
     Options left null on the request are omitted, so ingest.py applies its
     own defaults.
     """
-    command = [python_executable, str(INGEST_SCRIPT), "--review"]
+    command = [python_executable, str(INGEST_SCRIPT), *FIXED_INGEST_FLAGS]
     for column, flag in OPTION_FLAGS:
         if request.get(column):
             command += [flag, request[column]]
