@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedRequest } from "../picks/authenticated-request.js";
 import { MeApiKeysController } from "./me-api-keys.controller.js";
 
+// The controller's session guard imports auth.config, which builds a real
+// PrismaClient at import time. Its native engine loads in the background,
+// and if this short file ends first, Vitest tears down the worker mid-load
+// and the engine aborts the whole run. Nothing here needs real auth.
+vi.mock("../../auth/auth.config.js", () => ({
+  auth: { api: { getSession: vi.fn() } },
+}));
+
 function createMockService() {
   return {
     listMyApiKeys: vi.fn().mockResolvedValue({ consumer: null, keys: [] }),

@@ -3,6 +3,14 @@ import { ApiException } from "../common/api-exception.js";
 import { AdminTeamsController, parseUpdateTeamBody } from "./admin-teams.controller.js";
 import type { AdminTeamsService } from "./admin-teams.service.js";
 
+// The controller's session guard imports auth.config, which builds a real
+// PrismaClient at import time. Its native engine loads in the background,
+// and if this short file ends first, Vitest tears down the worker mid-load
+// and the engine aborts the whole run. Nothing here needs real auth.
+vi.mock("../auth/auth.config.js", () => ({
+  auth: { api: { getSession: vi.fn() } },
+}));
+
 const EXISTING_TEAM = {
   id: "team-1",
   nbaTeamId: 1,

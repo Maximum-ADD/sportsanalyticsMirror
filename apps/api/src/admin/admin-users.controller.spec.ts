@@ -4,6 +4,14 @@ import { ApiException } from "../common/api-exception.js";
 import { AdminUsersController, parseRoleBody } from "./admin-users.controller.js";
 import type { AdminUsersService } from "./admin-users.service.js";
 
+// The controller's session guard imports auth.config, which builds a real
+// PrismaClient at import time. Its native engine loads in the background,
+// and if this short file ends first, Vitest tears down the worker mid-load
+// and the engine aborts the whole run. Nothing here needs real auth.
+vi.mock("../auth/auth.config.js", () => ({
+  auth: { api: { getSession: vi.fn() } },
+}));
+
 function makeRequest(callerId = "admin-1"): Request {
   return { user: { id: callerId } } as unknown as Request;
 }
