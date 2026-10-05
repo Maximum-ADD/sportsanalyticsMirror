@@ -21,10 +21,19 @@
 // a signed-in session (see ApiKeyGuard), and this script has no browser
 // session to send.
 //
+// RATE LIMITS: the key's consumer is rate-limited (default 100 req/min and
+// 10,000 req/day — see ApiKeyGuard), and one run sends thousands of
+// requests. Raise both on the test consumer first (admin
+// PATCH /v1/admin/consumers/:id, or directly on "ApiConsumer"), or every
+// endpoint will FAIL on 429s — rejected responses are counted as failures
+// below, never as fast passes.
+//
 // STATED TARGET (documented here, not just implied by a green exit code):
-// p95 < 300ms and p99 < 800ms for every endpoint below, against a
-// database at the brief's stated scale. This is this project's own
-// target, not an external standard — chosen as "comfortably interactive
+// p97.5 < 300ms and p99 < 800ms for every endpoint below, with no non-2xx
+// responses, against a database at the brief's stated scale. (autocannon
+// reports p90 and p97.5 but not p95, so p97.5 is used — a stricter bar
+// than p95.) This is this project's own target, not an external
+// standard — chosen as "comfortably interactive
 // for a human clicking through the site," with headroom for Render's free
 // tier and Supabase's pooled connection under concurrent load. Revisit if
 // real usage shows it's the wrong number.
@@ -32,7 +41,7 @@
 // This script was written but could not be run against a real, at-scale
 // database in the environment that authored it (no local Postgres). Treat
 // its first real run, not this file's existence, as the actual evidence —
-// see PROJECT_OVERVIEW.md's Performance section.
+// record that run's output alongside docs/PROJECT_OVERVIEW.md.
 
 import autocannon from "autocannon";
 
@@ -41,7 +50,7 @@ const API_KEY = process.env.API_KEY;
 const DURATION_SECONDS = Number(process.env.LOAD_TEST_DURATION ?? 10);
 const CONNECTIONS = Number(process.env.LOAD_TEST_CONNECTIONS ?? 10);
 
-const TARGET_P95_MS = 300;
+const TARGET_P97_5_MS = 300;
 const TARGET_P99_MS = 800;
 
 if (!API_KEY) {
@@ -106,18 +115,22 @@ async function main() {
   ];
 
   console.log(`Load-testing ${BASE_URL} — ${CONNECTIONS} connections, ${DURATION_SECONDS}s per endpoint.`);
-  console.log(`Target: p95 < ${TARGET_P95_MS}ms, p99 < ${TARGET_P99_MS}ms.\n`);
+  console.log(`Target: p97.5 < ${TARGET_P97_5_MS}ms, p99 < ${TARGET_P99_MS}ms, no non-2xx responses.\n`);
 
   let anyFailed = false;
   for (const [name, path] of endpoints) {
     const { result } = await runOne(name, path);
-    const p95 = result.latency.p97_5; // autocannon's nearest percentile bucket to p95
+    const p97_5 = result.latency.p97_5;
     const p99 = result.latency.p99;
-    const failed = p95 > TARGET_P95_MS || p99 > TARGET_P99_MS;
+    // A 429 or 401 comes back fast and still lands in the latency
+    // histogram, so any rejected request makes the timing meaningless.
+    const rejected = result.non2xx + result.errors + result.timeouts;
+    const failed = rejected > 0 || p97_5 > TARGET_P97_5_MS || p99 > TARGET_P99_MS;
     anyFailed = anyFailed || failed;
     console.log(
-      `${failed ? "FAIL" : "OK  "} ${name.padEnd(28)} p50=${result.latency.p50}ms p95=${p95}ms p99=${p99}ms ` +
-        `(${result.requests.average.toFixed(1)} req/s, ${result.errors} errors)`
+      `${failed ? "FAIL" : "OK  "} ${name.padEnd(28)} p50=${result.latency.p50}ms p97.5=${p97_5}ms p99=${p99}ms ` +
+        `(${result.requests.average.toFixed(1)} req/s, ${result.non2xx} non-2xx, ${result.errors} errors, ` +
+        `${result.timeouts} timeouts)`
     );
   }
 
