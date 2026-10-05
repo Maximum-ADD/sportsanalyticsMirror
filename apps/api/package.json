@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "load-test": "node scripts/load-test.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -51,6 +52,7 @@
     "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.10",
+    "autocannon": "^8.0.0",
     "eslint": "^10.8.0",
     "nodemon": "^3.1.7",
     "prisma": "5.22.0",
