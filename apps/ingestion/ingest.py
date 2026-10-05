@@ -60,7 +60,7 @@ from games import (
 from play_by_play import run_ingestion_batch
 from player_bios import fetch_player_bio, upsert_player_bio
 from player_game_logs import fetch_season_player_game_logs
-from rosters import fetch_team_roster, select_first_names_by_nba_id, upsert_players
+from rosters import fetch_team_roster, select_first_names_by_nba_id, select_player_ids_by_nba_id, upsert_players
 from teams import fetch_all_teams, upsert_teams
 
 # The season a pull covers unless --season overrides it. Kept as a module
@@ -77,11 +77,31 @@ def ingest_teams(cursor) -> dict[int, str]:
     return team_id_by_nba_id
 
 
-def ingest_rosters(cursor, team_id_by_nba_id: dict[int, str]) -> dict[int, str]:
-    """Ingests every team's current roster, returns nbaPlayerId -> internal id."""
+def season_start_year(season: str) -> int:
+    """The calendar year a "YYYY-YY" season label starts in: 2023 for "2023-24"."""
+    return int(season[:4])
+
+
+def is_past_season(season: str) -> bool:
+    """True when `season` started before SEASON, the season rosters describe.
+
+    A newer season than SEASON is not "past": its rosters are the league as
+    it stands, so a pull for it may refresh them like a current one.
+    """
+    return season_start_year(season) < season_start_year(SEASON)
+
+
+def ingest_rosters(cursor, team_id_by_nba_id: dict[int, str], season: str = SEASON) -> dict[int, str]:
+    """Ingests every team's roster for `season`, returns nbaPlayerId -> internal id.
+
+    Only for the current season or a newer one — see resolve_player_ids for
+    why a past season never gets here. upsert_players writes each player's
+    Player.teamId, so whatever season this fetches becomes every player's
+    current team.
+    """
     player_id_by_nba_id: dict[int, str] = {}
     for nba_team_id, team_internal_id in team_id_by_nba_id.items():
-        players = fetch_team_roster(nba_team_id, SEASON)
+        players = fetch_team_roster(nba_team_id, season)
         player_id_by_nba_id.update(upsert_players(cursor, players, team_internal_id))
         print(f"  Ingested {len(players)} players for team {nba_team_id}.")
     print(f"Ingested {len(player_id_by_nba_id)} players total.")
@@ -128,6 +148,62 @@ def select_players_missing_bios(cursor, player_id_by_nba_id: dict[int, str]) -> 
     # get_connection uses RealDictCursor, so rows are keyed by column name.
     missing_nba_ids = {row["nbaPlayerId"] for row in cursor.fetchall()}
     return {nba_id: player_id for nba_id, player_id in player_id_by_nba_id.items() if nba_id in missing_nba_ids}
+
+
+def ingest_current_players(
+    connection, team_id_by_nba_id: dict[int, str], season: str, window: GameWindow
+) -> dict[int, str]:
+    """Refreshes rosters, then bios, for the current (or a newer) season.
+
+    Returns nbaPlayerId -> internal id for every rostered player. Each step
+    commits on its own, so a failure in the long bio phase keeps the rosters.
+    """
+    with connection.cursor() as cursor:
+        player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id, season)
+    connection.commit()
+
+    with connection.cursor() as cursor:
+        # A windowed pull is "fetch these games", not "refresh the
+        # league": only new players need a bio, and skipping the rest
+        # removes ~8 minutes of fixed cost from every narrow pull.
+        bio_targets = (
+            player_id_by_nba_id
+            if window.is_open
+            else select_players_missing_bios(cursor, player_id_by_nba_id)
+        )
+        if not window.is_open:
+            print(f"Fetching bios for {len(bio_targets)} new player(s); skipping {len(player_id_by_nba_id) - len(bio_targets)} with bios.")
+        ingest_player_bios(cursor, bio_targets)
+    connection.commit()
+    return player_id_by_nba_id
+
+
+def resolve_player_ids(
+    connection, team_id_by_nba_id: dict[int, str], season: str, window: GameWindow
+) -> dict[int, str]:
+    """nbaPlayerId -> internal id for every player this pull can attach plays and stat rows to.
+
+    The current season, or a newer one, refreshes rosters and bios first
+    (ingest_current_players), so trades and signings land before their games.
+
+    A past season writes no players at all and uses the ones already in the
+    database. Its rosters would be wrong for today: upsert_players sets
+    Player.teamId, so a 2023-24 roster would move everyone traded since back
+    to their old team and add retired players to current rosters, on every
+    page that shows a player's team. The cost is the one
+    ingest_historical_season.py already accepts: plays and stat rows by a
+    player no longer in the league are skipped (UNKNOWN_PLAYER).
+    """
+    if not is_past_season(season):
+        return ingest_current_players(connection, team_id_by_nba_id, season, window)
+
+    with connection.cursor() as cursor:
+        player_id_by_nba_id = select_player_ids_by_nba_id(cursor)
+    print(
+        f"{season} is a past season: rosters and bios are left alone, using the "
+        f"{len(player_id_by_nba_id)} players already in the database."
+    )
+    return player_id_by_nba_id
 
 
 def collect_recent_game_dates(
@@ -234,8 +310,16 @@ def ingest_games_and_stats(
     player_id_by_nba_id: dict[int, str],
     extra_figures_by_player_game: dict[tuple[str, int], dict] | None = None,
     final_status: str = "COMPLETED",
+    season: str = SEASON,
+    store_events: bool = True,
 ) -> None:
     """Fetches and writes one Game + its PlayerGameStat rows per game id.
+
+    Each Game is labelled with `season`, which must be the season the game
+    ids were collected for.
+
+    store_events=False derives the stats from each game's play-by-play
+    without saving the plays themselves — see run_ingestion_batch.
 
     Season-type agnostic: each game's segment (regular season, play-in,
     playoffs, finals) is derived from its own game id by classify_game(),
@@ -281,7 +365,7 @@ def ingest_games_and_stats(
             cursor,
             nba_game_id,
             game_date,
-            SEASON,
+            season,
             home_team_id,
             away_team_id,
             boxscore["home_score"],
@@ -290,7 +374,10 @@ def ingest_games_and_stats(
             playoff_round,
         )
 
-        batch_summary = run_ingestion_batch(cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id, final_status=final_status)
+        batch_summary = run_ingestion_batch(
+            cursor, game_internal_id, nba_game_id, team_id_by_nba_id, player_id_by_nba_id,
+            final_status=final_status, store_events=store_events,
+        )
         if batch_summary["rejected"]:
             print(
                 f"  {nba_game_id}: rejected {batch_summary['rejected']} play-by-play rows "
@@ -340,6 +427,17 @@ def ingest_games_and_stats(
                 player_games_missing_derived_stats += 1
 
             upsert_player_game_stat(cursor, player_internal_id, game_internal_id, team_internal_id, merged_stats)
+
+        # Committed per game, not once for the whole phase (the caller's
+        # end-of-phase commit still runs too, as a no-op once this has
+        # already landed everything). One phase can run 400+ games over
+        # ~40 minutes; without this, a crash on game 300 would roll back
+        # games 1-299 along with it, even though they'd already succeeded —
+        # the durability half of "a batch that fails part way through
+        # resumes rather than restarts" needs every completed game to
+        # actually survive a later failure, not just the failing one's own
+        # FAILED marker (see the matching commit in run_ingestion_batch).
+        cursor.connection.commit()
 
     print(f"Ingested {len(game_date_by_nba_game_id)} games.")
     if player_games_missing_extra_figures:
@@ -408,23 +506,7 @@ def main() -> None:
             team_id_by_nba_id = ingest_teams(cursor)
         connection.commit()
 
-        with connection.cursor() as cursor:
-            player_id_by_nba_id = ingest_rosters(cursor, team_id_by_nba_id)
-        connection.commit()
-
-        with connection.cursor() as cursor:
-            # A windowed pull is "fetch these games", not "refresh the
-            # league": only new players need a bio, and skipping the rest
-            # removes ~8 minutes of fixed cost from every narrow pull.
-            bio_targets = (
-                player_id_by_nba_id
-                if window.is_open
-                else select_players_missing_bios(cursor, player_id_by_nba_id)
-            )
-            if not window.is_open:
-                print(f"Fetching bios for {len(bio_targets)} new player(s); skipping {len(player_id_by_nba_id) - len(bio_targets)} with bios.")
-            ingest_player_bios(cursor, bio_targets)
-        connection.commit()
+        player_id_by_nba_id = resolve_player_ids(connection, team_id_by_nba_id, season, window)
 
         game_date_by_nba_game_id = collect_recent_game_dates(team_id_by_nba_id, season, window)
         # Two calls for the whole regular season, rather than two per game.
@@ -437,7 +519,7 @@ def main() -> None:
         with connection.cursor() as cursor:
             ingest_games_and_stats(
                 cursor, game_date_by_nba_game_id, team_id_by_nba_id, player_id_by_nba_id, regular_season_figures,
-                final_status=batch_status,
+                final_status=batch_status, season=season,
             )
         connection.commit()
 
@@ -451,7 +533,7 @@ def main() -> None:
         with connection.cursor() as cursor:
             ingest_games_and_stats(
                 cursor, postseason_game_dates, team_id_by_nba_id, player_id_by_nba_id, postseason_figures,
-                final_status=batch_status,
+                final_status=batch_status, season=season,
             )
         connection.commit()
 

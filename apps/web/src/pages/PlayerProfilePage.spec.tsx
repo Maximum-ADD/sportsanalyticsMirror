@@ -2,7 +2,13 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlayerProfilePage } from "./PlayerProfilePage";
-import { fetchPlayer, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits } from "@/lib/nbaApi";
+import {
+  fetchPlayer,
+  fetchPlayerCareerStats,
+  fetchPlayerMatchupProjection,
+  fetchPlayerStats,
+  fetchPlayerStatsSplits,
+} from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type {
   PlayerSeasonSplits,
@@ -18,6 +24,7 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchPlayerStats: vi.fn(),
   fetchPlayerStatsSplits: vi.fn(),
   fetchPlayerMatchupProjection: vi.fn(),
+  fetchPlayerCareerStats: vi.fn(),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -262,6 +269,26 @@ describe("PlayerProfilePage season segments", () => {
     expect(fetchPlayerStats).toHaveBeenCalledWith("player-1", "PLAYOFFS");
   });
 
+  it("scopes the career section to the selected segment, so playoff games never enter a regular-season row", async () => {
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
+    vi.mocked(fetchPlayerStats).mockResolvedValue({ ...STATS, seasonType: "PLAYOFFS" });
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+    vi.mocked(fetchPlayerCareerStats).mockResolvedValue({
+      playerId: "player-1",
+      career: {
+        seasonType: "PLAYOFFS",
+        careerTotals: STATS.seasonAverages,
+        careerAverages: STATS.seasonAverages,
+        seasonBreakdown: [{ season: "2023-24", averages: STATS.seasonAverages }],
+      },
+    });
+
+    renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=playoffs"]);
+
+    expect(await screen.findByText("Career · Playoffs")).toBeInTheDocument();
+    expect(fetchPlayerCareerStats).toHaveBeenCalledWith("player-1", "PLAYOFFS");
+  });
+
   it("says the player was absent rather than presenting zeros as a bad performance", async () => {
     vi.mocked(fetchPlayer).mockResolvedValue(makePlayer());
     vi.mocked(fetchPlayerStats).mockResolvedValue({
@@ -274,7 +301,7 @@ describe("PlayerProfilePage season segments", () => {
 
     renderWithProviders(<PlayerProfilePage />, ["/players/player-1?segment=play-in"]);
 
-    expect(await screen.findByText(/did not play in the Play-In this season/)).toBeInTheDocument();
+    expect(await screen.findByText(/has no Play-In games on record/)).toBeInTheDocument();
   });
 
   it("clears local stat edits when the segment changes, so an edited regular-season figure can't appear in a postseason view", async () => {

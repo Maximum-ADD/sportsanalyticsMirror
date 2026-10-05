@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { Player, Team } from "@prisma/client";
+import { PUBLISHED_GAME_FILTER } from "../../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../../common/pagination.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { takeRecentPointsByPlayerId, type RecentGamePoints } from "./recent-points.js";
@@ -122,7 +123,7 @@ export class WatchlistService {
 
     const totalsRows = await this.prisma.playerGameStat.groupBy({
       by: ["playerId"],
-      where: { playerId: { in: watchedPlayerIds } },
+      where: { playerId: { in: watchedPlayerIds }, game: PUBLISHED_GAME_FILTER },
       _sum: { points: true, rebounds: true, assists: true },
       _count: { _all: true },
     });
@@ -146,7 +147,7 @@ export class WatchlistService {
     if (watchedPlayerIds.length === 0) return new Map();
 
     const statRows = await this.prisma.playerGameStat.findMany({
-      where: { playerId: { in: watchedPlayerIds } },
+      where: { playerId: { in: watchedPlayerIds }, game: PUBLISHED_GAME_FILTER },
       select: { playerId: true, gameId: true, points: true, game: { select: { gameDate: true } } },
       orderBy: { game: { gameDate: "desc" } },
     });

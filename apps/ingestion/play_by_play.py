@@ -26,13 +26,20 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from nba_api.stats.endpoints import playbyplayv3
-from psycopg2.extras import Json
+from psycopg2.extras import Json, execute_values
 
 from event_validation import validate_raw_event
 from feed_translation import translate_game_actions
 from throttle import call_with_rate_limit
 
 SOURCE = "nba_api:playbyplayv3"
+
+# One VALUES tuple of upsert_game_events' statement, filled from a
+# build_game_event_row dict.
+GAME_EVENT_VALUES_TEMPLATE = (
+    "(gen_random_uuid(), %(game_id)s, %(sequence)s, %(period)s, %(clock)s, %(event_type)s, %(sub_type)s,"
+    " %(player_id)s, %(team_id)s, %(success)s, %(value)s, %(description)s, %(batch_id)s)"
+)
 
 
 def fetch_game_actions(nba_game_id: str) -> list[dict]:
@@ -102,23 +109,51 @@ def complete_ingestion_batch(
     )
 
 
-def upsert_game_event(
-    cursor,
+def build_game_event_row(
     game_internal_id: str,
     batch_id: str,
     event: dict,
     team_internal_id: str | None,
     player_internal_id: str | None,
-) -> None:
-    """Upserts one GameEvent row, keyed on (gameId, sequence) — re-running this game's ingestion refreshes the row in place."""
+) -> dict:
+    """Maps one accepted, translated action onto GameEvent's columns, ready for upsert_game_events."""
     made = event.get("shotResult") == "Made" if event["actionType"] in ("2pt", "3pt", "freethrow") else None
-    cursor.execute(
+    return {
+        "game_id": game_internal_id,
+        "sequence": event["actionNumber"],
+        "period": event["period"],
+        "clock": event["clock"],
+        "event_type": event["actionType"],
+        "sub_type": event.get("subType"),
+        "player_id": player_internal_id,
+        "team_id": team_internal_id,
+        "success": made,
+        "value": event.get("shotValue"),
+        "description": event["description"],
+        "batch_id": batch_id,
+    }
+
+
+def upsert_game_events(cursor, rows: list[dict]) -> None:
+    """Upserts one game's GameEvent rows in a single statement, keyed on
+    (gameId, sequence) — re-running a game's ingestion refreshes its rows
+    in place rather than duplicating them.
+
+    One statement rather than one per play: against a remote database each
+    statement is a network round trip, and a game's ~500 of them were most
+    of a pull's running time. `rows` must not repeat a sequence (Postgres
+    refuses to update one row twice in a statement); validation already
+    guarantees that, since it only accepts strictly increasing sequences.
+    """
+    if not rows:
+        return
+    execute_values(
+        cursor,
         """
         INSERT INTO "GameEvent"
             ("id", "gameId", "sequence", "period", "clock", "eventType", "subType",
              "playerId", "teamId", "success", "value", "description", "batchId")
-        VALUES (gen_random_uuid(), %(game_id)s, %(sequence)s, %(period)s, %(clock)s, %(event_type)s, %(sub_type)s,
-                %(player_id)s, %(team_id)s, %(success)s, %(value)s, %(description)s, %(batch_id)s)
+        VALUES %s
         ON CONFLICT ("gameId", "sequence") DO UPDATE SET
             "period" = EXCLUDED."period",
             "clock" = EXCLUDED."clock",
@@ -131,20 +166,9 @@ def upsert_game_event(
             "description" = EXCLUDED."description",
             "batchId" = EXCLUDED."batchId"
         """,
-        {
-            "game_id": game_internal_id,
-            "sequence": event["actionNumber"],
-            "period": event["period"],
-            "clock": event["clock"],
-            "event_type": event["actionType"],
-            "sub_type": event.get("subType"),
-            "player_id": player_internal_id,
-            "team_id": team_internal_id,
-            "success": made,
-            "value": event.get("shotValue"),
-            "description": event["description"],
-            "batch_id": batch_id,
-        },
+        rows,
+        template=GAME_EVENT_VALUES_TEMPLATE,
+        page_size=len(rows),
     )
 
 
@@ -155,6 +179,7 @@ def run_ingestion_batch(
     team_id_by_nba_id: dict[int, str],
     player_id_by_nba_id: dict[int, str],
     final_status: str = "COMPLETED",
+    store_events: bool = True,
 ) -> dict:
     """Fetches, validates and writes one game's real play-by-play. Returns a run summary.
 
@@ -173,11 +198,25 @@ def run_ingestion_batch(
     NBA ids directly (see its own docstring), and re-querying rows just
     written back out of Postgres would be pure overhead for data already
     sitting in memory.
+
+    store_events=False validates and returns the plays exactly the same but
+    writes none of them to GameEvent: the caller still derives the game's
+    stats from "accepted_events", and the plays are then discarded. For
+    backfilling old seasons, where a game's plays cost ~250 KB of database
+    space that only the admin corrections tools and GET /games/:id/events
+    would read (see ingest_postseason.py --skip-play-storage). The batch row
+    is still written with its accepted and rejected counts, so the run stays
+    auditable and the game passes the publish gate.
     """
     known_player_ids = set(player_id_by_nba_id.keys())
     batch_id, resume_after_sequence = upsert_ingestion_batch(cursor, game_internal_id)
+    if not store_events:
+        # Resuming skips plays an earlier run already saved. Unsaved plays
+        # can't be skipped: the stats are derived from this run's plays alone.
+        resume_after_sequence = None
 
     accepted_events: list[dict] = []
+    event_rows: list[dict] = []
     rejected = 0
     rejection_counts: Counter[str] = Counter()
     previous_sequence: int | None = None
@@ -186,6 +225,12 @@ def run_ingestion_batch(
         actions = fetch_game_actions(nba_game_id)
     except Exception:
         complete_ingestion_batch(cursor, batch_id, "FAILED", accepted=0, rejected=0, rejection_summary={})
+        # Committed here, not left for the caller's own end-of-phase commit:
+        # a crash from this re-raise would otherwise roll back the FAILED
+        # marker and every resume checkpoint written so far, along with it —
+        # the next run would find no FAILED batch to resume from and
+        # reprocess the whole phase from scratch instead of resuming.
+        cursor.connection.commit()
         raise
 
     for action in translate_game_actions(order_actions_by_sequence(actions)):
@@ -202,9 +247,16 @@ def run_ingestion_batch(
         person_id = action.get("personId")
         player_internal_id = player_id_by_nba_id.get(person_id) if person_id else None
         team_internal_id = team_id_by_nba_id.get(action.get("teamId"))
-        upsert_game_event(cursor, game_internal_id, batch_id, action, team_internal_id, player_internal_id)
-        save_resume_checkpoint(cursor, batch_id, action["actionNumber"])
+        event_rows.append(build_game_event_row(game_internal_id, batch_id, action, team_internal_id, player_internal_id))
         accepted_events.append(action)
+
+    # Written once for the whole game. The caller commits per game, so a
+    # checkpoint saved after each play only ever became durable together
+    # with the game's last play anyway — one checkpoint here resumes the same.
+    if store_events:
+        upsert_game_events(cursor, event_rows)
+        if previous_sequence is not None:
+            save_resume_checkpoint(cursor, batch_id, previous_sequence)
 
     complete_ingestion_batch(cursor, batch_id, final_status, len(accepted_events), rejected, dict(rejection_counts))
     return {

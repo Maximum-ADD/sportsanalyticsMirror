@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { SeasonType } from "@prisma/client";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { evaluateStatisticExpression } from "./expression-evaluator.js";
 import { validateStatisticExpression } from "./expression-validator.js";
@@ -42,7 +43,7 @@ export class CustomStatisticsService {
     if (!definition) return null;
 
     const gameStats = await this.prisma.playerGameStat.findMany({
-      where: { playerId, ...(seasonType ? { game: { seasonType } } : {}) },
+      where: { playerId, game: { ...(seasonType ? { seasonType } : {}), ...PUBLISHED_GAME_FILTER } },
       select: {
         points: true,
         rebounds: true,

@@ -329,16 +329,22 @@ export class PlayersController {
     };
   }
 
-  // GET /v1/players/:id/stats/career — career totals + averages + per-season
-  // breakdown, the numbers behind a "Career" tab on the player profile.
-  // Declared before ":id/stats" so "career" is never read as part of that route.
+  // GET /v1/players/:id/stats/career?seasonType= — career totals + averages
+  // + per-season breakdown in one segment, the numbers behind a "Career"
+  // tab on the player profile. Declared before ":id/stats" so "career" is
+  // never read as part of that route.
   @Get(":id/stats/career")
   @ApiOperation({ summary: "Career totals, averages, and per-season breakdown" })
   @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
   @ApiResponse({ status: 200, description: "Career stats" })
   @ApiResponse({ status: 404, description: "Player not found" })
-  async getCareerStats(@Param("id") id: string): Promise<{ playerId: string; career: CareerStats }> {
-    const career = await this.statsService.getCareerStats(id);
+  async getCareerStats(
+    @Param("id") id: string,
+    @Query("seasonType") rawSeasonType: unknown
+  ): Promise<{ playerId: string; career: CareerStats }> {
+    const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    const career = await this.statsService.getCareerStats(id, seasonType);
     if (!career) {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Player not found");
     }

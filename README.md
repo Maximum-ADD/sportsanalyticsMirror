@@ -27,6 +27,7 @@ apps/
   ingestion/   Python — pulls real NBA data (nba_api) into Postgres
   predictor/   Python — Elo win probability + Four Factors margin predictions
   optimizer/   Python — MILP lineup optimizer (PuLP + CBC)
+  valuation/   Python — trains the Become Pro draft-slot model on NBA rookie seasons
 ```
 
 `apps/web` and the Python services only ever communicate with `apps/api` over

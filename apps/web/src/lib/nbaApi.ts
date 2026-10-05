@@ -91,19 +91,22 @@ export function fetchPlayerStatsSplits(playerId: string): Promise<PlayerStatsSpl
   return fetchJson<PlayerStatsSplitsResponse>(`/v1/players/${playerId}/stats/splits`);
 }
 
-// Career-wide aggregates: totals, averages, and a per-season breakdown
-// for the career tab on the player profile.
+// Career-wide aggregates in one segment: totals, averages, and a
+// per-season breakdown for the career tab on the player profile.
 export interface CareerStatsResponse {
   playerId: string;
   career: {
+    seasonType: SeasonType;
     careerTotals: SeasonAverages;
     careerAverages: SeasonAverages;
     seasonBreakdown: { season: string; averages: SeasonAverages }[];
   };
 }
 
-export function fetchPlayerCareerStats(playerId: string): Promise<CareerStatsResponse> {
-  return fetchJson<CareerStatsResponse>(`/v1/players/${playerId}/stats/career`);
+// Omitting `seasonType` lets the API apply its own default (REGULAR), the
+// same idiom as fetchPlayerStats.
+export function fetchPlayerCareerStats(playerId: string, seasonType?: SeasonType): Promise<CareerStatsResponse> {
+  return fetchJson<CareerStatsResponse>(`/v1/players/${playerId}/stats/career${toQueryString({ seasonType })}`);
 }
 
 // Competition-wide averages for one segment — the benchmark line.

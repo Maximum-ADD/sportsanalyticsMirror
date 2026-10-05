@@ -31,6 +31,14 @@ vi.mock("@/lib/nbaApi", () => ({
 
 vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn(), fetchSavedLineups: vi.fn() }));
 
+// The Become Pro card. It renders nothing while signed out (see the session
+// mock below) and so never fetches here, but its module is still replaced so
+// nothing in this file can reach a real server.
+vi.mock("@/lib/becomeProApi", () => ({
+  MY_BECOME_PRO_SUMMARY_QUERY_KEY: ["myBecomeProSummary"],
+  fetchMyBecomeProSummary: vi.fn(),
+}));
+
 // YourTeamsList reads the profile through useMe(), which gates its own query
 // on BetterAuth's useSession — so a signed-out session is what makes the
 // module render its prompt rather than hang on a query that never fires.

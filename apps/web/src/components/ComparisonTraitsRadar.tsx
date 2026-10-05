@@ -11,10 +11,18 @@ import {
   type TraitKey,
 } from "./PlayerTraitsRadar";
 import { COMPARISON_PLAYER_COLORS } from "@/lib/comparisonColors";
-import type { PlayerComparisonEntry } from "@/types/nba";
+import type { TraitsComparisonEntry } from "@/types/nba";
 
 interface ComparisonTraitsRadarProps {
-  entries: PlayerComparisonEntry[];
+  // Widened from PlayerComparisonEntry so a Become Pro prospect can be
+  // overlaid on real NBA players. A prospect has no nbaPlayerId and must never
+  // be handed a fabricated one, and PlayerComparisonEntry satisfies this
+  // narrower shape structurally, so /compare needs no change.
+  //
+  // CONTRACT: this component may read `player.id`, `player.firstName` and
+  // `player.lastName` and NOTHING else. Reaching for headshotUrl, team or any
+  // bio field here would compile and then fail only for prospects.
+  entries: TraitsComparisonEntry[];
 }
 
 // Two overlapping filled polygons read fine — a third stacked on top starts
@@ -25,15 +33,18 @@ const MAX_OVERLAY_PLAYERS = 2;
 
 const SERIES_COLORS = COMPARISON_PLAYER_COLORS;
 
-function playerLabel(entry: PlayerComparisonEntry): string {
-  return `${entry.player.firstName} ${entry.player.lastName}`;
+// Joined rather than templated so a subject with no last name (Become Pro's
+// "You") reads "You", not "You " — the trailing space would otherwise reach
+// the screen-reader summary as "You : Scoring …".
+function playerLabel(entry: TraitsComparisonEntry): string {
+  return [entry.player.firstName, entry.player.lastName].filter(Boolean).join(" ");
 }
 
 // One player's normalised traits as prose, for the screen-reader summary:
 // "Luka Doncic: Scoring 77, Rebounding 51, …". The overlay and the small
 // multiples render the same numbers as SVG; this text is the only non-visual
 // form, and the read-aloud control picks it up too.
-function traitSummary(entry: PlayerComparisonEntry): string {
+function traitSummary(entry: TraitsComparisonEntry): string {
   const inputs = traitInputsFor(entry.seasonAverages);
   const traits = TRAITS_IN_ORDER.map((trait) => `${TRAIT_LABELS[trait]} ${clampToPercent(inputs[trait], TRAIT_CEILINGS[trait])}`);
   return `${playerLabel(entry)}: ${traits.join(", ")}`;
@@ -42,7 +53,7 @@ function traitSummary(entry: PlayerComparisonEntry): string {
 // One row per trait, each carrying every entry's normalised value under its
 // own key (p0, p1, ...) — the shape recharts' multi-series RadarChart wants:
 // one data array shared by every <Radar>, one dataKey per series.
-function buildOverlayData(entries: PlayerComparisonEntry[]) {
+function buildOverlayData(entries: TraitsComparisonEntry[]) {
   return TRAITS_IN_ORDER.map((trait) => {
     const row: Record<string, string | number> = { trait };
     entries.forEach((entry, index) => {
@@ -96,7 +107,7 @@ function TraitAxisLabel({ x, y, payload, selectedTrait, onSelectTrait, compact =
   );
 }
 
-function Legend({ entries }: { entries: PlayerComparisonEntry[] }) {
+function Legend({ entries }: { entries: TraitsComparisonEntry[] }) {
   return (
     <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
       {entries.map((entry, index) => (
@@ -117,7 +128,7 @@ function OverlayRadar({
   selectedTrait,
   onSelectTrait,
 }: {
-  entries: PlayerComparisonEntry[];
+  entries: TraitsComparisonEntry[];
   selectedTrait: TraitKey;
   onSelectTrait: (trait: TraitKey) => void;
 }) {
@@ -160,7 +171,7 @@ function SmallMultipleRadar({
   selectedTrait,
   onSelectTrait,
 }: {
-  entry: PlayerComparisonEntry;
+  entry: TraitsComparisonEntry;
   color: string;
   selectedTrait: TraitKey;
   onSelectTrait: (trait: TraitKey) => void;
@@ -196,7 +207,7 @@ function SmallMultipleRadar({
 // just vertical whitespace) and each player's column has a divider against
 // its neighbour, so the panel reads as a small table rather than a run-on
 // list of numbers once there are three or four columns to tell apart.
-function DrillDownPanel({ entries, selectedTrait }: { entries: PlayerComparisonEntry[]; selectedTrait: TraitKey }) {
+function DrillDownPanel({ entries, selectedTrait }: { entries: TraitsComparisonEntry[]; selectedTrait: TraitKey }) {
   const statLines = TRAIT_STAT_LINES[selectedTrait];
   return (
     <div className="mt-3 border-t border-landing-light pt-3">

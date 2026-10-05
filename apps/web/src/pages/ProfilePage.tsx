@@ -6,6 +6,7 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { TeamPicker } from "@/components/TeamPicker";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { ApiKeysSection } from "@/components/ApiKeysSection";
+import { MyProspectCard } from "@/components/becomepro/MyProspectCard";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
@@ -541,6 +542,15 @@ export function ProfilePage() {
           <div className="mb-6">
             <SectionHeading>Saved lineups</SectionHeading>
             <SavedLineupsSection />
+          </div>
+        </Reveal>
+
+        <Reveal delay={3}>
+          <div className="mb-6">
+            {/* The card carries its own "Become Pro" heading and its own link
+                to the page, so it stands alone here rather than under a
+                SectionHeading that would repeat it. */}
+            <MyProspectCard />
           </div>
         </Reveal>
 

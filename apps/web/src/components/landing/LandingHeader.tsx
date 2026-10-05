@@ -13,6 +13,9 @@ const APP_LINKS = [
   { label: "Datasets", to: "/datasets" },
   { label: "Optimizer", to: "/optimizer" },
   { label: "Predictions", to: "/predictions" },
+  // Appended last so no existing link changes position — the same reasoning
+  // the Admin link documents below.
+  { label: "Become Pro", to: "/become-pro" },
 ];
 
 const LINK_CLASS =
@@ -43,11 +46,21 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
     ...(me?.role === "ADMIN" ? [{ label: "Admin", to: "/admin" }] : []),
   ];
 
-  // Below lg the links live in a drawer behind a menu button instead of in
-  // the row: seven nowrap links cannot fit a phone width, and the previous
+  // Below xl the links live in a drawer behind a menu button instead of in
+  // the row: eight nowrap links cannot fit a phone width, and the previous
   // swipe-to-scroll row hid most of them behind a gesture with no
   // affordance — every link was reachable in principle and invisible in
   // practice.
+  //
+  // The cutover was lg until "Become Pro" made eight. Measured in a real
+  // browser at 1024px (jsdom has no layout engine, so no test can catch
+  // this): with seven links the row ended at 976px and the page did not
+  // scroll sideways; with eight, the links themselves still fit but pushed
+  // the ml-auto AuthStatus block to a right edge of 1098px — past the
+  // viewport — so the whole page gained a horizontal scrollbar. At xl
+  // (1280px) eight links and AuthStatus both fit with room to spare. The
+  // cost of the move is that 1024-1279px now gets the drawer rather than the
+  // inline row.
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuId = useId();
   const { pathname } = useLocation();
@@ -125,8 +138,8 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
             drawer are two presentations of the same nav, and two landmarks
             with the same name would read as two different navigations to a
             screen reader. */}
-        <nav aria-label="Primary" className="flex min-w-0 flex-1 items-center gap-x-6 lg:gap-x-10">
-          <ul className="hidden flex-1 items-center gap-x-6 lg:flex lg:gap-x-10">
+        <nav aria-label="Primary" className="flex min-w-0 flex-1 items-center gap-x-6 xl:gap-x-8">
+          <ul className="hidden flex-1 items-center gap-x-6 xl:flex xl:gap-x-8">
             {links.map((link) => (
               <li key={link.label} className="shrink-0">
                 <Link to={link.to} className={LINK_CLASS}>
@@ -140,9 +153,9 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
               inside this h-14 row. No absolute anchoring or measurement is
               needed anymore — that rig only existed to hang the old,
               taller-than-the-bar card off the row's top edge. Hidden below
-              xl: at narrower widths the nav links alone already crowd the
+              2xl: at narrower widths the nav links alone already crowd the
               row. */}
-          {beforeAuthStatus && <div className="hidden shrink-0 xl:block">{beforeAuthStatus}</div>}
+          {beforeAuthStatus && <div className="hidden shrink-0 2xl:block">{beforeAuthStatus}</div>}
           <div className="ml-auto flex shrink-0 items-center gap-x-2 sm:gap-x-3">
             <AuthStatus signInCallbackURL={signInCallbackURL} />
             <button
@@ -155,7 +168,7 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
               // -mr-2 pulls the 44px touch target back to the row's optical
               // edge: the button needs the height to be tappable, the icon
               // inside it should still line up with the page gutter.
-              className="-mr-2 flex size-11 items-center justify-center text-white transition-colors hover:text-brand-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent lg:hidden"
+              className="-mr-2 flex size-11 items-center justify-center text-white transition-colors hover:text-brand-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent xl:hidden"
             >
               {isMenuOpen ? <X aria-hidden className="size-5" /> : <Menu aria-hidden className="size-5" />}
             </button>
@@ -168,7 +181,7 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
         ref={drawerRef}
         id={menuId}
         hidden={!isMenuOpen}
-        className="absolute inset-x-0 top-14 border-t border-white/10 bg-landing-ink shadow-[0_18px_30px_rgba(0,0,0,0.35)] lg:hidden"
+        className="absolute inset-x-0 top-14 border-t border-white/10 bg-landing-ink shadow-[0_18px_30px_rgba(0,0,0,0.35)] xl:hidden"
       >
         <ul className="flex flex-col px-4 py-2 sm:px-6">
           {links.map((link, index) => (
