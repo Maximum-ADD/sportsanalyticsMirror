@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
-    "load-test": "node scripts/load-test.mjs"
+    "load-test": "node scripts/load-test.mjs",
+    "live:fixtures": "tsx scripts/build-live-fixtures.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
