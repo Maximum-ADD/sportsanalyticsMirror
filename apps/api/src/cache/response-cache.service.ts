@@ -21,6 +21,15 @@ interface CacheEntry {
   expiresAtEpochMs: number;
 }
 
+// How long a loaded value stays valid: a fixed lifetime, or one worked out
+// from the value itself, for reads whose freshness depends on what came back
+// (a live game's box score changes every few seconds, a finished one rarely).
+export type CacheTtl<T> = number | ((value: T) => number);
+
+function resolveTtlMs<T>(ttl: CacheTtl<T>, value: T): number {
+  return typeof ttl === "function" ? ttl(value) : ttl;
+}
+
 /**
  * Whether caching is on when no explicit option is given.
  *
@@ -46,8 +55,9 @@ export function buildCacheKey(namespace: string, parts: unknown[] = []): string 
 }
 
 /**
- * An in-process, TTL-based cache for database reads that don't depend on who
- * is asking.
+ * An in-process, TTL-based cache for reads that don't depend on who is asking:
+ * database queries, and (in its own instance) the live games module's reads
+ * of the NBA's live feed.
  *
  * In-memory rather than Redis because the API runs as one Render instance.
  * Nothing needs sharing across processes, and a network cache would add back
@@ -73,8 +83,10 @@ export class ResponseCacheService {
    * Returns the cached value for `key`, loading and storing it on a miss.
    *
    * @param key - from buildCacheKey.
-   * @param ttlMs - how long a freshly loaded value stays valid (see cache-ttl.ts).
-   * @param load - the database read to run on a miss.
+   * @param ttlMs - how long a freshly loaded value stays valid (see cache-ttl.ts),
+   *   or a function that works it out from that value.
+   * @param load - the read to run on a miss: a database query, or for the
+   *   live games module, a fetch from the NBA's live feed.
    * @returns the cached or freshly loaded value.
    *
    * Concurrent misses on one key share a single `load` call. Pages fire
@@ -85,7 +97,7 @@ export class ResponseCacheService {
    * undefined result is not stored either, so a "not found" (typically a 404)
    * doesn't stick after the row is ingested.
    */
-  getOrLoad<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  getOrLoad<T>(key: string, ttlMs: CacheTtl<T>, load: () => Promise<T>): Promise<T> {
     if (!this.isEnabled) return load();
 
     const freshEntry = this.readFreshEntry(key);
@@ -134,14 +146,14 @@ export class ResponseCacheService {
   // runs after the registration below. A load that throws synchronously
   // otherwise settles before it is registered, and its rejection would then
   // stay cached as the key's in-flight load.
-  private startLoad<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  private startLoad<T>(key: string, ttlMs: CacheTtl<T>, load: () => Promise<T>): Promise<T> {
     const isStillRegistered = () => this.inFlightLoadsByKey.get(key) === pendingLoad;
 
     const pendingLoad: Promise<T> = Promise.resolve()
       .then(load)
       .then((value) => {
         if (value !== null && value !== undefined && isStillRegistered()) {
-          this.storeEntry(key, value, ttlMs);
+          this.storeEntry(key, value, resolveTtlMs(ttlMs, value));
         }
         return value;
       })
