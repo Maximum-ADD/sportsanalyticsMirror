@@ -67,6 +67,7 @@ async function bootstrap() {
     .addTag("games", "Game data and predictions (auth required)")
     .addTag("optimizer", "Fantasy lineup optimiser (auth required)")
     .addTag("me", "Current user's profile, avatar, and followed players (auth required)")
+    .addTag("live", "Live and recent games, read straight from the NBA's live feed (public)")
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
