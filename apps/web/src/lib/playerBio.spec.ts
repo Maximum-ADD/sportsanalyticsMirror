@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NO_VALUE, calculateAge, formatAge, formatHeight } from "./playerBio";
+import { NO_VALUE, calculateAge, formatAge, formatHeight, formatPosition } from "./playerBio";
 
 // Age depends on today's date, so every case here runs against a frozen clock.
 const TODAY = new Date("2026-09-05T12:00:00.000Z");
@@ -66,5 +66,31 @@ describe("formatHeight", () => {
 
   it("falls back to a dash when the height is unknown", () => {
     expect(formatHeight(null)).toBe(NO_VALUE);
+  });
+});
+
+describe("formatPosition", () => {
+  it("expands a single position", () => {
+    expect(formatPosition("F")).toBe("Forward");
+    expect(formatPosition("G")).toBe("Guard");
+    expect(formatPosition("C")).toBe("Center");
+  });
+
+  it("expands both sides of a hybrid, keeping the feed's order", () => {
+    // "G-F" and "F-G" are different claims — the feed puts the primary
+    // position first, so the order must survive.
+    expect(formatPosition("G-F")).toBe("Guard-Forward");
+    expect(formatPosition("F-G")).toBe("Forward-Guard");
+    expect(formatPosition("C-F")).toBe("Center-Forward");
+  });
+
+  it("returns a dash when there is no position at all", () => {
+    expect(formatPosition(null)).toBe(NO_VALUE);
+    expect(formatPosition("")).toBe(NO_VALUE);
+  });
+
+  it("passes an unrecognised code through rather than blanking it", () => {
+    // A feed change should surface as an odd label, not vanish.
+    expect(formatPosition("W")).toBe("W");
   });
 });

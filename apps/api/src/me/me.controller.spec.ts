@@ -5,6 +5,14 @@ import type { MeProfile, MeService } from "./me.service.js";
 import { MAX_AVATAR_SIZE_BYTES } from "./avatar-storage.service.js";
 import { ApiException } from "../common/api-exception.js";
 
+// The controller's session guard imports auth.config, which builds a real
+// PrismaClient at import time. Its native engine loads in the background,
+// and if this short file ends first, Vitest tears down the worker mid-load
+// and the engine aborts the whole run. Nothing here needs real auth.
+vi.mock("../auth/auth.config.js", () => ({
+  auth: { api: { getSession: vi.fn() } },
+}));
+
 function makeRequest(userId = "user-1"): Request {
   return { user: { id: userId } } as unknown as Request;
 }

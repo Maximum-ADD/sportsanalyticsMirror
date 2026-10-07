@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { fetchPlayer, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits, fetchPlayerCareerStats } from "@/lib/nbaApi";
+import { fetchPlayer, fetchPlayerArchetype, fetchPlayerMatchupProjection, fetchPlayerStats, fetchPlayerStatsSplits, fetchPlayerCareerStats, fetchStyleMap } from "@/lib/nbaApi";
 import { StatTile } from "@/components/StatTile";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowPlayerButton } from "@/components/FollowPlayerButton";
 import { MatchupAnalysis } from "@/components/MatchupAnalysis";
+import { PlayerArchetypeCard } from "@/components/PlayerArchetypeCard";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { SeasonSplitsTable } from "@/components/SeasonSplitsTable";
 import { PageLoading, SectionLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
-import { formatAge, formatHeight } from "@/lib/playerBio";
+import { formatAge, formatHeight, formatPosition } from "@/lib/playerBio";
 import { formatNumber, formatPercentage, formatPlusMinus } from "@/lib/advancedStats";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import type { Player, PlayerStatsResponse, SeasonAverages, SeasonType, UpcomingGameProjection } from "@/types/nba";
@@ -30,13 +32,17 @@ const LOCKER_BUTTON_ACTIVE_CLASS =
 
 // A card-internal section title in the predictions/home pattern: display
 // type, wide tracking, hairline rule running out to the card's right edge.
-function SectionHeading({ title }: { title: string }) {
+// `info` hangs an explanation off the heading's right-hand end, past the
+// rule. Optional, so every existing heading is untouched: a section that
+// needs no explaining should not grow a control that opens an empty one.
+function SectionHeading({ title, info }: { title: string; info?: React.ReactNode }) {
   return (
     <div className="mb-3 flex items-center gap-3.5">
       <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
         {title}
       </h2>
       <span aria-hidden className="h-px flex-1 bg-landing-light" />
+      {info}
     </div>
   );
 }
@@ -215,6 +221,30 @@ export function PlayerProfilePage() {
     queryFn: () => fetchPlayerStats(playerId!, seasonType),
     enabled: !!playerId,
     placeholderData: keepPreviousData,
+  });
+
+  // Playing-style archetypes and similar players. Deliberately NOT keyed on
+  // seasonType: an archetype is fitted over a whole season, every segment
+  // together (see apps/similarity/player_seasons.py), so it would be the
+  // same answer for every segment and re-fetching on the selector would be
+  // pure noise.
+  const archetypeQuery = useQuery({
+    queryKey: ["playerArchetype", playerId],
+    queryFn: () => fetchPlayerArchetype(playerId!),
+    enabled: !!playerId,
+  });
+
+  // The league-wide style map behind the scatter on the archetype card.
+  // Fetched only once this player is known to have been placed: an
+  // unplaced player has no point to highlight, so the whole league's
+  // coordinates would be downloaded to draw nothing. Cached by season
+  // rather than by player, so moving between profiles reuses it.
+  const archetypeSeason = archetypeQuery.data?.archetype ? archetypeQuery.data.season : null;
+  const styleMapQuery = useQuery({
+    queryKey: ["styleMap", archetypeSeason],
+    queryFn: () => fetchStyleMap(archetypeSeason!),
+    enabled: !!archetypeSeason,
+    staleTime: Infinity,
   });
 
   const splitsQuery = useQuery({
@@ -659,6 +689,54 @@ export function PlayerProfilePage() {
               />
               <BioField label="Draft" value={formatDraft(player)} isPending={bioPending} />
             </div>
+          </section>
+          </Reveal>
+
+          <Reveal className="xl:col-span-3">
+          <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
+            <SectionHeading
+              title="Style & similar players"
+              info={
+                <InfoTooltip label="About playing style and similar players">
+                  <p className="mb-2">
+                    Players are grouped by <strong>how they play</strong> — shot diet, playmaking
+                    load, rebounding and size — not by how well. The groups are boundaries drawn
+                    through a continuum, so most players sit between several, and the percentages
+                    show how close a player is to each rather than how confident the model is.
+                  </p>
+                  <p className="mb-2">
+                    <strong>Position is not part of it.</strong> The model sees height and weight,
+                    never the slot a player is listed in, so about a third of the league lands in an
+                    archetype that does not match their listed position — a forward who carries a
+                    primary scorer's load plays like one, whatever the roster says.
+                  </p>
+                  <p className="mb-2">
+                    Similar players are the closest in that same space. A high score means they
+                    play alike; it says nothing about which of them is better.
+                  </p>
+                  <p>
+                    Built from box-score data only. It cannot see defence beyond steals and blocks,
+                    and players below a minutes floor are left unplaced rather than given a label
+                    their sample cannot support.
+                  </p>
+                </InfoTooltip>
+              }
+            />
+            {archetypeQuery.isPending && (
+              <p className="text-[12.5px] text-locker-ink-muted">Loading playing style…</p>
+            )}
+            {archetypeQuery.isError && (
+              <p className="text-[12.5px] text-locker-ink-muted">
+                Could not load playing style for this player.
+              </p>
+            )}
+            {archetypeQuery.data && (
+              <PlayerArchetypeCard
+                data={archetypeQuery.data}
+                styleMap={styleMapQuery.data}
+                listedPosition={player.position ? formatPosition(player.position) : undefined}
+              />
+            )}
           </section>
           </Reveal>
 

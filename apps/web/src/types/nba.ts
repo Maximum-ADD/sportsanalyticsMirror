@@ -633,6 +633,76 @@ export interface SavedComparison {
 // exists, and TypeScript merged the two interfaces into a shape neither the
 // API nor the profile page could satisfy.
 
+// One playing-style archetype a player belongs to. Several are normal
+// rather than exceptional: the clusters behind these are boundaries drawn
+// through a continuum, so most players genuinely sit between archetypes
+// (see apps/similarity/clustering.py).
+export interface ArchetypeMembership {
+  label: string;
+  // Stable across renames, unlike the label. Key colours and URLs on this
+  // so that renaming an archetype cannot break them.
+  clusterId: number;
+  rank: number;
+  // 0-1, and NOT a probability — how close the player sits to this
+  // archetype's centre relative to the others. Render it as a bar, never
+  // as a confidence percentage.
+  weight: number;
+}
+
+export interface SimilarPlayer {
+  player: Player;
+  rank: number;
+  // 0-100. Similarity of STYLE, never of quality: two players can score
+  // highly here and be far apart in ability, so nothing may rank players
+  // by it.
+  similarityScore: number;
+}
+
+export interface PlayerArchetype {
+  playerId: string;
+  season: string;
+  archetypes: ArchetypeMembership[];
+  similarPlayers: SimilarPlayer[];
+  featureVector: number[];
+  distanceToCentroid: number;
+  plot: { x: number; y: number };
+}
+
+// `archetype` is null for a player who exists but was not placed — under
+// the minutes floor, their rate stats describe a small sample rather than
+// a style, so they are deliberately left unplaced. `season` is null when
+// no season has been fitted at all, which is a state of the deployment
+// rather than of the player.
+export interface PlayerArchetypeResponse {
+  playerId: string;
+  season: string | null;
+  archetype: PlayerArchetype | null;
+}
+
+// One point on the style map. Thin on purpose: fetched for every eligible
+// player at once, so it carries only what a point needs to be drawn,
+// coloured and named on hover.
+export interface StyleMapPoint {
+  playerId: string;
+  firstName: string;
+  lastName: string;
+  clusterId: number;
+  plotX: number;
+  plotY: number;
+}
+
+export interface ArchetypeSummary {
+  clusterId: number;
+  label: string;
+  memberCount: number;
+}
+
+export interface StyleMapResponse {
+  season: string;
+  players: StyleMapPoint[];
+  archetypes: ArchetypeSummary[];
+}
+
 // ── Become Pro ────────────────────────────────────────────────────────────
 // A user's own season: self-reported, per-game box scores, priced against the
 // published NBA rookie salary scale and compared with real NBA rookies.
