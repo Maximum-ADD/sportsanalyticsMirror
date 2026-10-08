@@ -25,6 +25,11 @@ apps/api/generated/
 .vite/
 coverage/
 coverage-report/
+
+# A self-hosted act_runner's local state, including ci-runner/data/.runner,
+# which holds the runner's registration token. One was committed to main on
+# 12 Sep; registering a runner from a checkout must never put that file back.
+ci-runner/
 test-report.json
 .wrangler/
 
