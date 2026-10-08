@@ -173,8 +173,8 @@ npm test               # or: npm run test:cov for coverage
 CI is **Gitea Actions** (`.gitea/workflows/ci.yml` on `main`, run via a
 self-hosted `act_runner`), matching this repo's `sdp.ms.wits.ac.za` remote —
 not GitHub Actions or GitLab CI. On every push and PR it lints and typechecks
-both apps, runs both test suites with coverage, and tests the API against a
-disposable PostgreSQL service. It then uses `scripts/build-coverage-report.mjs`
+both apps, runs both test suites with coverage, tests the API against a
+disposable PostgreSQL service, and runs the Python services’ pytest suites. It then uses `scripts/build-coverage-report.mjs`
 to merge the API and Web results into a downloadable `coverage-report`
 artifact. After downloading and extracting the artifact, open `index.html`
 to view the combined dashboard and links to each app's detailed HTML report.
