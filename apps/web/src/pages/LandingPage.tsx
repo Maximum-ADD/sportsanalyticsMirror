@@ -250,6 +250,13 @@ export function LandingPage() {
           </div>
         </section>
       </main>
+      <footer className="bg-landing-dark px-4 py-6 text-center font-mono text-[10.5px] tracking-[0.12em] text-white/70 uppercase sm:px-6">
+        <Link to="/privacy" className="underline hover:text-white">
+          Privacy notice
+        </Link>
+        <span aria-hidden> · </span>
+        COMS3011A student project
+      </footer>
     </div>
   );
 }

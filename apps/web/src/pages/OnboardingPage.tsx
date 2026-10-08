@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Check } from "lucide-react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { TeamPicker } from "@/components/TeamPicker";
@@ -141,6 +141,14 @@ function UsernameStep({ onNext }: { onNext: (username: string) => void }) {
         </p>
       )}
       {takenError && <p className="mt-2 text-[11.5px] text-locker-bad">{takenError}</p>}
+      <p className="mt-3 max-w-sm text-[11.5px] text-locker-ink-muted">
+        Your username is the only thing others see, on the Beat the Model leaderboard. Your name and email stay
+        private. See the{" "}
+        <Link to="/privacy" className="underline hover:text-landing-ink">
+          privacy notice
+        </Link>
+        .
+      </p>
 
       <div className="mt-6">
         <PrimaryButton onClick={handleSubmit} disabled={!isValidFormat || isChecking}>
