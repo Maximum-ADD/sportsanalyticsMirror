@@ -17,6 +17,7 @@ import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
 import { deleteSavedLineup, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY, useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
+import { API_BASE_URL } from "@/lib/apiBase";
 import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_SIZE_MB } from "@/lib/avatar";
 import type { SavedLineupDrift, Team } from "@/types/nba";
 
@@ -32,6 +33,9 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+const LOCKER_BUTTON_BASE_CLASS =
+  "border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] uppercase transition-colors";
 
 function LockerButton({
   children,
@@ -50,7 +54,7 @@ function LockerButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${dangerClass}`}
+      className={`${LOCKER_BUTTON_BASE_CLASS} disabled:cursor-not-allowed disabled:opacity-50 ${dangerClass}`}
     >
       {children}
     </button>
@@ -575,8 +579,25 @@ export function ProfilePage() {
               >
                 Sign out
               </LockerButton>
+              {/* A plain link, not a fetch: the export is served as a file
+                  attachment, so the browser saves it. Same-origin through
+                  the proxy, so the session cookie goes with it. */}
+              <a
+                href={`${API_BASE_URL}/v1/me/export`}
+                download
+                className={`${LOCKER_BUTTON_BASE_CLASS} text-landing-ink hover:border-locker-leather`}
+              >
+                Download my data
+              </a>
               <DeleteAccountControl />
             </div>
+            <p className="mt-3 text-[11.5px] text-locker-ink-muted">
+              How your data is used, and your rights over it:{" "}
+              <Link to="/privacy" className="underline hover:text-landing-ink">
+                privacy notice
+              </Link>
+              .
+            </p>
           </div>
         </Reveal>
       </div>
