@@ -5,7 +5,9 @@ import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
 import { WatchlistBoard } from "@/components/home/WatchlistBoard";
 import { YourTeamsList } from "@/components/home/YourTeamsList";
+import { HOME_TUTORIAL } from "@/components/home/homeTutorial";
 import { Reveal } from "@/components/landing/Reveal";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
 
 // "The Locker" — the signed-in home page.
 //
@@ -84,6 +86,12 @@ export function HomePage() {
           </Reveal>
         </div>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Kept outside every Reveal — their
+          rise animation is a transform, which would pin the tutorial's fixed
+          overlay and button to that block instead of the viewport. */}
+      <PageTutorial tutorial={HOME_TUTORIAL} />
     </div>
   );
 }

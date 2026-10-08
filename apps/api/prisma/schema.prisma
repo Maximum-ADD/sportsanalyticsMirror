@@ -115,6 +115,16 @@ model User {
   // Become Pro: the user's own self-reported playing seasons, visible to
   // nobody but them.
   prospectSeasons ProspectSeason[]
+
+  // Page tutorials: the walkthrough a page opens by itself on a user's first
+  // visit (see PageTutorial on the frontend). A UserSeenTutorial row means
+  // that page's tutorial never opens by itself again, however it was closed
+  // — completed, skipped or exited; the page's "?" button still replays it.
+  // autoOpenTutorials is the tutorial's "Skip all": false stops every page's
+  // tutorial opening by itself, including pages this user has never visited.
+  // Defaults to true so every existing account gets the tutorials once.
+  autoOpenTutorials Boolean            @default(true)
+  seenTutorials     UserSeenTutorial[]
 }
 
 model CustomStatistic {
@@ -187,6 +197,21 @@ model UserFollowedPlayer {
   createdAt DateTime @default(now())
 
   @@unique([userId, playerId])
+}
+
+// One page tutorial a user has seen (see User.autoOpenTutorials).
+//
+// tutorialId is the frontend's own name for a page's tutorial ("home"), not a
+// foreign key: tutorials are frontend content, so giving another page one
+// needs no migration, and giving a reworked tutorial a new id is what shows it
+// to everyone once more. Cascades with the user, like UserFollowedPlayer.
+model UserSeenTutorial {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tutorialId String
+  seenAt     DateTime @default(now())
+
+  @@unique([userId, tutorialId])
 }
 
 model Team {

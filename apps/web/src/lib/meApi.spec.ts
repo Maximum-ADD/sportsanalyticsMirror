@@ -3,6 +3,7 @@ import {
   fetchMe,
   fetchSuggestedPlayers,
   followPlayer,
+  markTutorialSeen,
   unfollowPlayer,
   updateMe,
   uploadAvatar,
@@ -71,6 +72,26 @@ describe("meApi", () => {
       credentials: "include",
       headers: undefined,
       body: undefined,
+    });
+  });
+
+  it("markTutorialSeen sends a bodiless PUT to the seen-tutorials endpoint", async () => {
+    await markTutorialSeen("home");
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me/seen-tutorials/home", {
+      method: "PUT",
+      credentials: "include",
+      headers: undefined,
+      body: undefined,
+    });
+  });
+
+  it("updateMe sends autoOpenTutorials: false as a real value, not an omitted one", async () => {
+    await updateMe({ autoOpenTutorials: false });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ autoOpenTutorials: false }),
     });
   });
 

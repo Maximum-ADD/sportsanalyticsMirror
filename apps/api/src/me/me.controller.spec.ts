@@ -41,6 +41,7 @@ describe("MeController", () => {
     updateAvatar: ReturnType<typeof vi.fn>;
     followPlayer: ReturnType<typeof vi.fn>;
     unfollowPlayer: ReturnType<typeof vi.fn>;
+    markTutorialSeen: ReturnType<typeof vi.fn>;
   };
   let controller: MeController;
 
@@ -52,6 +53,7 @@ describe("MeController", () => {
       updateAvatar: vi.fn(),
       followPlayer: vi.fn(),
       unfollowPlayer: vi.fn(),
+      markTutorialSeen: vi.fn(),
     };
     controller = new MeController(meService as unknown as MeService);
   });
@@ -107,6 +109,27 @@ describe("MeController", () => {
 
       await expect(controller.updateProfile(makeRequest(), { username: "race_name" })).rejects.toThrow(ApiException);
     });
+
+    it("turns off tutorials opening by themselves (the tutorial's Skip all)", async () => {
+      meService.getProfile.mockResolvedValue({} as MeProfile);
+
+      await controller.updateProfile(makeRequest(), { autoOpenTutorials: false });
+
+      expect(meService.isUsernameTaken).not.toHaveBeenCalled();
+      expect(meService.updateProfile).toHaveBeenCalledWith("user-1", { autoOpenTutorials: false });
+    });
+
+    // The DTO is only an interface, so the controller is the one place a
+    // string "false" can be stopped before Prisma turns it into a 500.
+    it("rejects an autoOpenTutorials that is not a boolean before touching the database", async () => {
+      const body = { autoOpenTutorials: "false" } as unknown as { autoOpenTutorials: boolean };
+
+      const rejection = await controller.updateProfile(makeRequest(), body).catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(ApiException);
+      expect((rejection as ApiException).getStatus()).toBe(400);
+      expect(meService.updateProfile).not.toHaveBeenCalled();
+    });
   });
 
   describe("uploadAvatar", () => {
@@ -152,6 +175,23 @@ describe("MeController", () => {
 
       expect(meService.unfollowPlayer).toHaveBeenCalledWith("user-1", "player-1");
       expect(result).toEqual({ following: false });
+    });
+  });
+
+  describe("markTutorialSeen", () => {
+    it("marks the tutorial seen for the calling user", async () => {
+      const result = await controller.markTutorialSeen(makeRequest("user-42"), "home");
+
+      expect(meService.markTutorialSeen).toHaveBeenCalledWith("user-42", "home");
+      expect(result).toEqual({ seen: true });
+    });
+
+    it("rejects a malformed tutorial id with a 400 before touching the database", async () => {
+      const rejection = await controller.markTutorialSeen(makeRequest(), "Home Page").catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(ApiException);
+      expect((rejection as ApiException).getStatus()).toBe(400);
+      expect(meService.markTutorialSeen).not.toHaveBeenCalled();
     });
   });
 });

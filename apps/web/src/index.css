@@ -176,6 +176,33 @@
     }
   }
 
+  /* The page tutorial's pointer (see TutorialPageMap): each step's arrow
+     draws itself from the step's numbered badge into the section it is
+     about, while the badge fades in, so moving between steps reads as the
+     pointer travelling rather than one picture swapping for another. The
+     arrow opts in with pathLength="1" and stroke-dasharray="1", so 1 here is
+     its whole length whatever its real size. The fade also opens the
+     tutorial dialog itself. */
+  --animate-tutorial-arrow-draw: tutorial-arrow-draw 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  @keyframes tutorial-arrow-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  --animate-tutorial-fade-in: tutorial-fade-in 0.3s ease-out both;
+  @keyframes tutorial-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   --animate-landing-rise: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
   @keyframes landing-rise {
     from {
@@ -251,6 +278,17 @@
     sans-serif;
   --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Short screens: landscape phones, and desktops zoomed to 200% or more. The
+   page tutorial (PageTutorialDialog) stacks its map above its text below lg,
+   and on a screen this short the map alone would fill the dialog's scroll
+   area, so every step would open with its text below the fold. These caps its
+   map, and — where there is the width — puts the map and text side by side
+   instead. 640px and under is where, measured, steps opened showing neither;
+   on portrait phones of that height the cap is taller than the map already
+   is, so they keep the stacked layout unchanged. */
+@custom-variant short (@media (max-height: 640px));
+@custom-variant short-wide (@media (min-width: 640px) and (max-height: 640px));
 
 /* Tap/click press feedback, applied globally rather than per-component: the
    app has dozens of independently-styled clickable cards and buttons, all of
