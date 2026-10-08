@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { PrismaClient, type SeasonType } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -477,6 +478,51 @@ async function resetGameData() {
   await prisma.game.deleteMany();
 }
 
+// The consumer the local web app's dev proxy authenticates as. The public
+// read endpoints need an API key or a session, and the proxy attaches
+// SITE_PROXY_API_KEY to signed-out requests (see apps/web/vite.config.ts);
+// without a matching key in the local database, every signed-out page
+// would get a 401.
+const LOCAL_SITE_CONSUMER_ID = "local-site-proxy";
+const LOCAL_SITE_RATE_LIMIT_PER_MINUTE = 1_000;
+const LOCAL_SITE_DAILY_QUOTA = 1_000_000;
+
+/**
+ * Creates the local site-proxy consumer and a fresh key for it, and prints
+ * the line to put in apps/web/.env.
+ *
+ * The key is random on every run rather than a committed constant, so a
+ * seed run against the wrong database can't leave behind a key anyone could
+ * read from the repo. Earlier site-proxy keys are revoked, so only the one
+ * just printed works. The format matches generateApiKeyMaterial in
+ * src/common/api-keys.ts, which this script can't import (its tsconfig is
+ * rooted at prisma/).
+ */
+async function seedLocalSiteProxyKey() {
+  await prisma.apiConsumer.upsert({
+    where: { id: LOCAL_SITE_CONSUMER_ID },
+    update: {},
+    create: {
+      id: LOCAL_SITE_CONSUMER_ID,
+      name: "NBA Analytics Web App (first-party, local)",
+      rateLimit: LOCAL_SITE_RATE_LIMIT_PER_MINUTE,
+      dailyQuota: LOCAL_SITE_DAILY_QUOTA,
+    },
+  });
+  await prisma.apiKey.updateMany({ where: { consumerId: LOCAL_SITE_CONSUMER_ID }, data: { isActive: false } });
+
+  const rawKey = `nba_${randomBytes(32).toString("base64url")}`;
+  await prisma.apiKey.create({
+    data: {
+      consumerId: LOCAL_SITE_CONSUMER_ID,
+      keyHash: createHash("sha256").update(rawKey).digest("hex"),
+      label: "site-proxy",
+    },
+  });
+  console.log(`Local site-proxy key created. Put this line in apps/web/.env:
+  SITE_PROXY_API_KEY=${rawKey}`);
+}
+
 async function main() {
   console.log("Seeding mock NBA data...");
   // Archetypes reference Player, not Game, so a re-seed leaves them behind
@@ -494,6 +540,7 @@ async function main() {
       .map((player) => [player.nbaPlayerId, player] as const),
   );
   await seedArchetypes(playersByNbaId);
+  await seedLocalSiteProxyKey();
   console.log("Seed complete.");
 }
 
