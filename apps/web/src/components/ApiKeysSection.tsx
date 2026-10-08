@@ -122,7 +122,7 @@ export function ApiKeysSection() {
 
       {data?.consumer && (
         <p className="font-mono text-[10px] tracking-[0.08em] text-locker-ink-muted uppercase">
-          Usage across all your keys: {data.consumer.usageCount} requests · limit{" "}
+          Usage across all your keys, last 90 days: {data.consumer.usageCount} requests · limit{" "}
           {data.consumer.rateLimit}/min and {data.consumer.dailyQuota}/day
         </p>
       )}

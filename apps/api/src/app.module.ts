@@ -22,6 +22,7 @@ import { PrismaModule } from "./prisma/prisma.module.js";
 import { TeamsModule } from "./teams/teams.module.js";
 import { CustomStatisticsModule } from "./custom-statistics/custom-statistics.module.js";
 import { BecomeProModule } from "./become-pro/become-pro.module.js";
+import { PrivacyModule } from "./privacy/privacy.module.js";
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { BecomeProModule } from "./become-pro/become-pro.module.js";
     CustomStatisticsModule,
     BecomeProModule,
     LiveGamesModule,
+    PrivacyModule,
     // Registers a catch-all {/*splat, ALL} route (see NotFoundController) —
     // must stay last, or it would intercept every request meant for a
     // module imported after it before that module's own routes ever match.

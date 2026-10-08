@@ -73,7 +73,7 @@ describe("ApiKeysSection", () => {
     expect(screen.getByText("● Active")).toBeInTheDocument();
     expect(screen.getByText("○ Revoked")).toBeInTheDocument();
     expect(screen.getByText("Never")).toBeInTheDocument();
-    expect(screen.getByText(/Usage across all your keys: 42 requests/)).toBeInTheDocument();
+    expect(screen.getByText(/Usage across all your keys, last 90 days: 42 requests/)).toBeInTheDocument();
     // revoked keys lose their Revoke button; Delete is always available
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
