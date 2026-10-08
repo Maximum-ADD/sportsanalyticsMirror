@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from "@nestjs/common";
 import type { ApiConsumer, ApiKey } from "@prisma/client";
 import { generateApiKeyMaterial, type CreatedApiKey } from "../../common/api-keys.js";
 import { ApiException } from "../../common/api-exception.js";
+import { ApiKeyLookupService } from "../../common/api-key-lookup.service.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 
 // Personal keys get a tighter budget than admin-created external consumers
@@ -29,7 +30,12 @@ export interface MyApiKeysView {
 
 @Injectable()
 export class MeApiKeysService {
-  constructor(private readonly prisma: PrismaService) {}
+  // apiKeyLookup caches resolved keys for ApiKeyGuard; revoking or
+  // purging evicts the key so it stops working on its very next request.
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly apiKeyLookup: ApiKeyLookupService,
+  ) {}
 
   // GET /v1/me/api-keys — the caller's keys plus their consumer's limits
   // and usage, or an empty view when they've never created a key.
@@ -92,6 +98,7 @@ export class MeApiKeysService {
       where: { id: keyId },
       data: { isActive: false },
     });
+    this.apiKeyLookup.evictKey(keyId);
     return true;
   }
 
@@ -102,6 +109,7 @@ export class MeApiKeysService {
     if (!key) return false;
 
     await this.prisma.apiKey.delete({ where: { id: keyId } });
+    this.apiKeyLookup.evictKey(keyId);
     return true;
   }
 
