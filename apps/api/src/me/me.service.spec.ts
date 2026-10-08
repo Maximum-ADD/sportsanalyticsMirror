@@ -1,6 +1,6 @@
 import type { Player, Team, User } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isValidUsername, MeService } from "./me.service.js";
+import { isValidTutorialId, isValidUsername, MAX_TUTORIAL_ID_LENGTH, MeService } from "./me.service.js";
 import type { AvatarStorageService } from "./avatar-storage.service.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 
@@ -50,6 +50,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     username: null,
     avatarUrl: null,
     favoriteTeamId: null,
+    autoOpenTutorials: true,
     ...overrides,
   } as User;
 }
@@ -74,6 +75,25 @@ describe("isValidUsername", () => {
   });
 });
 
+describe("isValidTutorialId", () => {
+  it("accepts lowercase slugs up to the length cap", () => {
+    expect(isValidTutorialId("home")).toBe(true);
+    expect(isValidTutorialId("player-profile")).toBe(true);
+    expect(isValidTutorialId("home-v2")).toBe(true);
+    expect(isValidTutorialId("a".repeat(MAX_TUTORIAL_ID_LENGTH))).toBe(true);
+  });
+
+  it("rejects anything that is not a lowercase slug, or is over the cap", () => {
+    expect(isValidTutorialId("")).toBe(false);
+    expect(isValidTutorialId("Home")).toBe(false);
+    expect(isValidTutorialId("home page")).toBe(false);
+    expect(isValidTutorialId("-home")).toBe(false);
+    expect(isValidTutorialId("home--page")).toBe(false);
+    expect(isValidTutorialId("home/../admin")).toBe(false);
+    expect(isValidTutorialId("a".repeat(MAX_TUTORIAL_ID_LENGTH + 1))).toBe(false);
+  });
+});
+
 describe("MeService", () => {
   let prisma: {
     user: {
@@ -82,6 +102,7 @@ describe("MeService", () => {
       update: ReturnType<typeof vi.fn>;
     };
     userFollowedPlayer: { upsert: ReturnType<typeof vi.fn>; deleteMany: ReturnType<typeof vi.fn> };
+    userSeenTutorial: { upsert: ReturnType<typeof vi.fn> };
   };
   let avatarStorage: { createSignedAvatarUrl: ReturnType<typeof vi.fn>; uploadAvatar: ReturnType<typeof vi.fn>; deleteObjectBestEffort: ReturnType<typeof vi.fn> };
   let meService: MeService;
@@ -90,6 +111,7 @@ describe("MeService", () => {
     prisma = {
       user: { findUniqueOrThrow: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
       userFollowedPlayer: { upsert: vi.fn(), deleteMany: vi.fn() },
+      userSeenTutorial: { upsert: vi.fn() },
     };
     avatarStorage = {
       createSignedAvatarUrl: vi.fn(),
@@ -105,6 +127,7 @@ describe("MeService", () => {
         ...makeUser({ avatarUrl: "user-1/abc.png" }),
         favoriteTeam: null,
         followedPlayers: [],
+        seenTutorials: [],
       });
       avatarStorage.createSignedAvatarUrl.mockResolvedValue("https://signed.example.com/avatar.png");
 
@@ -119,6 +142,7 @@ describe("MeService", () => {
         ...makeUser({ avatarUrl: null }),
         favoriteTeam: null,
         followedPlayers: [],
+        seenTutorials: [],
       });
 
       const profile = await meService.getProfile("user-1");
@@ -132,12 +156,29 @@ describe("MeService", () => {
         ...makeUser(),
         favoriteTeam: TEAM,
         followedPlayers: [{ userId: "user-1", playerId: PLAYER.id, createdAt: new Date(), player: PLAYER }],
+        seenTutorials: [],
       });
 
       const profile = await meService.getProfile("user-1");
 
       expect(profile.followedPlayers).toEqual([PLAYER]);
       expect(profile.favoriteTeam).toEqual(TEAM);
+    });
+
+    // The page decides whether to open its tutorial from this profile alone,
+    // so both fields have to ride along on every GET /v1/me.
+    it("lists the ids of the tutorials the user has seen, and whether tutorials open by themselves", async () => {
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
+        ...makeUser({ autoOpenTutorials: false }),
+        favoriteTeam: null,
+        followedPlayers: [],
+        seenTutorials: [{ tutorialId: "home" }, { tutorialId: "player-profile" }],
+      });
+
+      const profile = await meService.getProfile("user-1");
+
+      expect(profile.seenTutorialIds).toEqual(["home", "player-profile"]);
+      expect(profile.autoOpenTutorials).toBe(false);
     });
   });
 
@@ -178,6 +219,19 @@ describe("MeService", () => {
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: "user-1" },
         data: { favoriteTeamId: null },
+      });
+    });
+
+    // false is a real value here (the tutorial's "Skip all"), so it must be
+    // written rather than mistaken for "not provided".
+    it("writes autoOpenTutorials when it is false", async () => {
+      prisma.user.update.mockResolvedValue(makeUser());
+
+      await meService.updateProfile("user-1", { autoOpenTutorials: false });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: "user-1" },
+        data: { autoOpenTutorials: false },
       });
     });
   });
@@ -223,6 +277,18 @@ describe("MeService", () => {
 
       expect(prisma.userFollowedPlayer.deleteMany).toHaveBeenCalledWith({
         where: { userId: "user-1", playerId: "player-1" },
+      });
+    });
+  });
+
+  describe("markTutorialSeen", () => {
+    it("upserts with an empty update, so a repeated mark neither errors nor moves the first-seen date", async () => {
+      await meService.markTutorialSeen("user-1", "home");
+
+      expect(prisma.userSeenTutorial.upsert).toHaveBeenCalledWith({
+        where: { userId_tutorialId: { userId: "user-1", tutorialId: "home" } },
+        create: { userId: "user-1", tutorialId: "home" },
+        update: {},
       });
     });
   });

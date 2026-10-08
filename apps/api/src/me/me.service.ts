@@ -15,6 +15,17 @@ export function isValidUsername(username: string): boolean {
   return USERNAME_PATTERN.test(username);
 }
 
+// A page tutorial's id is the frontend's own lowercase slug for it ("home",
+// later "player-profile"), never free text — it names a row the user can
+// create, so it is held to a shape and a length rather than to an allowlist
+// that would need an API release for every page that gains a tutorial.
+const TUTORIAL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const MAX_TUTORIAL_ID_LENGTH = 64;
+
+export function isValidTutorialId(tutorialId: string): boolean {
+  return tutorialId.length <= MAX_TUTORIAL_ID_LENGTH && TUTORIAL_ID_PATTERN.test(tutorialId);
+}
+
 export interface MeProfile {
   id: string;
   email: string;
@@ -27,6 +38,12 @@ export interface MeProfile {
   // trusted from the BetterAuth session object directly — see AdminGate on
   // the frontend, the one thing this field gates.
   role: Role;
+  // Page tutorials (see User.autoOpenTutorials in schema.prisma). Carried on
+  // the profile rather than behind their own GET because every page that has
+  // a tutorial already holds this profile by the time it renders — ProfileGate
+  // loads it first — so deciding whether to open one costs no request.
+  seenTutorialIds: string[];
+  autoOpenTutorials: boolean;
 }
 
 @Injectable()
@@ -47,6 +64,7 @@ export class MeService {
       include: {
         favoriteTeam: true,
         followedPlayers: { include: { player: { include: { team: true } } }, orderBy: { createdAt: "desc" } },
+        seenTutorials: { select: { tutorialId: true }, orderBy: { seenAt: "asc" } },
       },
     });
 
@@ -61,6 +79,8 @@ export class MeService {
       favoriteTeam: user.favoriteTeam,
       followedPlayers: user.followedPlayers.map((follow) => follow.player),
       role: user.role,
+      seenTutorialIds: user.seenTutorials.map((seenTutorial) => seenTutorial.tutorialId),
+      autoOpenTutorials: user.autoOpenTutorials,
     };
   }
 
@@ -71,13 +91,14 @@ export class MeService {
 
   async updateProfile(
     userId: string,
-    updates: { username?: string; favoriteTeamId?: string | null }
+    updates: { username?: string; favoriteTeamId?: string | null; autoOpenTutorials?: boolean }
   ): Promise<User> {
     return this.prisma.user.update({
       where: { id: userId },
       data: {
         ...(updates.username !== undefined ? { username: updates.username } : {}),
         ...(updates.favoriteTeamId !== undefined ? { favoriteTeamId: updates.favoriteTeamId } : {}),
+        ...(updates.autoOpenTutorials !== undefined ? { autoOpenTutorials: updates.autoOpenTutorials } : {}),
       },
     });
   }
@@ -116,5 +137,19 @@ export class MeService {
 
   async unfollowPlayer(userId: string, playerId: string): Promise<void> {
     await this.prisma.userFollowedPlayer.deleteMany({ where: { userId, playerId } });
+  }
+
+  // Records that this user has seen one page's tutorial, so it never opens by
+  // itself for them again. Idempotent for the same reason following is: the
+  // page skips this once its cached profile lists the tutorial, but a stale
+  // cache (a second tab, a retry) can still send a repeat, and the caller only
+  // cares that the row exists. The update is deliberately empty so seenAt
+  // keeps the FIRST time it was seen.
+  async markTutorialSeen(userId: string, tutorialId: string): Promise<void> {
+    await this.prisma.userSeenTutorial.upsert({
+      where: { userId_tutorialId: { userId, tutorialId } },
+      create: { userId, tutorialId },
+      update: {},
+    });
   }
 }

@@ -511,6 +511,12 @@ export interface MeProfile {
   favoriteTeam: Team | null;
   followedPlayers: Player[];
   role: UserRole;
+  // Page tutorials (see usePageTutorial). Optional because this app and the
+  // API deploy separately (Cloudflare Pages and Render): for the minutes a
+  // new frontend can sit in front of an API that predates these fields, a
+  // missing value has to read as "don't open a tutorial", never as a crash.
+  seenTutorialIds?: string[];
+  autoOpenTutorials?: boolean;
 }
 
 // GET /v1/admin/users' per-row shape — deliberately narrower than the full

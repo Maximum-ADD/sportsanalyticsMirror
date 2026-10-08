@@ -19,7 +19,7 @@ import type { Request } from "express";
 import { ApiException } from "../common/api-exception.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_SIZE_BYTES } from "./avatar-storage.service.js";
-import { isValidUsername, MeService, type MeProfile } from "./me.service.js";
+import { isValidTutorialId, isValidUsername, MAX_TUTORIAL_ID_LENGTH, MeService, type MeProfile } from "./me.service.js";
 
 // Every route here requires a signed-in user, and every one of them acts on
 // THAT user only — there is deliberately no :userId param anywhere in this
@@ -38,6 +38,8 @@ export function requestUserId(request: Request): string {
 interface UpdateMeDto {
   username?: string;
   favoriteTeamId?: string | null;
+  // The page tutorial's "Skip all" — see User.autoOpenTutorials.
+  autoOpenTutorials?: boolean;
 }
 
 @ApiTags("me")
@@ -54,18 +56,25 @@ export class MeController {
     return this.meService.getProfile(requestUserId(request));
   }
 
-  // PATCH /v1/me — updates username and/or favoriteTeamId. Both fields are
-  // optional and independent: a request with only one of them leaves the
-  // other untouched (see MeService.updateProfile), so the frontend's
-  // separate "change username" and "change favorite team" controls don't
-  // need to round-trip the field they're not editing.
+  // PATCH /v1/me — updates username, favoriteTeamId and/or autoOpenTutorials.
+  // Every field is optional and independent: a request with only one of them
+  // leaves the others untouched (see MeService.updateProfile), so the
+  // frontend's separate "change username", "change favorite team" and page
+  // tutorial "Skip all" controls don't need to round-trip the fields they're
+  // not editing.
   @Patch()
-  @ApiOperation({ summary: "Update username and/or favorite team" })
+  @ApiOperation({ summary: "Update username, favorite team and/or whether page tutorials open by themselves" })
   @ApiResponse({ status: 200, description: "Updated profile" })
-  @ApiResponse({ status: 400, description: "Invalid username format" })
+  @ApiResponse({ status: 400, description: "Invalid username format, or autoOpenTutorials is not a boolean" })
   @ApiResponse({ status: 409, description: "Username already taken" })
   async updateProfile(@Req() request: Request, @Body() body: UpdateMeDto): Promise<MeProfile> {
     const userId = requestUserId(request);
+
+    // The DTO is an interface, so nothing has checked the body's types yet —
+    // and Prisma would turn a string "false" into a 500, not a 400.
+    if (body.autoOpenTutorials !== undefined && typeof body.autoOpenTutorials !== "boolean") {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "autoOpenTutorials must be true or false");
+    }
 
     if (body.username !== undefined) {
       if (!isValidUsername(body.username)) {
@@ -163,6 +172,32 @@ export class MeController {
   async unfollowPlayer(@Req() request: Request, @Param("playerId") playerId: string): Promise<{ following: false }> {
     await this.meService.unfollowPlayer(requestUserId(request), playerId);
     return { following: false };
+  }
+
+  // PUT /v1/me/seen-tutorials/:tutorialId — marks one page's tutorial as seen
+  // so it never opens by itself again. PUT for the same reason following is:
+  // it is idempotent. The page only sends it while its cached profile still
+  // lists the tutorial as unseen, but that cache can be out of date (a second
+  // tab, a retried request), so a repeat has to be a quiet success, not a
+  // 409. There is no DELETE: the "?" button replays a tutorial without
+  // un-seeing it, so nothing in the app needs one.
+  @Put("seen-tutorials/:tutorialId")
+  @ApiOperation({ summary: "Mark a page tutorial as seen (idempotent)" })
+  @ApiResponse({ status: 200, description: "The tutorial is now marked as seen" })
+  @ApiResponse({ status: 400, description: "Malformed tutorial id" })
+  async markTutorialSeen(
+    @Req() request: Request,
+    @Param("tutorialId") tutorialId: string
+  ): Promise<{ seen: true }> {
+    if (!isValidTutorialId(tutorialId)) {
+      throw new ApiException(
+        HttpStatus.BAD_REQUEST,
+        "INVALID_TUTORIAL_ID",
+        `Tutorial id must be a lowercase slug of letters, numbers and hyphens, at most ${MAX_TUTORIAL_ID_LENGTH} characters`
+      );
+    }
+    await this.meService.markTutorialSeen(requestUserId(request), tutorialId);
+    return { seen: true };
   }
 }
 

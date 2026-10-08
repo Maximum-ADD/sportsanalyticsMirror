@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/apiClient";
 import {
@@ -29,7 +30,14 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchSavedComparisons: vi.fn(),
 }));
 
-vi.mock("@/lib/meApi", () => ({ unfollowPlayer: vi.fn(), fetchMe: vi.fn(), fetchSavedLineups: vi.fn() }));
+vi.mock("@/lib/meApi", () => ({
+  unfollowPlayer: vi.fn(),
+  fetchMe: vi.fn(),
+  fetchSavedLineups: vi.fn(),
+  // The page tutorial's writes — see the "?" button tests below.
+  markTutorialSeen: vi.fn(),
+  updateMe: vi.fn(),
+}));
 
 // The Become Pro card. It renders nothing while signed out (see the session
 // mock below) and so never fetches here, but its module is still replaced so
@@ -155,6 +163,21 @@ describe("HomePage", () => {
 
     expect(await screen.findByText(/scored over 0 completed games/i)).toBeInTheDocument();
     expect(screen.queryByText("0.0%")).not.toBeInTheDocument();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the home page tutorial over the page", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><HomePage /></main>);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the home page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · home" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to your locker" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 
   // Regression: placeholder cards used to link with `nbaPlayerId` (the nba.com

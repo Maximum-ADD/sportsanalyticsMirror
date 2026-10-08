@@ -544,11 +544,19 @@ Users can choose one favorite team and follow multiple players. These choices
 persist through `User.favoriteTeamId` and `UserFollowedPlayer`; there is no
 separate `UserPreference` model or duplicate preferences API.
 
-- `GET /v1/me` returns the profile, favorite team and followed players.
-- `PATCH /v1/me` updates the username or favorite team; a null `favoriteTeamId`
-  clears the team choice.
+- `GET /v1/me` returns the profile, favorite team and followed players, plus
+  the page-tutorial fields `seenTutorialIds` and `autoOpenTutorials` (see
+  below).
+- `PATCH /v1/me` updates the username, favorite team and/or
+  `autoOpenTutorials`; a null `favoriteTeamId` clears the team choice, and an
+  `autoOpenTutorials` that is not a boolean gets a 400.
 - `PUT /v1/me/followed-players/:playerId` follows a player; `DELETE` on the
   same route unfollows them. Both operations are idempotent and session-scoped.
+- `PUT /v1/me/seen-tutorials/:tutorialId` marks one page's tutorial as seen.
+  It is idempotent (an upsert whose update is empty, so `seenAt` keeps the
+  first view); the id must be a lowercase slug of at most 64 characters or it
+  gets a 400 `INVALID_TUTORIAL_ID`. There is deliberately no `DELETE`: the
+  page's "?" button replays a tutorial without un-seeing it.
 
 Onboarding, profile editors and inline follow buttons use these endpoints.
 The locker shows the favorite team's results and followed-player watchlist.
@@ -561,3 +569,25 @@ pending writes disable Finish and failed writes show a retryable error.
 This implements issue #67's narrow scope of one favorite team and multiple
 followed players. Multiple favorite teams, dashboard layout preferences and
 display settings are not implemented by this feature.
+
+### Page tutorials
+
+A page can carry a one-time tutorial: a modal walkthrough over the blurred
+page, with a drawn map of the page that highlights and points at each section
+in turn. It opens by itself the first time an account reaches the page, and
+the page's floating "?" button replays it. Completing, skipping or exiting it
+all count as having seen it; "Skip all" also turns tutorials off on every
+page. Only `/home` has one so far (`HOME_TUTORIAL` in
+`apps/web/src/components/home/homeTutorial.ts`).
+
+- Storage: one `UserSeenTutorial` row (`userId`, `tutorialId`, `seenAt`) per
+  tutorial an account has seen, unique per user and tutorial and deleted with
+  the account, plus `User.autoOpenTutorials` (default true, so every existing
+  account sees each tutorial once). `tutorialId` is the frontend's own slug,
+  not a foreign key: giving another page a tutorial needs no migration, and
+  giving a reworked tutorial a new id shows it to everyone again.
+- Frontend: `usePageTutorial` decides from the profile `ProfileGate` has
+  already loaded, so opening costs no request; it records a close as an
+  optimistic update and refetches the profile once the write settles.
+  `PageTutorial` renders the dialog and the "?" button, and a tutorial itself
+  is plain data (`PageTutorialDefinition` in `apps/web/src/lib/pageTutorial.ts`).

@@ -8,6 +8,9 @@ export function fetchMe(): Promise<MeProfile> {
 export interface UpdateMeParams {
   username?: string;
   favoriteTeamId?: string | null;
+  // false is a page tutorial's "Skip all": no tutorial opens by itself again,
+  // on any page. The "?" button still replays them.
+  autoOpenTutorials?: boolean;
 }
 
 export function updateMe(params: UpdateMeParams): Promise<MeProfile> {
@@ -28,6 +31,12 @@ export function followPlayer(playerId: string): Promise<{ following: true }> {
 
 export function unfollowPlayer(playerId: string): Promise<{ following: false }> {
   return sendJson<{ following: false }>(`/v1/me/followed-players/${playerId}`, "DELETE");
+}
+
+// Idempotent, like following: usePageTutorial only sends it while the cached
+// profile lists the tutorial as unseen, but a stale cache can send it twice.
+export function markTutorialSeen(tutorialId: string): Promise<{ seen: true }> {
+  return sendJson<{ seen: true }>(`/v1/me/seen-tutorials/${tutorialId}`, "PUT");
 }
 
 export function fetchSavedLineups(): Promise<SavedLineup[]> {
