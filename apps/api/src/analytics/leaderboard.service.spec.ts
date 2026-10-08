@@ -33,8 +33,8 @@ describe("LeaderboardService", () => {
       makePickCountRow("cold", "CORRECT", 2),
     ]);
     prisma.user.findMany.mockResolvedValue([
-      { id: "sharp", name: "Sharp Caller" },
-      { id: "cold", name: "Cold Caller" },
+      { id: "sharp", username: "Sharp Caller" },
+      { id: "cold", username: "Cold Caller" },
     ]);
 
     const leaderboard = await createService().getLeaderboard([]);
@@ -51,7 +51,7 @@ describe("LeaderboardService", () => {
 
   it("gives a user with no correct calls a correct count of zero", async () => {
     prisma.gamePick.groupBy.mockResolvedValue([makePickCountRow("unlucky", "MISSED", 6)]);
-    prisma.user.findMany.mockResolvedValue([{ id: "unlucky", name: "Unlucky" }]);
+    prisma.user.findMany.mockResolvedValue([{ id: "unlucky", username: "Unlucky" }]);
 
     const leaderboard = await createService().getLeaderboard([]);
 
@@ -65,7 +65,7 @@ describe("LeaderboardService", () => {
       makePickCountRow("qualified", "CORRECT", 5),
       makePickCountRow("rookie", "CORRECT", 1),
     ]);
-    prisma.user.findMany.mockResolvedValue([{ id: "qualified", name: "Qualified" }]);
+    prisma.user.findMany.mockResolvedValue([{ id: "qualified", username: "Qualified" }]);
 
     await createService().getLeaderboard([]);
 

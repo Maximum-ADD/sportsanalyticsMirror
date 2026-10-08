@@ -66,8 +66,13 @@ async function createPrediction(gameId: string, homeWinProbability: number, crea
   });
 }
 
-async function createUser(name: string, email: string): Promise<{ id: string }> {
-  return testPrisma.user.create({ data: { name, email }, select: { id: true } });
+// The leaderboard shows usernames, so each test user's real name is made
+// different from it: a test can then tell which of the two was published.
+async function createUser(username: string, email: string): Promise<{ id: string }> {
+  return testPrisma.user.create({
+    data: { name: `Real name of ${username}`, username, email },
+    select: { id: true },
+  });
 }
 
 // Records one graded call. The *AtPick snapshot is required by the schema, so
@@ -351,6 +356,20 @@ describe("Analytics API", () => {
       expect(response.status).toBe(200);
       expect(JSON.stringify(response.body)).not.toContain("private@example.com");
       expect(JSON.stringify(response.body)).not.toContain("@");
+    });
+
+    it("shows the username a user chose, never their real name", async () => {
+      const home = await createTeam({ abbreviation: "LAL" });
+      const away = await createTeam({ abbreviation: "BOS" });
+      const user = await createUser("hoopshead", "hoops@example.com");
+      await giveUserARecord(user.id, home.id, away.id, 6, 4, "handle");
+
+      const response = await request(app.getHttpServer()).get(LEADERBOARD_PATH);
+
+      expect(response.status).toBe(200);
+      const names = response.body.entries.map((entry: { name: string }) => entry.name);
+      expect(names).toContain("hoopshead");
+      expect(JSON.stringify(response.body)).not.toContain("Real name of hoopshead");
     });
 
     it("excludes a user who has not called enough games to be judged", async () => {
