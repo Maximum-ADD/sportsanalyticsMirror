@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import WebSocket from "ws";
 import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.service.js";
+import { createAvatarStorageClient, getAvatarsBucket } from "./avatar-cleanup.js";
 
 // How long a signed avatar URL stays valid. Reused (see createSignedAvatarUrl
 // below) rather than signed fresh on every GET /v1/me, so this bounds both
@@ -42,19 +42,9 @@ export class AvatarStorageService {
     // Constructed eagerly (like auth.config.ts's own top-level `auth`
     // singleton) rather than lazily on first use — a missing/malformed
     // SUPABASE_URL should fail loudly at boot, not on a user's first avatar
-    // upload.
-    //
-    // This app only ever uses Storage, never Realtime, but createClient
-    // unconditionally constructs a RealtimeClient internally regardless —
-    // and on Node < 22 (no native WebSocket global) that constructor throws
-    // synchronously unless a WebSocket implementation is supplied via the
-    // `realtime.transport` option, exactly as Node's own error message
-    // suggests. Supplying `ws` here isn't opting into using Realtime, it's
-    // satisfying a constructor dependency this app never actually calls.
-    this.client = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SECRET_KEY ?? "", {
-      realtime: { transport: WebSocket as never },
-    });
-    this.bucket = process.env.SUPABASE_AVATARS_BUCKET ?? "profile pictures";
+    // upload. See createAvatarStorageClient for why it passes `ws`.
+    this.client = createAvatarStorageClient();
+    this.bucket = getAvatarsBucket();
   }
 
   // {userId}/{uuid}.{ext} — namespacing by userId means one user's re-upload

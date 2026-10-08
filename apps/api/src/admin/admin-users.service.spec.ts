@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { deleteUserAvatars } from "../me/avatar-cleanup.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import { AdminUsersService } from "./admin-users.service.js";
+
+// Storage is a separate service; these specs only check it is asked.
+vi.mock("../me/avatar-cleanup.js", () => ({ deleteUserAvatars: vi.fn().mockResolvedValue(undefined) }));
 
 const OTHER_USER = {
   id: "user-2",
@@ -78,6 +82,22 @@ describe("AdminUsersService", () => {
     await service.deleteUser("user-2");
 
     expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "user-2" } });
+  });
+
+  it("deleteUser removes the user's stored avatars once the row is gone", async () => {
+    vi.mocked(deleteUserAvatars).mockClear();
+
+    await service.deleteUser("user-2");
+
+    expect(deleteUserAvatars).toHaveBeenCalledWith("user-2");
+  });
+
+  it("deleteUser leaves the avatars alone when the row can't be deleted", async () => {
+    vi.mocked(deleteUserAvatars).mockClear();
+    prisma.user.delete.mockRejectedValue(new Error("not found"));
+
+    await expect(service.deleteUser("missing")).rejects.toThrow("not found");
+    expect(deleteUserAvatars).not.toHaveBeenCalled();
   });
 
   it("updateRole updates the role, selecting only the summary fields", async () => {
