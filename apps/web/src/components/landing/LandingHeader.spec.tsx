@@ -100,3 +100,14 @@ describe("LandingHeader signed-in links", () => {
     expect(screen.queryAllByRole("link", { name: "Admin" })).toHaveLength(0);
   });
 });
+
+describe("LandingHeader Live link", () => {
+  it("links to the live games page for everyone, signed in or not", () => {
+    vi.mocked(useMe).mockReturnValue({ data: null } as never);
+    renderWithProviders(<LandingHeader />);
+
+    for (const liveLink of screen.getAllByRole("link", { name: "Live" })) {
+      expect(liveLink).toHaveAttribute("href", "/live");
+    }
+  });
+});

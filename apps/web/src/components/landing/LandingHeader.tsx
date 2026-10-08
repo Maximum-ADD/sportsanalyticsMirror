@@ -16,6 +16,7 @@ const APP_LINKS = [
   // Appended last so no existing link changes position — the same reasoning
   // the Admin link documents below.
   { label: "Become Pro", to: "/become-pro" },
+  { label: "Live", to: "/live" },
 ];
 
 const LINK_CLASS =
@@ -47,7 +48,7 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
   ];
 
   // Below xl the links live in a drawer behind a menu button instead of in
-  // the row: eight nowrap links cannot fit a phone width, and the previous
+  // the row: nine nowrap links cannot fit a phone width, and the previous
   // swipe-to-scroll row hid most of them behind a gesture with no
   // affordance — every link was reachable in principle and invisible in
   // practice.
@@ -61,6 +62,10 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
   // (1280px) eight links and AuthStatus both fit with room to spare. The
   // cost of the move is that 1024-1279px now gets the drawer rather than the
   // inline row.
+  //
+  // "Live" made nine. Re-measured in headless Chrome at 1280px: the last link
+  // ends 201px short of the signed-out AuthStatus block, and 127px short with
+  // an Admin link added, with no sideways scroll either way.
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuId = useId();
   const { pathname } = useLocation();

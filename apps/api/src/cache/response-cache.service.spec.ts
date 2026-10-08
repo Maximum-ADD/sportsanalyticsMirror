@@ -46,6 +46,22 @@ describe("ResponseCacheService", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it("works the TTL out from the loaded value when given a function", async () => {
+    vi.useFakeTimers();
+    const ttlFromValue = (value: { isFinal: boolean }) => (value.isFinal ? 10 * ONE_MINUTE_MS : ONE_MINUTE_MS);
+    const liveLoad = vi.fn().mockResolvedValue({ isFinal: false });
+    const finalLoad = vi.fn().mockResolvedValue({ isFinal: true });
+
+    await cache.getOrLoad("live-game", ttlFromValue, liveLoad);
+    await cache.getOrLoad("final-game", ttlFromValue, finalLoad);
+    vi.advanceTimersByTime(ONE_MINUTE_MS + 1);
+    await cache.getOrLoad("live-game", ttlFromValue, liveLoad);
+    await cache.getOrLoad("final-game", ttlFromValue, finalLoad);
+
+    expect(liveLoad).toHaveBeenCalledTimes(2);
+    expect(finalLoad).toHaveBeenCalledTimes(1);
+  });
+
   it("shares one load between concurrent misses on the same key", async () => {
     let resolveLoad: (value: string) => void = () => {};
     const load = vi.fn(() => new Promise<string>((resolve) => (resolveLoad = resolve)));
