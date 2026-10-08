@@ -577,8 +577,9 @@ page, with a drawn map of the page that highlights and points at each section
 in turn. It opens by itself the first time an account reaches the page, and
 the page's floating "?" button replays it. Completing, skipping or exiting it
 all count as having seen it; "Skip all" also turns tutorials off on every
-page. Only `/home` has one so far (`HOME_TUTORIAL` in
-`apps/web/src/components/home/homeTutorial.ts`).
+page. Every page except the landing page has one; the definitions live in
+`apps/web/src/components/tutorial/definitions/`, and `ALL_PAGE_TUTORIALS`
+there lists them so one spec checks them all.
 
 - Storage: one `UserSeenTutorial` row (`userId`, `tutorialId`, `seenAt`) per
   tutorial an account has seen, unique per user and tutorial and deleted with

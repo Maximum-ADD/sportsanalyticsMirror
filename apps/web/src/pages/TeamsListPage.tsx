@@ -7,6 +7,8 @@ import { PageLoading, SectionLoading } from "@/components/ui/loading-overlay";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowTeamButton } from "@/components/FollowTeamButton";
 import { Pagination } from "@/components/Pagination";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { TEAMS_TUTORIAL } from "@/components/tutorial/definitions/teamsTutorial";
 import { Reveal } from "@/components/landing/Reveal";
 import { TeamBadge } from "@/components/TeamBadge";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -305,6 +307,13 @@ export function TeamsListPage() {
           <Pagination tone="locker" page={page} pageSize={PAGE_SIZE} total={filteredRows.length} onPageChange={setPage} />
         )}
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Not on the error screen above, which
+          has none of the sections it points at. Kept outside every Reveal:
+          their rise animation is a transform, which would pin the tutorial's
+          fixed overlay and button to that block instead of the viewport. */}
+      <PageTutorial tutorial={TEAMS_TUTORIAL} />
     </div>
   );
 }

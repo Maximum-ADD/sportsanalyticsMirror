@@ -11,6 +11,8 @@ import { SeasonEntryPanel } from "@/components/becomepro/SeasonEntryPanel";
 import { SeasonSetupForm } from "@/components/becomepro/SeasonSetupForm";
 import { DANGER_BUTTON_CLASS, QUIET_BUTTON_CLASS } from "@/components/becomepro/styles";
 import { LockerSection } from "@/components/home/LockerSection";
+import { BECOME_PRO_TUTORIAL } from "@/components/tutorial/definitions/becomeProTutorial";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
 import { Reveal } from "@/components/landing/Reveal";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { formatNumber, formatPercentage } from "@/lib/advancedStats";
@@ -67,7 +69,18 @@ export function BecomeProPage() {
     );
   }
 
-  return <BecomeProView data={data} onSelectSeason={setSeasonId} />;
+  // The page tutorial: opens by itself on this account's first visit, and the
+  // "?" button replays it. Only on the loaded page — over a spinner or an
+  // error it would describe sections that aren't there — and beside the view
+  // rather than in it, outside every Reveal: their rise animation is a
+  // transform, which would pin the tutorial's fixed overlay and button to
+  // that block instead of the viewport.
+  return (
+    <>
+      <BecomeProView data={data} onSelectSeason={setSeasonId} />
+      <PageTutorial tutorial={BECOME_PRO_TUTORIAL} />
+    </>
+  );
 }
 
 function BecomeProView({ data, onSelectSeason }: { data: MyBecomePro; onSelectSeason: (id: string | undefined) => void }) {

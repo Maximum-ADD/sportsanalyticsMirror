@@ -12,6 +12,8 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { SeasonSplitsTable } from "@/components/SeasonSplitsTable";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { PLAYER_PROFILE_TUTORIAL } from "@/components/tutorial/definitions/playerProfileTutorial";
 import { PageLoading, SectionLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
 import { formatAge, formatHeight } from "@/lib/playerBio";
@@ -715,6 +717,14 @@ export function PlayerProfilePage() {
           </Reveal>
         </div>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Kept outside every Reveal — their
+          rise animation is a transform, which would pin the tutorial's fixed
+          overlay and button to that block instead of the viewport. Only in
+          the loaded branch: opening over the loading spinner or the error
+          state would walk someone through sections that aren't there. */}
+      <PageTutorial tutorial={PLAYER_PROFILE_TUTORIAL} />
     </div>
   );
 }

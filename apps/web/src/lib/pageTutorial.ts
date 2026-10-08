@@ -3,7 +3,7 @@
 // from a picture of the page — the map — and one step per section of it.
 //
 // A tutorial is plain data so a page gains one by writing a definition (see
-// components/home/homeTutorial.ts) rather than a component. Everything a
+// components/tutorial/definitions/) rather than a component. Everything a
 // definition describes about the map is in map units: the map is drawn in an
 // SVG whose viewBox is TUTORIAL_MAP_WIDTH × TUTORIAL_MAP_HEIGHT, so a layout
 // scales with the dialog and never needs measuring against the real page.
@@ -37,9 +37,33 @@ export type TutorialCalloutSide = "left" | "right";
  * - "rows": a short list of rows, as many as the region's height allows
  * - "value": one big figure with a trend line under it
  * - "stat-blocks": a row of headline figures
+ * - "page-header": a page title with a line of intro text under it
+ * - "filters": a search box and a row of filter controls
+ * - "tabs": a row of tabs or segment buttons, the first one selected
+ * - "table": a header row over striped data rows
+ * - "chart": axes with a line plotted across them
+ * - "bars": a short bar chart
+ * - "card-grid": a grid of small cards, as many as fit
+ * - "form": labelled inputs with a submit button under them
+ * - "court": a half-court diagram
  * - "help-button": the page's floating "?" button itself
  */
-export type TutorialRegionSketch = "matchup" | "player-cards" | "rows" | "value" | "stat-blocks" | "help-button";
+export type TutorialRegionSketch =
+  | "matchup"
+  | "player-cards"
+  | "rows"
+  | "value"
+  | "stat-blocks"
+  | "page-header"
+  | "filters"
+  | "tabs"
+  | "table"
+  | "chart"
+  | "bars"
+  | "card-grid"
+  | "form"
+  | "court"
+  | "help-button";
 
 /** One section of the page as the tutorial's map draws it. */
 export interface TutorialMapRegion {

@@ -12,6 +12,8 @@ import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { SectionLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { PREDICTIONS_TUTORIAL } from "@/components/tutorial/definitions/predictionsTutorial";
 import { useMe } from "@/lib/useMe";
 import { PERCENT, formatMargin, isCompleted, wasModelHit } from "@/lib/predictions";
 import {
@@ -1051,6 +1053,12 @@ export function PredictionsPage() {
           </Reveal>
         </div>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Kept outside every Reveal — their
+          rise animation is a transform, which would pin the tutorial's fixed
+          overlay and button to that block instead of the viewport. */}
+      <PageTutorial tutorial={PREDICTIONS_TUTORIAL} />
     </div>
   );
 }

@@ -80,6 +80,44 @@ describe("TutorialPageMap", () => {
     expect(tip.x).toBeLessThan(136 + 48 + 2);
   });
 
+  // Every other page's map is built from these, at whatever size its layout
+  // needs, so each has to draw something and keep it inside its own box —
+  // from a region barely tall enough for its label up to a big one.
+  const SKETCHES_OTHER_PAGES_USE = [
+    "page-header",
+    "filters",
+    "tabs",
+    "table",
+    "chart",
+    "bars",
+    "card-grid",
+    "form",
+    "court",
+  ] as const;
+  const REGION_HEIGHTS = [14, 22, 40];
+  const SKETCH_CASES = SKETCHES_OTHER_PAGES_USE.flatMap((sketch) =>
+    REGION_HEIGHTS.map((height) => [sketch, height] as const)
+  );
+
+  it.each(SKETCH_CASES)("draws a %s region's sketch inside a region %i tall", (sketch, height) => {
+    const region: TutorialMapRegion = { id: sketch, label: sketch, x: 36, y: 18, width: 96, height, sketch, calloutSide: "left" };
+    const { container } = render(
+      <TutorialPageMap pageName="test" regions={[region]} activeRegionId={sketch} stepNumber={2} />
+    );
+
+    const regionGroup = container.querySelector(`[data-region-id="${sketch}"]`) as SVGGElement;
+    // More than the region's own box: the sketch drew something in it.
+    expect(regionGroup.querySelectorAll("rect, circle, polyline, path").length).toBeGreaterThan(1);
+    for (const shape of regionGroup.querySelectorAll("rect")) {
+      const shapeX = Number(shape.getAttribute("x"));
+      const shapeY = Number(shape.getAttribute("y"));
+      expect(shapeX).toBeGreaterThanOrEqual(region.x);
+      expect(shapeY).toBeGreaterThanOrEqual(region.y);
+      expect(shapeX + Number(shape.getAttribute("width"))).toBeLessThanOrEqual(region.x + region.width);
+      expect(shapeY + Number(shape.getAttribute("height"))).toBeLessThanOrEqual(region.y + region.height);
+    }
+  });
+
   it("references an arrowhead that exists in the same drawing", () => {
     const { container } = renderMap("cards");
 

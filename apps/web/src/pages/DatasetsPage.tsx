@@ -12,6 +12,8 @@ import { useMe } from "@/lib/useMe";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
 import { Pagination } from "@/components/Pagination";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { DATASETS_TUTORIAL } from "@/components/tutorial/definitions/datasetsTutorial";
 
 const PAGE_SIZE = 10;
 
@@ -406,6 +408,13 @@ export function DatasetsPage() {
           />
         )}
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Only in this branch, not the error
+          one above: its map describes the release list, which an error
+          screen doesn't have. Kept at the top level of the page so its fixed
+          overlay and button stay pinned to the viewport. */}
+      <PageTutorial tutorial={DATASETS_TUTORIAL} />
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { ONBOARDING_TUTORIAL } from "@/components/tutorial/definitions/onboardingTutorial";
 import { updateMe, followPlayer, unfollowPlayer, fetchSuggestedPlayers } from "@/lib/meApi";
 import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
 import { useMe } from "@/lib/useMe";
@@ -281,6 +283,11 @@ function PlayersStep({ team, onFinish }: { team: Team; onFinish: () => void }) {
 export function OnboardingPage() {
   const [step, setStep] = useState<Step>("username");
   const [team, setTeam] = useState<Team | null>(null);
+  // Set once step 1 has saved a username this visit. From then on the
+  // profile can legitimately carry a username mid-flow — the page tutorial
+  // refetches GET /v1/me after recording a close — and that must not read
+  // as "already onboarded" and bounce the user to /home before steps 2-3.
+  const [hasSavedUsername, setHasSavedUsername] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isPending: isMePending, data: me } = useMe();
@@ -288,7 +295,7 @@ export function OnboardingPage() {
   // Someone who already onboarded (has a username) shouldn't be able to
   // navigate back here and re-run the flow — send them straight to /home,
   // same destination onboarding itself finishes at.
-  if (!isMePending && me?.username) {
+  if (!isMePending && me?.username && !hasSavedUsername) {
     navigate("/home", { replace: true });
     return null;
   }
@@ -319,7 +326,14 @@ export function OnboardingPage() {
           <div className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <StepHeader step={step} stepNumber={stepNumber} />
 
-            {step === "username" && <UsernameStep onNext={() => setStep("team")} />}
+            {step === "username" && (
+              <UsernameStep
+                onNext={() => {
+                  setHasSavedUsername(true);
+                  setStep("team");
+                }}
+              />
+            )}
             {step === "team" && (
               <TeamStep
                 onNext={(selectedTeam) => {
@@ -332,6 +346,15 @@ export function OnboardingPage() {
           </div>
         </Reveal>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit
+          — on step 1, before anything is saved — and the "?" button replays
+          it on any step. Only in this branch: the loading screen and the
+          already-onboarded redirect above have no set-up for it to explain.
+          Kept outside the Reveal: its rise animation is a transform, which
+          would pin the tutorial's fixed overlay and button to the card
+          instead of the viewport. */}
+      <PageTutorial tutorial={ONBOARDING_TUTORIAL} />
     </div>
   );
 }

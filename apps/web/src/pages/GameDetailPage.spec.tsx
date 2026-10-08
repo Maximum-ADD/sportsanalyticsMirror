@@ -1,9 +1,10 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GameDetailPage } from "./GameDetailPage";
 import { fetchGameDetail, fetchPlayerStats } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type {
   GameDetail,
@@ -18,6 +19,12 @@ import type {
 vi.mock("@/lib/nbaApi", () => ({
   fetchGameDetail: vi.fn(),
   fetchPlayerStats: vi.fn(),
+}));
+
+// The page tutorial reads the profile through useMe(), which gates its own
+// query on BetterAuth's useSession — signed out, so nothing reaches a server.
+vi.mock("@/lib/authClient", () => ({
+  useSession: () => ({ data: null, isPending: false }),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -247,5 +254,24 @@ describe("GameDetailPage", () => {
     expect(
       screen.getByRole("spinbutton", { name: "Edit predicted points for LeBron James" })
     ).toHaveValue(27.4);
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the game page tutorial over the page", async () => {
+    vi.mocked(fetchGameDetail).mockResolvedValue(makeGameDetail());
+    const user = userEvent.setup();
+    renderWithProviders(<main><GameDetailPage /></main>);
+    await screen.findByRole("button", { name: "Show the game page tutorial" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the game page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · game" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to the game page" })).toBeInTheDocument();
+    // Axe runs over the dialog alone, not the whole page: CourtView's court is
+    // an svg role="img" holding clickable player markers, which axe already
+    // flags as nested-interactive with or without the tutorial open.
+    await expectNoAccessibilityViolations(dialog);
   });
 });

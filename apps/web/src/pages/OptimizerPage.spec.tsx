@@ -19,11 +19,17 @@ vi.mock("@/lib/nbaApi", () => ({
 
 vi.mock("@/lib/meApi", () => ({
   saveLineup: vi.fn(),
+  // The page tutorial's writes — see the "?" button test below.
+  markTutorialSeen: vi.fn(),
+  updateMe: vi.fn(),
 }));
 
 // The page only reads `session` from useMe (to gate the save button), so a
-// direct mock is enough — no QueryClient-driven fetchMe to satisfy.
-vi.mock("@/lib/useMe", () => ({ useMe: vi.fn() }));
+// direct mock is enough — no QueryClient-driven fetchMe to satisfy. With no
+// profile in it, the page tutorial never opens by itself here. ME_QUERY_KEY
+// is the page tutorial's: it writes the cached profile under that key when
+// the tutorial closes.
+vi.mock("@/lib/useMe", () => ({ ME_QUERY_KEY: ["me"], useMe: vi.fn() }));
 
 const LAKERS: Team = {
   id: "team-1",
@@ -414,5 +420,23 @@ describe("OptimizerPage", () => {
     expect(screen.getByText("Sign in to save this lineup to your profile.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save lineup" })).toBeDisabled();
     expect(saveLineup).not.toHaveBeenCalled();
+  });
+
+  // No profile in the useMe mock, so the tutorial never opens by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the optimizer page tutorial over the page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
+
+    const { container } = renderWithProviders(<main><OptimizerPage /></main>);
+    await screen.findByText("Stephen Curry");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the optimizer page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · optimizer" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to the Optimizer" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 });

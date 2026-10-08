@@ -311,4 +311,21 @@ describe("BecomeProPage", () => {
     await screen.findByRole("form", { name: "Start a season" });
     await expectNoAccessibilityViolations(container);
   });
+
+  // Signed out here (the global better-auth mock in test/setup.ts), so there
+  // is no profile to open the tutorial by itself — usePageTutorial's own spec
+  // covers that; the "?" button needs none.
+  it("offers a ? button that replays the Become Pro page tutorial over the page", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<BecomeProPage />);
+    await screen.findByRole("heading", { name: "Become Pro", level: 1 });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the Become Pro page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · Become Pro" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to Become Pro" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
+  });
 });

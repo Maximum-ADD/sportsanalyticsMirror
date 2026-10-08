@@ -25,6 +25,9 @@ vi.mock("@/lib/meApi", () => ({
   fetchMe: vi.fn(),
   followPlayer: vi.fn(),
   unfollowPlayer: vi.fn(),
+  // The page tutorial's writes — see the "?" button test below.
+  markTutorialSeen: vi.fn(),
+  updateMe: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -134,6 +137,24 @@ describe("PlayersListPage", () => {
       expect(fetchPlayers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "L" }));
     });
 
+    await expectNoAccessibilityViolations(container);
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the players page tutorial over the page", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+    vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><PlayersListPage /></main>);
+    await screen.findByText("LeBron James");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the players page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · players" });
+    expect(within(dialog).getByRole("heading", { name: "Find any player" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
     await expectNoAccessibilityViolations(container);
   });
 

@@ -1,8 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComparePage } from "./ComparePage";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { fetchPlayer, fetchPlayerComparison, fetchPlayers, fetchPlayerStats } from "@/lib/nbaApi";
 import type { Player, SeasonAverages } from "@/types/nba";
 
@@ -98,6 +99,21 @@ describe("ComparePage", () => {
     expect(screen.getByRole("combobox", { name: "Select player 1" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Select player 2" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "General" })).not.toBeInTheDocument();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the compare page tutorial over the page", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><ComparePage /></main>, ["/compare"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the compare page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · compare" });
+    expect(within(dialog).getByRole("heading", { name: "Players side by side" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 
   it("keeps an empty slot beside the player already picked", async () => {

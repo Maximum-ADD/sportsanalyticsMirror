@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProfilePage } from "./ProfilePage";
@@ -11,6 +11,7 @@ import { fetchMyBecomeProSummary } from "@/lib/becomeProApi";
 import { makeMyBecomeProSummary } from "@/test/becomeProFixtures";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { MeProfile, Player, SavedLineup, Team } from "@/types/nba";
 
 vi.mock("@/lib/authClient", () => ({
@@ -32,6 +33,8 @@ vi.mock("@/lib/meApi", () => ({
   createMyApiKey: vi.fn(),
   revokeMyApiKey: vi.fn(),
   deleteMyApiKey: vi.fn(),
+  // The page tutorial's writes — see the "?" button test below.
+  markTutorialSeen: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -178,6 +181,25 @@ describe("ProfilePage", () => {
     expect(await screen.findByText("playerone")).toBeInTheDocument();
     expect(screen.getByText("Los Angeles Lakers")).toBeInTheDocument();
     expect(screen.getByText("LeBron James")).toBeInTheDocument();
+  });
+
+  // ME carries no seenTutorialIds, so the tutorial never opens by itself
+  // here (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the profile page tutorial over the page", async () => {
+    setUp();
+    const user = userEvent.setup();
+    renderWithProviders(<main><ProfilePage /></main>);
+    await screen.findByText("playerone");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the profile page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · profile" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to your profile" })).toBeInTheDocument();
+    // Axe over the open dialog only, not the whole page: the page under it
+    // already fails two rules of its own (the avatar's unlabelled file input
+    // and the API keys table's empty last header), which this test doesn't own.
+    await expectNoAccessibilityViolations(dialog);
   });
 
   it("shows an empty state when nothing is followed yet", async () => {

@@ -1,8 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchEloRatings, fetchTeamRecords, fetchTeams } from "@/lib/nbaApi";
 import { useSession } from "@/lib/authClient";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { Team } from "@/types/nba";
 import { TeamsListPage } from "./TeamsListPage";
@@ -107,5 +108,22 @@ describe("TeamsListPage", () => {
     renderWithProviders(<TeamsListPage />);
 
     expect(await screen.findByText("No teams found.")).toBeInTheDocument();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the teams page tutorial over the page", async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 30, total: 1 });
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><TeamsListPage /></main>);
+    await screen.findByRole("button", { name: "Show the teams page tutorial" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the teams page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · teams" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to Teams" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 });

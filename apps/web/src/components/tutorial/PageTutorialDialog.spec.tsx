@@ -2,7 +2,7 @@ import { useState } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { HOME_TUTORIAL } from "@/components/home/homeTutorial";
+import { HOME_TUTORIAL } from "@/components/tutorial/definitions/homeTutorial";
 import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { PageTutorialDefinition } from "@/lib/pageTutorial";
 import { PageTutorialDialog } from "./PageTutorialDialog";

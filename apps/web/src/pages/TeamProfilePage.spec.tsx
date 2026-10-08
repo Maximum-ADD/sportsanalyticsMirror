@@ -1,7 +1,9 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchEloRatings, fetchPlayers, fetchTeam, fetchTeamRecords } from "@/lib/nbaApi";
 import { useSession } from "@/lib/authClient";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { renderWithProviders } from "@/test/renderWithProviders";
 import type { Player, Team } from "@/types/nba";
 import { TeamProfilePage } from "./TeamProfilePage";
@@ -113,5 +115,23 @@ describe("TeamProfilePage", () => {
     renderWithProviders(<TeamProfilePage />, ["/teams/team-1"]);
 
     expect(await screen.findByText("No roster players found.")).toBeInTheDocument();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the team profile page tutorial over the page", async () => {
+    vi.mocked(fetchTeam).mockResolvedValue(LAKERS);
+    vi.mocked(fetchPlayers).mockResolvedValue({ data: [makePlayer()], page: 1, pageSize: 25, total: 1 });
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><TeamProfilePage /></main>, ["/teams/team-1"]);
+    await screen.findByRole("button", { name: "Show the team profile page tutorial" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the team profile page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · team profile" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to the team profile" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 });
