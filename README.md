@@ -9,6 +9,14 @@ themselves aggregated from real per-play `GameEvent` records
 directly — satisfying the brief's core requirement that statistics trace
 back to underlying event records.
 
+## Live
+
+- Web app: <https://sportsanalytics.pages.dev/>
+- API reference (Swagger UI): <https://sportsanalytics-api.onrender.com/api/docs>.
+  The public read endpoints need an `X-API-Key` header (create one on your
+  profile page) or a signed-in session; "Authorize" in Swagger UI takes the key.
+- Documentation site: <https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/>
+
 ## Documentation
 
 Full docs (architecture, ADRs, methodology, sprint log, tech stack, security,
@@ -28,6 +36,7 @@ apps/
   predictor/   Python — Elo win probability + Four Factors margin predictions
   optimizer/   Python — MILP lineup optimizer (PuLP + CBC)
   valuation/   Python — trains the Become Pro draft-slot model on NBA rookie seasons
+  similarity/  Python — player archetypes (clustering) and similar players
 ```
 
 `apps/web` and the Python services only ever communicate with `apps/api` over
@@ -37,8 +46,9 @@ coupling between front and back end.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24 (the version CI runs)
 - Docker (for local Postgres)
+- Python 3.12, only to work on one of the Python services
 
 ## Getting started
 
@@ -62,6 +72,10 @@ coupling between front and back end.
    npm run dev              # starts on http://localhost:4000
    ```
 
+   The seed ends by printing a `SITE_PROXY_API_KEY=...` line. Keep it for
+   step 3: the API's public read endpoints need an API key or a session, and
+   the web app's dev proxy sends this key for signed-out visitors.
+
    Sign-in uses Google OAuth via BetterAuth, which needs a client set up at
    the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    (authorized redirect URI: `http://localhost:4000/auth/callback/google`) —
@@ -74,6 +88,7 @@ coupling between front and back end.
 
    ```bash
    cd apps/web
+   cp .env.example .env      # then paste the SITE_PROXY_API_KEY line from the seed
    npm install
    npm run dev               # starts on http://localhost:5173
    ```
@@ -85,69 +100,52 @@ coupling between front and back end.
    NBA data (LeBron James, Stephen Curry, Jayson Tatum, Giannis
    Antetokounmpo) with derived season averages.
 
-## Current state of this scaffold
+## What's built
 
-This is a base scaffold, not the finished product. What's wired up:
+The brief's three tiers are tracked requirement by requirement on the docs
+site's [Feature Tiers](https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/design/feature-tiers/)
+page. In short:
 
-- **Auth**: Google OAuth via [BetterAuth](https://better-auth.com), mounted
-  at `/auth/*` directly on the Express instance (ahead of Nest's own
-  routing — see `apps/api/src/main.ts`) so it owns session cookies and the
-  OAuth redirect flow. A Nest `SessionAuthGuard` looks up the current
-  BetterAuth session on protected routes; RBAC roles (`PUBLIC`, `USER`,
-  `ANALYST`, `ADMIN`) live on the `User` model as a custom BetterAuth field
-  (not settable via sign-up/OAuth profile) and are enforced by a Nest
-  `RolesGuard`, not the database. No route currently requires a role above
-  the default `USER`.
-- **API**: versioned under `/v1/`, with pagination, a consistent JSON error
-  envelope (`{ error: { code, message } }`) via a global Nest exception
-  filter, and routes for players, teams, derived per-player season stats,
-  a game's raw ordered play-by-play (`GET /v1/games/:id/events`), and a
-  CSV export of a filtered player slice (`GET /v1/players/export`) — "read
-  fixtures, events and derived statistics" and "export a filtered slice as
-  a file," the brief's own words for these two.
-- **Data**: Prisma schema models teams, players, games, raw `GameEvent`
-  rows (real per-play `PlayByPlayV3` data, tagged with the `IngestionBatch`
-  that wrote them), and per-game `PlayerGameStat` boxscores aggregated from
-  those events (`apps/ingestion/derive_player_game_stats.py`). Season
-  averages (`apps/api/src/services/statsService.ts`) are then computed from
-  those boxscore rows at request time — nothing is stored as a
-  pre-computed total.
-- **Season segments**: every `Game` carries a `seasonType` (regular season,
-  play-in, playoffs, finals), and the player/game endpoints filter on it, so
-  a postseason view never shows regular-season figures or vice versa. The
-  prediction and optimizer models are deliberately regular-season only —
-  see `docs/PROJECT_OVERVIEW.md` for why.
-- **Ingestion**: `prisma/seed.ts` still seeds a handful of mock players/games
-  for local dev, but `apps/ingestion` now pulls real NBA data (all 30
-  current teams, their rosters, and each team's ~15 most recent games, each
-  with real per-play data and boxscores derived from it) from `nba_api`
-  into the same Postgres database — a separate Python process, with the
-  NestJS API remaining the only thing that talks to the database over
-  HTTP-facing requests. A postseason phase additionally ingests the
-  season's play-in, playoff and Finals games.
-- **Frontend**: dark-themed dashboard shell — sidebar nav, players list,
-  and a player profile page (stat tiles, a traits radar chart, a points
-  trend line chart, and a regular-season-vs-postseason comparison) built
-  with Recharts + Tailwind. A segment selector on the player, compare and
-  predictions pages keeps its choice in the URL (`?segment=playoffs`).
-- **Market odds**: `apps/ingestion/fetch_market_odds.py` pulls NBA
-  moneyline odds from [The Odds API](https://the-odds-api.com/) (free, no
-  card required) — this project's second external API integration — and
-  stores a de-vigged, bookmaker-averaged home win probability per upcoming
-  game (`GameMarketOdds`), shown on the game detail page alongside the
-  model's own prediction. See `docs/PROJECT_OVERVIEW.md`'s "Market odds"
-  section.
+- **Statistics derived from events.** Real NBA play-by-play is stored as
+  ordered `GameEvent` rows, each tagged with the `IngestionBatch` that wrote
+  it. Per-game box scores are summed from those events
+  (`apps/ingestion/derive_player_game_stats.py`), and season, career and
+  league figures are derived from the box scores at request time. Correcting
+  an event (`/v1/admin/games/:gameId/events/:sequence/correct`) re-derives
+  only the affected players' lines, records the change in `EventCorrection`
+  and marks the season's dataset releases stale.
+- **Submission pipeline.** Each game's ingestion run is a batch, validated
+  against the event schema (`apps/ingestion/event_validation.py`) with every
+  rejection counted by reason. Re-runs upsert instead of double counting, a
+  failed batch resumes from its checkpoint, and a game stays hidden from
+  every public read until its batches pass admin review.
+- **API.** Hand-written NestJS under `/v1/`: fixtures, play-by-play events
+  and derived stats, with filtering, pagination, `asOf` figures, CSV export,
+  aggregates, versioned dataset releases (field schema and SHA-256 checksum),
+  `Accept-Version` negotiation and `Deprecation`/`Sunset` headers. Consumers
+  use API keys with per-minute rate limits and daily quotas.
+- **Custom statistics.** Analysts define a statistic as a formula over the
+  event-derived per-game averages. Formulas are parsed without `eval`, and
+  every version is kept, so a figure computed under an earlier version can
+  be reproduced with `?version=`.
+- **Beyond the brief.** Elo and Four Factors game predictions beside
+  bookmakers' odds (The Odds API), a MILP fantasy lineup optimizer, Beat the
+  Model, Become Pro, player archetypes and a live-games tab.
+- **Auth.** Google sign-in through BetterAuth, with account deletion and
+  `USER`, `ANALYST` and `ADMIN` roles enforced by `RolesGuard`. Password
+  reset doesn't apply to Google-only accounts; the lecturer confirmed it
+  isn't needed (see ADR-002 on the docs site).
 
-## What's not done yet (follow-up tasks for the team)
+## Known gaps
 
-- `axe-core` automated accessibility checks now run against a handful of
-  pages/components (`Home`, `Optimizer`, `PlayersListPage`,
-  `PredictionsPage`, `PlayersFilterBar` — see `apps/web/src/test/
-  accessibility.ts`), not the whole app yet. Some responsive breakpoints
-  and keyboard/focus handling exist (`Navbar.tsx`, `App.tsx`,
-  `RecentResultWidget.tsx`) but haven't had a real full audit pass.
-- Coverage thresholds are not enforced yet. CI reports the current API and
-  Web coverage without failing builds for a minimum percentage.
+- Data arrives only through the automated `nba_api` ingestion pipeline,
+  which acts as the platform's one approved submitter. There is no upload
+  endpoint for a human submitter, so there are no competing submissions to
+  reconcile.
+- Large consumer requests run to completion rather than being handed off as
+  jobs; only admin ingestion pulls are queued.
+- Anomaly flags catch impossible box-score lines, not outliers against a
+  player's history.
 
 ## Testing
 
