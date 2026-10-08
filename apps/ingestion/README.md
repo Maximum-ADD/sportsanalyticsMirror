@@ -156,6 +156,7 @@ python ingest.py --from-date 2026-04-14 --to-date 2026-04-18  # only games in th
 | `--season` | `2025-26` | Which season to ingest, as `YYYY-YY`. A season before the default leaves rosters and bios alone (see below). |
 | `--from-date` | none | Only games on or after this date (`YYYY-MM-DD`, inclusive). |
 | `--to-date` | none | Only games on or before this date (`YYYY-MM-DD`, inclusive). |
+| `--skip-play-storage` | off | Derive each game's stats from its play-by-play, then discard the plays instead of saving them to `GameEvent`. The admin play-by-play and corrections tools then have nothing to show for those games. The pull worker always passes this. |
 
 Either date bound can be given alone. Malformed or inverted dates are
 rejected at startup, before any API call. The admin Batches tab exposes the
@@ -220,9 +221,15 @@ python pull_worker.py --name home-pc   # how it appears on the admin page (defau
 
 How it behaves:
 
-- Each pull runs `ingest.py --review` with the request's season and dates,
-  as its own process, so batches land as `PENDING_REVIEW` exactly as a pull
-  started locally does.
+- Each pull runs `ingest.py --review --skip-play-storage` with the request's
+  season and dates, as its own process, so batches land as `PENDING_REVIEW`
+  exactly as a pull started locally does.
+- **A queued pull doesn't save the plays.** Each game's stats are still
+  derived from its play-by-play, but the plays themselves (~250 KB a game)
+  aren't written to `GameEvent`, so the admin play-by-play and corrections
+  tools have nothing to show for those games. Games that already have plays
+  keep them. A pull the API runs directly (local, `INGESTION_MODE="direct"`)
+  still saves them.
 - Two workers can safely run at once: claiming uses `FOR UPDATE SKIP LOCKED`,
   so a request is only ever taken by one.
 - Only one pull is queued or running at a time; the admin page refuses
