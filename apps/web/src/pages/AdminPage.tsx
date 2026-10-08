@@ -29,6 +29,8 @@ import {
 } from "@/lib/adminApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { AdminCorrectionsSection } from "@/components/admin/AdminCorrectionsSection";
+import { ADMIN_TUTORIAL } from "@/components/tutorial/definitions/adminTutorial";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
 import { BUTTON_CLASS, INPUT_CLASS, LABEL_CLASS, PAGE_SIZE, PANEL_CLASS } from "@/components/admin/adminStyles";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { ErrorState } from "@/components/ErrorState";
@@ -104,6 +106,12 @@ export function AdminPage() {
         )}
         {tab === "consumers" && <AdminConsumersSection />}
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Rendered once here, outside whichever
+          tab is showing, because it walks through every tab — not just the
+          one on screen — and stays put as the admin switches between them. */}
+      <PageTutorial tutorial={ADMIN_TUTORIAL} />
     </div>
   );
 }

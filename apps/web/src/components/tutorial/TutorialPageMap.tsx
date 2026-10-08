@@ -30,6 +30,16 @@ const MATCHUP_FAVOURITE_SHARE = 0.64;
 // One player card's scoring line, as y offsets from the card's line baseline:
 // a few real-looking rises and dips, ending on the latest game.
 const SPARKLINE_OFFSETS = [0, -1.6, 0.4, -2.2, -0.8, -2.6];
+// The chart sketch's line, as fractions of the plot's height above its
+// baseline — a rise with a dip, so it reads as data rather than a ruler.
+const CHART_LINE_SHARES = [0.2, 0.45, 0.35, 0.7, 0.55, 0.85];
+// The bars sketch's bar heights, as fractions of the plot's height.
+const BAR_SHARES = [0.55, 0.8, 0.4, 0.95, 0.65];
+// Smallest card the card-grid sketch draws, so a big region gets more cards
+// rather than a few stretched ones.
+const MIN_GRID_CARD_WIDTH = 16;
+const MIN_GRID_CARD_HEIGHT = 9;
+const GRID_GAP = 2.5;
 
 interface MapPoint {
   x: number;
@@ -206,6 +216,232 @@ function HelpButtonSketch({ region }: { region: TutorialMapRegion }) {
   );
 }
 
+/** A page title, and a line or two of intro text under it. */
+function PageHeaderSketch({ region }: { region: TutorialMapRegion }) {
+  const textTop = region.y + SKETCH_TOP + 1;
+  return (
+    <g>
+      <rect x={region.x + 3} y={textTop} width={region.width * 0.35} height={3} className="fill-landing-ink/70" />
+      {region.height > 18 && (
+        <rect x={region.x + 3} y={textTop + 5} width={region.width * 0.7} height={1.4} className="fill-landing-light" />
+      )}
+      {region.height > 22 && (
+        <rect x={region.x + 3} y={textTop + 8} width={region.width * 0.55} height={1.4} className="fill-landing-light" />
+      )}
+    </g>
+  );
+}
+
+/** A search box and a short row of filter controls beside it. */
+function FiltersSketch({ region }: { region: TutorialMapRegion }) {
+  const controlY = region.y + Math.max(SKETCH_TOP, region.height - 8);
+  const searchWidth = region.width * 0.42;
+  const controlWidth = (region.width - searchWidth - 6 - 3 * 2) / 3;
+  const controlIndexes = [0, 1, 2];
+  return (
+    <g>
+      <rect
+        x={region.x + 3}
+        y={controlY}
+        width={searchWidth}
+        height={5}
+        strokeWidth={0.4}
+        className="fill-landing-hero/50 stroke-landing-light"
+      />
+      {controlIndexes.map((controlIndex) => (
+        <rect
+          key={controlIndex}
+          x={region.x + 3 + searchWidth + 2 + controlIndex * (controlWidth + 2)}
+          y={controlY}
+          width={controlWidth}
+          height={5}
+          strokeWidth={0.4}
+          className="fill-landing-hero/50 stroke-landing-light"
+        />
+      ))}
+    </g>
+  );
+}
+
+/** A row of tabs, the first one selected. */
+function TabsSketch({ region }: { region: TutorialMapRegion }) {
+  const tabCount = 4;
+  const tabWidth = Math.min(18, (region.width - 6 - 1.5 * (tabCount - 1)) / tabCount);
+  const tabY = region.y + Math.max(SKETCH_TOP, region.height - 7);
+  const tabIndexes = Array.from({ length: tabCount }, (_, tabIndex) => tabIndex);
+  return (
+    <g>
+      {tabIndexes.map((tabIndex) => (
+        <rect
+          key={tabIndex}
+          x={region.x + 3 + tabIndex * (tabWidth + 1.5)}
+          y={tabY}
+          width={tabWidth}
+          height={4.5}
+          strokeWidth={0.4}
+          className={tabIndex === 0 ? "fill-landing-ink stroke-landing-ink" : "fill-landing-hero/50 stroke-landing-light"}
+        />
+      ))}
+    </g>
+  );
+}
+
+/** A dark header row over striped data rows, as many as fit. */
+function TableSketch({ region }: { region: TutorialMapRegion }) {
+  const tableX = region.x + 3;
+  const tableWidth = region.width - 6;
+  const headerY = region.y + SKETCH_TOP;
+  // As many rows as fit under the header, none in a region too short for
+  // one — the header alone still reads as a table.
+  const rowCount = Math.max(0, Math.floor((region.height - SKETCH_TOP - 7.4) / 3.5) + 1);
+  const rowIndexes = Array.from({ length: rowCount }, (_, rowIndex) => rowIndex);
+  return (
+    <g>
+      <rect x={tableX} y={headerY} width={tableWidth} height={3} className="fill-landing-ink/70" />
+      {rowIndexes.map((rowIndex) => (
+        <rect
+          key={rowIndex}
+          x={tableX}
+          y={headerY + 4 + rowIndex * 3.5}
+          width={tableWidth}
+          height={2.4}
+          className={rowIndex % 2 === 0 ? "fill-landing-light/70" : "fill-landing-light/40"}
+        />
+      ))}
+    </g>
+  );
+}
+
+/** Two axes, with a line plotted across them. */
+function ChartSketch({ region }: { region: TutorialMapRegion }) {
+  const plotLeft = region.x + 5;
+  const plotRight = region.x + region.width - 4;
+  const plotTop = region.y + SKETCH_TOP;
+  const plotBottom = region.y + region.height - 3;
+  const plotHeight = plotBottom - plotTop;
+  const pointSpacing = (plotRight - plotLeft) / (CHART_LINE_SHARES.length - 1);
+  const linePoints = CHART_LINE_SHARES.map(
+    (share, pointIndex) => `${plotLeft + pointIndex * pointSpacing},${plotBottom - share * plotHeight}`
+  ).join(" ");
+  return (
+    <g>
+      <polyline
+        points={`${plotLeft},${plotTop} ${plotLeft},${plotBottom} ${plotRight},${plotBottom}`}
+        fill="none"
+        strokeWidth={0.4}
+        className="stroke-landing-light"
+      />
+      <polyline points={linePoints} fill="none" strokeWidth={0.7} className="stroke-locker-model" />
+    </g>
+  );
+}
+
+/** A short bar chart. */
+function BarsSketch({ region }: { region: TutorialMapRegion }) {
+  const plotLeft = region.x + 5;
+  const plotBottom = region.y + region.height - 3;
+  const plotHeight = plotBottom - (region.y + SKETCH_TOP);
+  const barSlot = (region.width - 9) / BAR_SHARES.length;
+  return (
+    <g>
+      {BAR_SHARES.map((share, barIndex) => (
+        <rect
+          key={barIndex}
+          x={plotLeft + barIndex * barSlot + barSlot * 0.15}
+          y={plotBottom - share * plotHeight}
+          width={barSlot * 0.7}
+          height={share * plotHeight}
+          className={barIndex === 3 ? "fill-locker-leather" : "fill-landing-light"}
+        />
+      ))}
+    </g>
+  );
+}
+
+/** A grid of small cards, as many as the region has room for. */
+function CardGridSketch({ region }: { region: TutorialMapRegion }) {
+  const innerWidth = region.width - 6;
+  const innerHeight = region.height - SKETCH_TOP - 3;
+  const columnCount = Math.max(1, Math.floor((innerWidth + GRID_GAP) / (MIN_GRID_CARD_WIDTH + GRID_GAP)));
+  const rowCount = Math.max(1, Math.floor((innerHeight + GRID_GAP) / (MIN_GRID_CARD_HEIGHT + GRID_GAP)));
+  const cardWidth = (innerWidth - GRID_GAP * (columnCount - 1)) / columnCount;
+  const cardHeight = (innerHeight - GRID_GAP * (rowCount - 1)) / rowCount;
+  const cardIndexes = Array.from({ length: columnCount * rowCount }, (_, cardIndex) => cardIndex);
+  return (
+    <g>
+      {cardIndexes.map((cardIndex) => {
+        const cardX = region.x + 3 + (cardIndex % columnCount) * (cardWidth + GRID_GAP);
+        const cardY = region.y + SKETCH_TOP + Math.floor(cardIndex / columnCount) * (cardHeight + GRID_GAP);
+        return (
+          <g key={cardIndex}>
+            <rect
+              x={cardX}
+              y={cardY}
+              width={cardWidth}
+              height={cardHeight}
+              strokeWidth={0.4}
+              className="fill-landing-hero/50 stroke-landing-light"
+            />
+            <circle cx={cardX + 3} cy={cardY + 3} r={1.4} className="fill-landing-light" />
+            <rect x={cardX + 5.5} y={cardY + 2.4} width={cardWidth * 0.45} height={1.2} className="fill-landing-light" />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/** Labelled inputs, with the form's submit button under them. */
+function FormSketch({ region }: { region: TutorialMapRegion }) {
+  // Up to four fields, as many as fit above the button — none in a region
+  // too short for one, where the button alone stands for the form.
+  const fieldCount = Math.max(0, Math.min(4, Math.floor((region.height - SKETCH_TOP - 5.5) / 7)));
+  const fieldIndexes = Array.from({ length: fieldCount }, (_, fieldIndex) => fieldIndex);
+  const fieldWidth = Math.min(region.width - 6, 60);
+  const buttonY = region.y + SKETCH_TOP + fieldCount * 7 + 0.5;
+  return (
+    <g>
+      {fieldIndexes.map((fieldIndex) => {
+        const fieldY = region.y + SKETCH_TOP + fieldIndex * 7;
+        return (
+          <g key={fieldIndex}>
+            <rect x={region.x + 3} y={fieldY} width={10} height={1.2} className="fill-landing-light" />
+            <rect
+              x={region.x + 3}
+              y={fieldY + 2}
+              width={fieldWidth}
+              height={3.6}
+              strokeWidth={0.4}
+              className="fill-landing-hero/50 stroke-landing-light"
+            />
+          </g>
+        );
+      })}
+      <rect x={region.x + 3} y={buttonY} width={16} height={4} className="fill-landing-ink" />
+    </g>
+  );
+}
+
+/** A half-court diagram: the floor, the key and the three-point arc. */
+function CourtSketch({ region }: { region: TutorialMapRegion }) {
+  const courtTop = region.y + SKETCH_TOP;
+  const courtHeight = region.height - SKETCH_TOP - 3;
+  const courtWidth = Math.min(region.width - 6, courtHeight * 1.6);
+  const courtLeft = region.x + (region.width - courtWidth) / 2;
+  const middleX = courtLeft + courtWidth / 2;
+  const keyWidth = courtWidth * 0.3;
+  const arcRadius = courtWidth * 0.4;
+  return (
+    <g fill="none" strokeWidth={0.5} className="stroke-locker-leather">
+      <rect x={courtLeft} y={courtTop} width={courtWidth} height={courtHeight} className="fill-locker-leather/10" />
+      <rect x={middleX - keyWidth / 2} y={courtTop} width={keyWidth} height={courtHeight * 0.55} />
+      <path
+        d={`M ${middleX - arcRadius} ${courtTop} A ${arcRadius} ${arcRadius} 0 0 0 ${middleX + arcRadius} ${courtTop}`}
+      />
+    </g>
+  );
+}
+
 function RegionSketch({ region }: { region: TutorialMapRegion }) {
   switch (region.sketch) {
     case "matchup":
@@ -218,6 +454,24 @@ function RegionSketch({ region }: { region: TutorialMapRegion }) {
       return <ValueSketch region={region} />;
     case "stat-blocks":
       return <StatBlocksSketch region={region} />;
+    case "page-header":
+      return <PageHeaderSketch region={region} />;
+    case "filters":
+      return <FiltersSketch region={region} />;
+    case "tabs":
+      return <TabsSketch region={region} />;
+    case "table":
+      return <TableSketch region={region} />;
+    case "chart":
+      return <ChartSketch region={region} />;
+    case "bars":
+      return <BarsSketch region={region} />;
+    case "card-grid":
+      return <CardGridSketch region={region} />;
+    case "form":
+      return <FormSketch region={region} />;
+    case "court":
+      return <CourtSketch region={region} />;
     case "help-button":
       return <HelpButtonSketch region={region} />;
   }

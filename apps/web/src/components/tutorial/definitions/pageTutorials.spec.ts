@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { TUTORIAL_PAGE_FRAME } from "@/lib/pageTutorial";
-import { HOME_TUTORIAL, HOME_TUTORIAL_ID } from "./homeTutorial";
+import { ALL_PAGE_TUTORIALS } from "./allPageTutorials";
 
-// The tutorial is data, so nothing but these checks stops a typo in a region
+// Tutorials are data, so nothing but these checks stops a typo in a region
 // id from silently drawing a step with nothing highlighted, or a region from
 // spilling out of the drawn page into the strips the badges sit in.
 
@@ -12,49 +12,59 @@ import { HOME_TUTORIAL, HOME_TUTORIAL_ID } from "./homeTutorial";
 const API_TUTORIAL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const API_MAX_TUTORIAL_ID_LENGTH = 64;
 
-describe("HOME_TUTORIAL", () => {
+describe("ALL_PAGE_TUTORIALS", () => {
+  // Two pages sharing an id would share one "seen" row: seeing either would
+  // silently spend the other.
+  it("gives every tutorial its own id", () => {
+    const tutorialIds = ALL_PAGE_TUTORIALS.map((tutorial) => tutorial.id);
+
+    expect(new Set(tutorialIds).size).toBe(tutorialIds.length);
+  });
+});
+
+describe.each(ALL_PAGE_TUTORIALS.map((tutorial) => [tutorial.id, tutorial] as const))("the %s tutorial", (_, tutorial) => {
   it("has an id the API will accept", () => {
-    expect(HOME_TUTORIAL.id).toBe(HOME_TUTORIAL_ID);
-    expect(HOME_TUTORIAL.id).toMatch(API_TUTORIAL_ID_PATTERN);
-    expect(HOME_TUTORIAL.id.length).toBeLessThanOrEqual(API_MAX_TUTORIAL_ID_LENGTH);
+    expect(tutorial.id).toMatch(API_TUTORIAL_ID_PATTERN);
+    expect(tutorial.id.length).toBeLessThanOrEqual(API_MAX_TUTORIAL_ID_LENGTH);
   });
 
   it("gives every region a unique id", () => {
-    const regionIds = HOME_TUTORIAL.regions.map((region) => region.id);
+    const regionIds = tutorial.regions.map((region) => region.id);
 
     expect(new Set(regionIds).size).toBe(regionIds.length);
   });
 
   it("points every step at a region that exists, or at the whole page", () => {
-    const regionIds = new Set(HOME_TUTORIAL.regions.map((region) => region.id));
+    const regionIds = new Set(tutorial.regions.map((region) => region.id));
 
-    for (const step of HOME_TUTORIAL.steps) {
+    for (const step of tutorial.steps) {
       if (step.regionId !== null) expect(regionIds).toContain(step.regionId);
     }
   });
 
   it("explains every region it draws", () => {
-    const explainedRegionIds = new Set(HOME_TUTORIAL.steps.map((step) => step.regionId));
+    const explainedRegionIds = new Set(tutorial.steps.map((step) => step.regionId));
 
-    for (const region of HOME_TUTORIAL.regions) {
+    for (const region of tutorial.regions) {
       expect(explainedRegionIds).toContain(region.id);
     }
   });
 
   it("opens on the whole page and ends on where to find it again", () => {
-    const steps = HOME_TUTORIAL.steps;
+    const steps = tutorial.steps;
+    const lastRegion = tutorial.regions.find((region) => region.id === steps[steps.length - 1].regionId);
 
     expect(steps[0].regionId).toBeNull();
-    expect(steps[steps.length - 1].regionId).toBe("help-button");
+    expect(lastRegion?.sketch).toBe("help-button");
   });
 
   // Titles key the progress dots, and a repeated title would also read as a
   // repeated step.
   it("titles every step uniquely, and gives each something to say", () => {
-    const titles = HOME_TUTORIAL.steps.map((step) => step.title);
+    const titles = tutorial.steps.map((step) => step.title);
 
     expect(new Set(titles).size).toBe(titles.length);
-    for (const step of HOME_TUTORIAL.steps) {
+    for (const step of tutorial.steps) {
       expect(step.summary.trim()).not.toBe("");
       expect(step.points.length).toBeGreaterThan(0);
     }
@@ -64,7 +74,7 @@ describe("HOME_TUTORIAL", () => {
     const frameRight = TUTORIAL_PAGE_FRAME.x + TUTORIAL_PAGE_FRAME.width;
     const frameBottom = TUTORIAL_PAGE_FRAME.y + TUTORIAL_PAGE_FRAME.height;
 
-    for (const region of HOME_TUTORIAL.regions) {
+    for (const region of tutorial.regions) {
       expect(region.x).toBeGreaterThanOrEqual(TUTORIAL_PAGE_FRAME.x);
       expect(region.y).toBeGreaterThanOrEqual(TUTORIAL_PAGE_FRAME.y);
       expect(region.x + region.width).toBeLessThanOrEqual(frameRight);

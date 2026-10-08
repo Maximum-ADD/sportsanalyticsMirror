@@ -12,6 +12,8 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
 import { PageLoading } from "@/components/ui/loading-overlay";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { OPTIMIZER_TUTORIAL } from "@/components/tutorial/definitions/optimizerTutorial";
 import type { LineupSlot, Player, PlayerPredictionListItem, PlayerPredictionSummary } from "@/types/nba";
 
 // A fantasy lineup is a 5-player roster (see apps/optimizer/optimize.py) —
@@ -792,6 +794,15 @@ export function OptimizerPage() {
           />
         )}
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Only on this, the loaded branch — the
+          tutorial walks through the totals, the table and the solver checks,
+          none of which the no-lineup, error or loading branches above
+          render. Kept outside every Reveal — their rise animation is a
+          transform, which would pin the tutorial's fixed overlay and button
+          to that block instead of the viewport. */}
+      <PageTutorial tutorial={OPTIMIZER_TUTORIAL} />
     </div>
   );
 }

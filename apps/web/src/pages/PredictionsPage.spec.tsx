@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PredictionsPage } from "./PredictionsPage";
@@ -24,6 +24,9 @@ vi.mock("@/lib/authClient", () => ({
 
 vi.mock("@/lib/meApi", () => ({
   fetchMe: vi.fn(),
+  // The page tutorial's writes — see the "?" button test below.
+  markTutorialSeen: vi.fn(),
+  updateMe: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -493,5 +496,23 @@ describe("PredictionsPage", () => {
     expect(screen.getByText("3 games", { exact: false })).toBeInTheDocument();
     expect(screen.getByText(/most predictable team/i)).toBeInTheDocument();
     expect(screen.getByText("Lakers")).toBeInTheDocument();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the predictions page tutorial over the page", async () => {
+    const user = userEvent.setup();
+    mockGamesByStatus([makeGame({ homeScore: null, awayScore: null, prediction: PREDICTION })]);
+
+    const { container } = renderWithProviders(<main><PredictionsPage /></main>);
+    await screen.findAllByText("LAL 62%", { exact: false });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the predictions page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · predictions" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to Predictions" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 });

@@ -46,6 +46,9 @@ vi.mock("@/lib/authClient", () => ({
 
 vi.mock("@/lib/meApi", () => ({
   fetchMe: vi.fn(),
+  // The page tutorial's writes — see the "?" button test below.
+  markTutorialSeen: vi.fn(),
+  updateMe: vi.fn(),
 }));
 
 vi.mock("@/lib/adminApi", () => ({
@@ -1065,5 +1068,22 @@ describe("AdminPage", () => {
       await user.click(screen.getByRole("radio", { name: "API Keys" }));
       expect(await screen.findByText("Could not load API consumers.")).toBeInTheDocument();
     });
+  });
+
+  // ME carries no seenTutorialIds, so the tutorial never opens by itself here
+  // (usePageTutorial's own spec covers that); the "?" button needs neither.
+  it("offers a ? button that replays the admin page tutorial over the page", async () => {
+    setUp();
+    const user = userEvent.setup();
+    vi.mocked(fetchAdminTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 10, total: 1 });
+
+    renderWithProviders(<AdminPage />);
+    expect(await screen.findByText("Los Angeles Lakers")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the admin page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · admin" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to admin" })).toBeInTheDocument();
   });
 });

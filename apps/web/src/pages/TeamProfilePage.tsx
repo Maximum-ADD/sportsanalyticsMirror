@@ -6,6 +6,8 @@ import { PageLoading, SectionLoading } from "@/components/ui/loading-overlay";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowTeamButton } from "@/components/FollowTeamButton";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { TEAM_PROFILE_TUTORIAL } from "@/components/tutorial/definitions/teamProfileTutorial";
 import { Reveal } from "@/components/landing/Reveal";
 import { TeamBadge } from "@/components/TeamBadge";
 
@@ -180,6 +182,14 @@ export function TeamProfilePage() {
           </SectionLoading>
         </Reveal>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Only in this loaded branch: the
+          loading and error screens above have none of the sections it points
+          at. Kept outside every Reveal — their rise animation is a transform,
+          which would pin the tutorial's fixed overlay and button to that
+          block instead of the viewport. */}
+      <PageTutorial tutorial={TEAM_PROFILE_TUTORIAL} />
     </div>
   );
 }

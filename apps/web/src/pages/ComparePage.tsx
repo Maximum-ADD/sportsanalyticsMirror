@@ -11,6 +11,8 @@ import { SectionLoading } from "@/components/ui/loading-overlay";
 import { ErrorState } from "@/components/ErrorState";
 import { Reveal } from "@/components/landing/Reveal";
 import { ComparisonTraitsRadar } from "@/components/ComparisonTraitsRadar";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { COMPARE_TUTORIAL } from "@/components/tutorial/definitions/compareTutorial";
 import { cn } from "@/lib/utils";
 import { NO_VALUE, formatAge, formatHeight } from "@/lib/playerBio";
 import { formatNumber, formatPercentage, formatPlusMinus, formatRatio } from "@/lib/advancedStats";
@@ -707,6 +709,12 @@ export function ComparePage() {
           </Reveal>
         )}
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Kept outside every Reveal — their
+          rise animation is a transform, which would pin the tutorial's fixed
+          overlay and button to that block instead of the viewport. */}
+      <PageTutorial tutorial={COMPARE_TUTORIAL} />
     </div>
   );
 }

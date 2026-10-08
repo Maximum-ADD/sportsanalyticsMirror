@@ -10,6 +10,7 @@ import {
   fetchPlayerStatsSplits,
 } from "@/lib/nbaApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type {
   PlayerSeasonSplits,
   Player,
@@ -599,5 +600,30 @@ describe("PlayerProfilePage matchup analysis", () => {
     // Back on a played season the label reverts to the charted-game count.
     await user.click(within(chipGroup).getByRole("button", { name: "2025-26" }));
     expect(screen.getByText("1 game charted")).toBeInTheDocument();
+  });
+});
+
+describe("PlayerProfilePage tutorial", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the player profile page tutorial over the page", async () => {
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer({ birthDate: "1984-12-30" }));
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><PlayerProfilePage /></main>);
+    await screen.findByRole("heading", { name: "LeBron James" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the player profile page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · player profile" });
+    expect(within(dialog).getByRole("heading", { name: "One player, in full" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 });

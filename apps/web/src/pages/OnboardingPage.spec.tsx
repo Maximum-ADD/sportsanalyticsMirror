@@ -1,12 +1,14 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OnboardingPage } from "./OnboardingPage";
 import { useSession } from "@/lib/authClient";
-import { fetchMe, updateMe, followPlayer, unfollowPlayer, fetchSuggestedPlayers } from "@/lib/meApi";
+import { fetchMe, updateMe, followPlayer, unfollowPlayer, fetchSuggestedPlayers, markTutorialSeen } from "@/lib/meApi";
 import { fetchTeams } from "@/lib/nbaApi";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import type { MeProfile, Player, SuggestedPlayer, Team } from "@/types/nba";
 
 vi.mock("@/lib/authClient", () => ({
@@ -19,6 +21,8 @@ vi.mock("@/lib/meApi", () => ({
   followPlayer: vi.fn(),
   unfollowPlayer: vi.fn(),
   fetchSuggestedPlayers: vi.fn(),
+  // The page tutorial's writes — see the "?" button tests below.
+  markTutorialSeen: vi.fn(),
 }));
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -90,6 +94,67 @@ describe("OnboardingPage", () => {
     renderWithProviders(<OnboardingPage />);
 
     expect(await screen.findByRole("heading", { name: "Choose a username" })).toBeInTheDocument();
+  });
+
+  // NOT_ONBOARDED_ME carries no seenTutorialIds, so the tutorial never opens
+  // by itself here (usePageTutorial's own spec covers that); the "?" button
+  // needs none.
+  it("offers a ? button that replays the onboarding page tutorial over the page", async () => {
+    setUpSignedInNotOnboarded();
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<main><OnboardingPage /></main>);
+    await screen.findByRole("heading", { name: "Choose a username" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the onboarding page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · onboarding" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome — let's set you up" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
+  });
+
+  // Regression: closing a tutorial the account hasn't recorded refetches
+  // GET /v1/me, which after step 1 carries the new username — and the
+  // "already onboarded" redirect used to read that as a reason to bounce
+  // to /home before the team and players steps.
+  it("stays on the team step when the tutorial is closed after the username is saved", async () => {
+    setUpSignedInNotOnboarded();
+    vi.mocked(fetchMe).mockResolvedValue({ ...NOT_ONBOARDED_ME, seenTutorialIds: [], autoOpenTutorials: false });
+    vi.mocked(updateMe).mockResolvedValue(NOT_ONBOARDED_ME);
+    vi.mocked(markTutorialSeen).mockResolvedValue({ seen: true });
+    const user = userEvent.setup();
+    // Real routes, so a bounce to /home lands somewhere visible rather than
+    // re-rendering this page into the same redirect forever.
+    renderWithProviders(
+      <Routes>
+        <Route path="/" element={<OnboardingPage />} />
+        <Route path="/home" element={<p>Home page</p>} />
+      </Routes>
+    );
+
+    await user.type(await screen.findByLabelText("Username"), "hoopsfan");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled());
+    vi.mocked(fetchMe).mockResolvedValue({
+      ...NOT_ONBOARDED_ME,
+      username: "hoopsfan",
+      seenTutorialIds: [],
+      autoOpenTutorials: false,
+    });
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("heading", { name: "Pick your team" })).toBeInTheDocument();
+
+    const fetchCountBeforeClose = vi.mocked(fetchMe).mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "Show the onboarding page tutorial" }));
+    await user.click(screen.getByRole("button", { name: "Skip this tutorial" }));
+
+    await waitFor(() => expect(vi.mocked(fetchMe).mock.calls.length).toBeGreaterThan(fetchCountBeforeClose));
+    expect(markTutorialSeen).toHaveBeenCalledWith("onboarding");
+    // Let the refetched profile land and re-render before checking.
+    await waitFor(() => expect(vi.mocked(fetchMe).mock.results.at(-1)?.type).toBe("return"));
+    await act(async () => {});
+    expect(screen.queryByText("Home page")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pick your team" })).toBeInTheDocument();
   });
 
   it("rejects an invalid username format before ever calling the API", async () => {

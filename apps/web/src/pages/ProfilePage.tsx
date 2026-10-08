@@ -10,6 +10,8 @@ import { MyProspectCard } from "@/components/becomepro/MyProspectCard";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { PROFILE_TUTORIAL } from "@/components/tutorial/definitions/profileTutorial";
 import { authClient } from "@/lib/authClient";
 import { invalidatePreferenceQueries } from "@/lib/preferenceQueries";
 import { deleteSavedLineup, fetchSavedLineups, updateMe, uploadAvatar, unfollowPlayer } from "@/lib/meApi";
@@ -578,6 +580,14 @@ export function ProfilePage() {
           </div>
         </Reveal>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Only in this branch, once the
+          profile has loaded — the loading and error screens above have none
+          of the sections it points at. Kept outside every Reveal: their
+          rise animation is a transform, which would pin the tutorial's fixed
+          overlay and button to that block instead of the viewport. */}
+      <PageTutorial tutorial={PROFILE_TUTORIAL} />
     </div>
   );
 }

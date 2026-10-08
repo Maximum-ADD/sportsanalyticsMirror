@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DatasetsPage } from "./DatasetsPage";
@@ -6,6 +6,7 @@ import { downloadDatasetRelease, fetchDatasetReleases, publishDatasetRelease } f
 import { useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
 import { renderWithProviders } from "@/test/renderWithProviders";
+import { expectNoAccessibilityViolations } from "@/test/accessibility";
 
 vi.mock("@/lib/datasetsApi", () => ({
   fetchDatasetReleases: vi.fn(),
@@ -91,6 +92,24 @@ describe("DatasetsPage", () => {
 
     await user.click(screen.getByText("2025-26.1"));
     expect(screen.queryByText("abc123")).not.toBeInTheDocument();
+  });
+
+  // Signed out here, so there is no profile to open the tutorial by itself
+  // (usePageTutorial's own spec covers that); the "?" button needs none.
+  it("offers a ? button that replays the datasets page tutorial over the page", async () => {
+    const user = userEvent.setup();
+    signInAs(null);
+    mockReleases([makeRelease()]);
+    const { container } = renderWithProviders(<main><DatasetsPage /></main>);
+    await screen.findByText("2025-26.1");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the datasets page tutorial" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Page tutorial · datasets" });
+    expect(within(dialog).getByRole("heading", { name: "Welcome to datasets" })).toBeInTheDocument();
+    // The tutorial opens over the page — run axe over the open dialog too.
+    await expectNoAccessibilityViolations(container);
   });
 
   it("hides publishedBy when null", async () => {

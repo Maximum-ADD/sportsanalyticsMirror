@@ -5,7 +5,7 @@ import { ModelAccuracyLedger } from "@/components/home/ModelAccuracyLedger";
 import { SavedShelfCard } from "@/components/home/SavedShelfCard";
 import { WatchlistBoard } from "@/components/home/WatchlistBoard";
 import { YourTeamsList } from "@/components/home/YourTeamsList";
-import { HOME_TUTORIAL } from "@/components/home/homeTutorial";
+import { HOME_TUTORIAL } from "@/components/tutorial/definitions/homeTutorial";
 import { Reveal } from "@/components/landing/Reveal";
 import { PageTutorial } from "@/components/tutorial/PageTutorial";
 

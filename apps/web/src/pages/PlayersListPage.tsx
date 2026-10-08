@@ -10,6 +10,8 @@ import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { PlayersFilterBar, type PlayerSortKey, type PlayerSortOrder } from "@/components/PlayersFilterBar";
 import { Sparkline } from "@/components/Sparkline";
 import { TeamBadge } from "@/components/TeamBadge";
+import { PageTutorial } from "@/components/tutorial/PageTutorial";
+import { PLAYERS_TUTORIAL } from "@/components/tutorial/definitions/playersTutorial";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { SectionLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
@@ -580,6 +582,14 @@ export function PlayersListPage() {
         )}
         </Reveal>
       </div>
+
+      {/* The page tutorial: opens by itself on this account's first visit,
+          and the "?" button replays it. Kept outside every Reveal — their
+          rise animation is a transform, which would pin the tutorial's fixed
+          overlay and button to that block instead of the viewport. Only in
+          the loaded branch: the error state above has none of the sections
+          the tutorial points at. */}
+      <PageTutorial tutorial={PLAYERS_TUTORIAL} />
     </div>
   );
 }
