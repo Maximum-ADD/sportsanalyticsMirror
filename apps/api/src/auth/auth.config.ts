@@ -124,6 +124,18 @@ export const auth = betterAuth({
       },
     },
   },
+  databaseHooks: {
+    session: {
+      create: {
+        // BetterAuth records every session's IP address and user agent, and
+        // nothing in this app reads either. Data minimisation (POPIA s10)
+        // says not to keep what isn't needed, so they're dropped before the
+        // row is written. This doesn't touch BetterAuth's per-IP rate
+        // limiting, which reads the request's IP rather than this column.
+        before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }),
+      },
+    },
+  },
   session: {
     // How recently the user must have signed in for /auth/delete-user to
     // succeed without extra verification. Default is 24h; a Google-only
