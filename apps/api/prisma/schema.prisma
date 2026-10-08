@@ -130,6 +130,8 @@ model User {
 model CustomStatistic {
   id         String   @id @default(uuid())
   name       String
+  // The current expression and its version number. Every expression the
+  // statistic has ever had, this one included, is in versions.
   expression String
   version    Int      @default(1)
   createdAt  DateTime @default(now())
@@ -137,7 +139,26 @@ model CustomStatistic {
   authorId   String
   author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
+  versions CustomStatisticVersion[]
+
   @@unique([authorId, name])
+}
+
+// One row per expression a custom statistic has had, written alongside the
+// create or edit that produced it and never changed afterwards. Without it
+// an edit overwrote the formula, so a figure published under version 1 could
+// no longer be recomputed once version 2 existed — the brief's "a figure
+// published under one definition stays reproducible after it changes".
+// GET /v1/custom-statistics/:id/value?version= evaluates any of them.
+model CustomStatisticVersion {
+  id          String          @id @default(uuid())
+  statisticId String
+  statistic   CustomStatistic @relation(fields: [statisticId], references: [id], onDelete: Cascade)
+  version     Int
+  expression  String
+  createdAt   DateTime        @default(now())
+
+  @@unique([statisticId, version])
 }
 
 model Session {
