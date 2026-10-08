@@ -96,10 +96,11 @@ describe("App routes", () => {
     expect(screen.getByRole("link", { name: "Predictions" })).toHaveAttribute("href", "/predictions");
   });
 
-  it.each(PUBLIC_ROUTES)("keeps %s public", (path, pageText) => {
+  it.each(PUBLIC_ROUTES)("keeps %s public", async (path, pageText) => {
     renderAt(path);
 
-    expect(screen.getByText(pageText)).toBeInTheDocument();
+    // findBy: pages are lazy-loaded, so they render a tick after the shell.
+    expect(await screen.findByText(pageText)).toBeInTheDocument();
     expect(screen.queryByText("Sign in required")).not.toBeInTheDocument();
   });
 

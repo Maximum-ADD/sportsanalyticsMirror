@@ -1,25 +1,48 @@
+import { lazy, type ComponentType } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { LandingPage } from "./pages/LandingPage";
-import { HomePage } from "./pages/HomePage";
-import { PlayersListPage } from "./pages/PlayersListPage";
-import { PlayerProfilePage } from "./pages/PlayerProfilePage";
-import { ComparePage } from "./pages/ComparePage";
-import { TeamsListPage } from "./pages/TeamsListPage";
-import { TeamProfilePage } from "./pages/TeamProfilePage";
-import { OptimizerPage } from "./pages/OptimizerPage";
-import { PredictionsPage } from "./pages/PredictionsPage";
-import { GameDetailPage } from "./pages/GameDetailPage";
-import { OnboardingPage } from "./pages/OnboardingPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { AdminPage } from "./pages/AdminPage";
-import { DatasetsPage } from "./pages/DatasetsPage";
-import { BecomeProPage } from "./pages/BecomeProPage";
-import { LiveGamesPage } from "./pages/LiveGamesPage";
-import { LiveGamePage } from "./pages/LiveGamePage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProfileGate } from "./components/ProfileGate";
 import { AdminGate } from "./components/AdminGate";
+
+/**
+ * Wraps a page in React.lazy, so its code is downloaded the first time its
+ * route renders instead of with the first page a visitor opens.
+ *
+ * Every page here is a named export, and React.lazy expects a default one,
+ * so this picks the named component off the loaded module.
+ *
+ * @param loadPageModule - the dynamic import() of the page's module.
+ * @param pageName - the page component's export name in that module.
+ */
+function lazyPage<PageModule, PageName extends keyof PageModule>(
+  loadPageModule: () => Promise<PageModule>,
+  pageName: PageName
+) {
+  return lazy(async () => ({ default: (await loadPageModule())[pageName] as ComponentType }));
+}
+
+// The landing page stays in the main bundle: it is the first page most
+// visitors see, so splitting it out would only add a second request before
+// anything paints. Every other page is its own chunk; AppLayout's Suspense
+// boundary shows a spinner inside the shell while one loads.
+const HomePage = lazyPage(() => import("./pages/HomePage"), "HomePage");
+const PlayersListPage = lazyPage(() => import("./pages/PlayersListPage"), "PlayersListPage");
+const PlayerProfilePage = lazyPage(() => import("./pages/PlayerProfilePage"), "PlayerProfilePage");
+const ComparePage = lazyPage(() => import("./pages/ComparePage"), "ComparePage");
+const TeamsListPage = lazyPage(() => import("./pages/TeamsListPage"), "TeamsListPage");
+const TeamProfilePage = lazyPage(() => import("./pages/TeamProfilePage"), "TeamProfilePage");
+const OptimizerPage = lazyPage(() => import("./pages/OptimizerPage"), "OptimizerPage");
+const PredictionsPage = lazyPage(() => import("./pages/PredictionsPage"), "PredictionsPage");
+const GameDetailPage = lazyPage(() => import("./pages/GameDetailPage"), "GameDetailPage");
+const OnboardingPage = lazyPage(() => import("./pages/OnboardingPage"), "OnboardingPage");
+const ProfilePage = lazyPage(() => import("./pages/ProfilePage"), "ProfilePage");
+const AdminPage = lazyPage(() => import("./pages/AdminPage"), "AdminPage");
+const DatasetsPage = lazyPage(() => import("./pages/DatasetsPage"), "DatasetsPage");
+const BecomeProPage = lazyPage(() => import("./pages/BecomeProPage"), "BecomeProPage");
+const LiveGamesPage = lazyPage(() => import("./pages/LiveGamesPage"), "LiveGamesPage");
+const LiveGamePage = lazyPage(() => import("./pages/LiveGamePage"), "LiveGamePage");
 
 function App() {
   return (
