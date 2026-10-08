@@ -10,6 +10,7 @@ import {
   Req,
   HttpStatus,
 } from "@nestjs/common";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { RolesGuard } from "../common/roles.guard.js";
@@ -20,6 +21,7 @@ import {
   PullOptions,
 } from "./admin-ingestion.service.js";
 
+@ApiTags("admin")
 @Controller("v1/admin/ingestion")
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles("ADMIN")
@@ -31,6 +33,7 @@ export class AdminIngestionController {
    * Returns the current schedule configuration.
    */
   @Get("schedule")
+  @ApiOperation({ summary: "Get the automatic ingestion schedule (admin only)" })
   async getSchedule() {
     return this.ingestionService.getSchedule();
   }
@@ -40,6 +43,7 @@ export class AdminIngestionController {
    * Updates the schedule configuration.
    */
   @Put("schedule")
+  @ApiOperation({ summary: "Set how often new NBA data is pulled automatically: hourly, daily, weekly or never (admin only)" })
   async updateSchedule(
     @Body() body: { frequency: IngestionFrequency },
     @Req() request: { user: { id: string } },
@@ -56,6 +60,7 @@ export class AdminIngestionController {
    * behaviour — the current season's recent games plus the postseason.
    */
   @Post("pull")
+  @ApiOperation({ summary: "Queue a manual ingestion pull, optionally for one season and date window (admin only)" })
   async triggerPull(
     @Req() request: { user: { id: string } },
     @Body() body: PullOptions = {},
@@ -73,6 +78,7 @@ export class AdminIngestionController {
    * shows while the deployed API waits on a pull worker.
    */
   @Get("requests")
+  @ApiOperation({ summary: "Recent queued pulls and how each ended (admin only)" })
   async listPullRequests() {
     return this.ingestionService.listPullRequests();
   }
@@ -83,6 +89,8 @@ export class AdminIngestionController {
    * on another machine and can't be stopped from here, so 409 for those.
    */
   @Post("requests/:id/cancel")
+  @ApiOperation({ summary: "Cancel a queued pull no worker has started yet (admin only)" })
+  @ApiResponse({ status: 409, description: "The pull is running, finished or does not exist" })
   async cancelPullRequest(@Param("id") id: string) {
     const cancelled = await this.ingestionService.cancelPullRequest(id);
     if (!cancelled) {
@@ -100,6 +108,7 @@ export class AdminIngestionController {
    * Soft-deletes a batch.
    */
   @Delete("batches/:id")
+  @ApiOperation({ summary: "Soft-delete an ingestion batch (admin only)" })
   async deleteBatch(
     @Param("id") id: string,
     @Req() request: { user: { id: string } },

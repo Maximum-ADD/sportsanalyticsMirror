@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
+import { ApiPageQuery } from "../../common/openapi/api-docs.decorators.js";
 import { parseBody } from "../../common/parse-body.js";
 import { parsePageParams } from "../../common/pagination.js";
 import { SessionAuthGuard } from "../../common/session-auth.guard.js";
@@ -33,6 +35,7 @@ const createSavedComparisonSchema = z
 
 // The user's saved comparison shelf. Every route is scoped to the session's own
 // user id — the id in the URL is never sufficient on its own.
+@ApiTags("me")
 @Controller("v1/me/saved/comparisons")
 @UseGuards(SessionAuthGuard)
 export class SavedComparisonsController {
@@ -40,12 +43,15 @@ export class SavedComparisonsController {
 
   // GET /v1/me/saved/comparisons?page=&pageSize= — the signed-in user's saved comparisons, newest first, players included.
   @Get()
+  @ApiOperation({ summary: "Your saved player comparisons, newest first" })
+  @ApiPageQuery()
   listSavedComparisons(@Req() request: { user: { id: string } }, @Query() query: Record<string, unknown>) {
     return this.savedComparisonsService.getSavedComparisons(request.user.id, parsePageParams(query));
   }
 
   // POST /v1/me/saved/comparisons — saves a 2-4 player comparison for the signed-in user.
   @Post()
+  @ApiOperation({ summary: "Save a 2-4 player comparison" })
   createSavedComparison(@Req() request: { user: { id: string } }, @Body() body: unknown) {
     const payload = parseBody(createSavedComparisonSchema, body);
     return this.savedComparisonsService.createSavedComparison(request.user.id, payload.name, payload.playerIds);
@@ -53,6 +59,7 @@ export class SavedComparisonsController {
 
   // DELETE /v1/me/saved/comparisons/:id — removes one of the signed-in user's saved comparisons.
   @Delete(":id")
+  @ApiOperation({ summary: "Delete one of your saved comparisons" })
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteSavedComparison(@Req() request: { user: { id: string } }, @Param("id") id: string): Promise<void> {
     return this.savedComparisonsService.deleteSavedComparison(request.user.id, id);

@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from "@nestjs/
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { OptionalSessionGuard } from "../common/optional-session.guard.js";
+import { ApiKeyOrSessionAccess, ApiNotFoundError } from "../common/openapi/api-docs.decorators.js";
+import { TeamDto, TeamPageDto } from "./team.dto.js";
 import { TeamsService, type SuggestedPlayer } from "./teams.service.js";
 
 // Upper bound on the onboarding step's "suggested players" prompt — see
@@ -12,6 +14,7 @@ const MAX_SUGGESTED_PLAYERS = 20;
 
 @ApiTags("teams")
 @UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/teams")
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
@@ -22,7 +25,7 @@ export class TeamsController {
   @ApiQuery({ name: "search", required: false, description: "Search by team name, city, or abbreviation" })
   @ApiQuery({ name: "page", required: false, type: Number, description: "Page number" })
   @ApiQuery({ name: "pageSize", required: false, type: Number, description: "Items per page (default: 25, max: 100)" })
-  @ApiResponse({ status: 200, description: "Paginated team list" })
+  @ApiResponse({ status: 200, description: "Paginated team list", type: TeamPageDto })
   listTeams(@Query() query: Record<string, unknown>) {
     return this.teamsService.getTeams(query);
   }
@@ -31,6 +34,8 @@ export class TeamsController {
   // first. Declared before the :id route below so "elo-ratings" isn't
   // swallowed as a team id — Nest matches routes in declaration order.
   @Get("elo-ratings")
+  @ApiOperation({ summary: "Every team's current Elo rating, highest first" })
+  @ApiResponse({ status: 200, description: "Teams with their Elo ratings" })
   listEloRatings() {
     return this.teamsService.getEloRatings();
   }
@@ -77,8 +82,8 @@ export class TeamsController {
   @Get(":id")
   @ApiOperation({ summary: "Get team by ID" })
   @ApiParam({ name: "id", description: "Team UUID" })
-  @ApiResponse({ status: 200, description: "Team details" })
-  @ApiResponse({ status: 404, description: "Team not found" })
+  @ApiResponse({ status: 200, description: "Team details", type: TeamDto })
+  @ApiNotFoundError("Team not found")
   async getTeam(@Param("id") id: string) {
     const team = await this.teamsService.getTeamById(id);
     if (!team) {
