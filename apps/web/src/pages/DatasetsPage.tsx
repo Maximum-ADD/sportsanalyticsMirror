@@ -69,6 +69,7 @@ function PublishReleaseForm({ onPublished }: { onPublished: () => void }) {
       <p className="mt-1 text-[12px] text-locker-ink-muted">
         Cuts a new immutable snapshot of a season's current data. Publish a replacement after a
         correction — existing releases stay stale on purpose, so earlier analysis stays reproducible.
+        A season can only be released once some of its games have been played and reviewed.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <input
@@ -238,9 +239,21 @@ function ReleaseDetails({ release }: { release: DatasetRelease }) {
   );
 }
 
+/**
+ * True for a release with no player rows: no game of its season had been
+ * played and reviewed when it was published. The API refuses to publish one
+ * now, but releases published before that are still listed, and they used
+ * to count the season's whole loaded schedule as their games — so listed
+ * like any other release, one read as a season that was already loaded.
+ */
+function hasNoGameData(release: DatasetRelease): boolean {
+  return release.playersCount === 0;
+}
+
 function ReleaseRow({ release }: { release: DatasetRelease }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const detailsId = `release-details-${release.id}`;
+  const isEmpty = hasNoGameData(release);
 
   return (
     <div className="border border-landing-light bg-locker-surface">
@@ -262,6 +275,11 @@ function ReleaseRow({ release }: { release: DatasetRelease }) {
             <span className="rounded bg-landing-hero px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase">
               {release.season}
             </span>
+            {isEmpty && (
+              <span className="rounded bg-yellow-100 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-yellow-800 uppercase">
+                No game data
+              </span>
+            )}
             {release.isStale && (
               <span className="rounded bg-yellow-100 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-yellow-800 uppercase">
                 Stale
@@ -269,6 +287,12 @@ function ReleaseRow({ release }: { release: DatasetRelease }) {
             )}
           </div>
           <p className="mt-0.5 text-[12px] text-locker-ink-muted">{release.description}</p>
+          {isEmpty && (
+            <p className="mt-1 text-[11px] text-yellow-700">
+              No {release.season} games had been played when this release was published, so it has no
+              player rows.
+            </p>
+          )}
           {release.isStale && (
             <p className="mt-1 text-[11px] text-yellow-700">
               A correction landed after this snapshot was cut, so it no longer matches the source
@@ -279,8 +303,14 @@ function ReleaseRow({ release }: { release: DatasetRelease }) {
         </button>
 
         <div className="flex flex-wrap items-center gap-4 text-right font-mono text-[10px] text-locker-ink-muted uppercase">
-          <span>{release.playersCount} players</span>
-          <span>{release.gamesCount} games</span>
+          {/* Left off an empty release: an older one's games count is its
+              season's schedule, not games in the file (see hasNoGameData). */}
+          {!isEmpty && (
+            <>
+              <span>{release.playersCount} players</span>
+              <span>{release.gamesCount} games</span>
+            </>
+          )}
           <span>{new Date(release.publishedAt).toLocaleDateString()}</span>
         </div>
 

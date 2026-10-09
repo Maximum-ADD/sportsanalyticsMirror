@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { HttpStatus, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
+import { ApiException } from "../common/api-exception.js";
 import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -202,8 +203,15 @@ export class DatasetReleasesService {
   }
 
   // Generate the CSV content for a given season — one row per player
-  // with their season averages. Returns the raw CSV string.
-  async generateSeasonCsv(season: string): Promise<{ csv: string; rowCount: number; checksum: string }> {
+  // with their season averages. Returns the raw CSV string, its row count,
+  // and how many distinct games those rows were averaged over.
+  //
+  // gamesCount is counted here, from the very stat rows the file is built
+  // from, rather than by a separate count of the season's Game rows: those
+  // include every scheduled game not yet played (apps/ingestion/schedule.py
+  // loads a whole season's schedule ahead of time) and games still awaiting
+  // review, none of which are in the file.
+  async generateSeasonCsv(season: string): Promise<{ csv: string; rowCount: number; gamesCount: number; checksum: string }> {
     // Fetch all players with their game stats for this season.
     //
     // The explicit order is what makes the checksum reproducible. Without
@@ -226,6 +234,7 @@ export class DatasetReleasesService {
 
     const headerLine = DATASET_COLUMNS.map((c) => c.column).join(",");
     const lines: string[] = [headerLine];
+    const gameIds = new Set<string>();
 
     for (const player of players) {
       const stats = player.gameStats;
@@ -234,6 +243,7 @@ export class DatasetReleasesService {
       // Skip players with no games in this season — they have nothing
       // to export for it.
       if (gamesPlayed === 0) continue;
+      for (const stat of stats) gameIds.add(stat.gameId);
 
       const totalPoints = stats.reduce((s, g) => s + g.points, 0);
       const totalRebounds = stats.reduce((s, g) => s + g.rebounds, 0);
@@ -281,25 +291,34 @@ export class DatasetReleasesService {
     const csv = lines.join("\r\n") + "\r\n";
     const checksum = hashCsv(csv);
 
-    return { csv, rowCount: lines.length - 1, checksum };
+    return { csv, rowCount: lines.length - 1, gamesCount: gameIds.size, checksum };
   }
 
   // Publish a new dataset release — generates the CSV once, stores it with
   // its checksum on the DatasetRelease row, and returns the release without
   // the file (the caller only needs the metadata).
+  //
+  // Refused (409) for a season with no played, reviewed games: see
+  // describeSeasonWithNoGames.
   async publishRelease(params: {
     version: string;
     description: string;
     season: string;
     publishedById?: string;
   }): Promise<ReleaseMetadata> {
-    const { csv, rowCount, checksum } = await this.generateSeasonCsv(params.season);
+    const { csv, rowCount, gamesCount, checksum } = await this.generateSeasonCsv(params.season);
 
-    // Games in the season for the metadata. The player count comes from the
-    // CSV's own row count, which is already one row per distinct player with
-    // games in this season — counting PlayerGameStat rows instead would
-    // count player-games, a much larger and quite different number.
-    const gamesCount = await this.prisma.game.count({ where: { season: params.season } });
+    // A file with no player rows has nothing in it to analyse. Releases
+    // can't be withdrawn, so publishing one would leave a release on the
+    // Datasets page for a season that hasn't started — which, listed with a
+    // Download button like any other, reads as a season that's loaded.
+    if (rowCount === 0) throw await this.describeSeasonWithNoGames(params.season);
+
+    // Both counts describe the file itself. The player count is the CSV's
+    // own row count, already one row per distinct player with games in this
+    // season — counting PlayerGameStat rows instead would count
+    // player-games, a much larger and quite different number. The games
+    // count is the games those rows come from (see generateSeasonCsv).
     const playersCount = rowCount;
 
     const fieldSchema = DATASET_COLUMNS.map((c) => ({
@@ -323,6 +342,22 @@ export class DatasetReleasesService {
       },
       select: RELEASE_METADATA_SELECT,
     });
+  }
+
+  /**
+   * Why a season can't be released yet, worded for the admin who tried.
+   * Only counted on this refusal path, to tell a season whose schedule is
+   * loaded but hasn't been played (or reviewed) apart from a season name
+   * that matches no games at all — most likely a typo.
+   */
+  private async describeSeasonWithNoGames(season: string): Promise<ApiException> {
+    const loadedGames = await this.prisma.game.count({ where: { season } });
+    const games = loadedGames === 1 ? "1 game" : `${loadedGames} games`;
+    const message =
+      loadedGames === 0
+        ? `No games are loaded for season ${season}. Check the season name (e.g. 2025-26).`
+        : `Season ${season} has ${games} loaded, but none has been played and passed review yet, so a release would be an empty file. Publish one once games have been played.`;
+    return new ApiException(HttpStatus.CONFLICT, "NO_PLAYED_GAMES", message);
   }
 
   /**

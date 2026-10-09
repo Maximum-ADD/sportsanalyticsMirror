@@ -146,6 +146,7 @@ export class DatasetReleasesController {
   @ApiOperation({ summary: "Publish a new dataset release (admin only)" })
   @ApiResponse({ status: 201, description: "Release published" })
   @ApiResponse({ status: 400, description: "Invalid request body" })
+  @ApiResponse({ status: 409, description: "The season has no played, reviewed games yet, so the release would be empty", type: ErrorResponseDto })
   async publishRelease(
     @Body() body: unknown,
     @Req() request: { user: { id: string } },

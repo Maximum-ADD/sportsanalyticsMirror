@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { compareDatasetReleases, DatasetReleasesService, escapeCsvField, hashCsv, parseReleaseSort } from "./datasets.service.js";
 
 describe("escapeCsvField", () => {
@@ -93,21 +94,66 @@ describe("DatasetReleasesService.downloadRelease", () => {
 });
 
 describe("DatasetReleasesService.publishRelease", () => {
-  it("stores the generated CSV with the release but returns only metadata", async () => {
-    const prisma = {
-      game: { count: vi.fn().mockResolvedValue(3) },
+  function makePrisma(loadedGames: number) {
+    return {
+      game: { count: vi.fn().mockResolvedValue(loadedGames) },
       datasetRelease: { create: vi.fn().mockResolvedValue({ version: "2025-26.2" }) },
     };
+  }
+
+  it("stores the generated CSV with the release but returns only metadata", async () => {
+    const prisma = makePrisma(1230);
     const service = new DatasetReleasesService(prisma as never);
-    vi.spyOn(service, "generateSeasonCsv").mockResolvedValue({ csv: "h\r\n", rowCount: 0, checksum: "sum" });
+    vi.spyOn(service, "generateSeasonCsv").mockResolvedValue({ csv: "h\r\np\r\n", rowCount: 1, gamesCount: 3, checksum: "sum" });
 
     await service.publishRelease({ version: "2025-26.2", description: "d", season: "2025-26" });
 
     const createArgs = prisma.datasetRelease.create.mock.calls[0][0];
-    expect(createArgs.data).toMatchObject({ csv: "h\r\n", checksum: "sum", gamesCount: 3 });
+    expect(createArgs.data).toMatchObject({ csv: "h\r\np\r\n", checksum: "sum", playersCount: 1 });
     // The ~90 KB file must not be echoed back in the publish response.
     expect(createArgs.select).toBeDefined();
     expect(createArgs.select.csv).toBeUndefined();
+  });
+
+  // The season's Game rows include its whole loaded schedule: counting them
+  // gave a release of a barely started season hundreds of games it doesn't
+  // hold, so it read on the Datasets page as a season that's fully loaded.
+  it("counts only the games the file's rows come from, not the season's schedule", async () => {
+    const prisma = makePrisma(1230);
+    const service = new DatasetReleasesService(prisma as never);
+    vi.spyOn(service, "generateSeasonCsv").mockResolvedValue({ csv: "h\r\np\r\n", rowCount: 1, gamesCount: 3, checksum: "sum" });
+
+    await service.publishRelease({ version: "2025-26.2", description: "d", season: "2025-26" });
+
+    expect(prisma.datasetRelease.create.mock.calls[0][0].data.gamesCount).toBe(3);
+    expect(prisma.game.count).not.toHaveBeenCalled();
+  });
+
+  it("refuses a season whose schedule is loaded but has no played games, and says so", async () => {
+    const prisma = makePrisma(1230);
+    const service = new DatasetReleasesService(prisma as never);
+    vi.spyOn(service, "generateSeasonCsv").mockResolvedValue({ csv: "h\r\n", rowCount: 0, gamesCount: 0, checksum: "sum" });
+
+    const publishing = service.publishRelease({ version: "2026-27.1", description: "d", season: "2026-27" });
+
+    await expect(publishing).rejects.toMatchObject({
+      status: 409,
+      response: { error: { code: "NO_PLAYED_GAMES", message: expect.stringContaining("2026-27 has 1230 games loaded, but none has been played") } },
+    });
+    expect(prisma.game.count).toHaveBeenCalledWith({ where: { season: "2026-27" } });
+    expect(prisma.datasetRelease.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a season name that matches no games, pointing at the name", async () => {
+    const prisma = makePrisma(0);
+    const service = new DatasetReleasesService(prisma as never);
+    vi.spyOn(service, "generateSeasonCsv").mockResolvedValue({ csv: "h\r\n", rowCount: 0, gamesCount: 0, checksum: "sum" });
+
+    await expect(service.publishRelease({ version: "x", description: "d", season: "2025-2026" })).rejects.toMatchObject({
+      status: 409,
+      response: { error: { code: "NO_PLAYED_GAMES", message: expect.stringContaining("Check the season name") } },
+    });
+    expect(prisma.datasetRelease.create).not.toHaveBeenCalled();
   });
 });
 
@@ -198,5 +244,42 @@ describe("DatasetReleasesService.generateSeasonCsv", () => {
     expect(prisma.player.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { nbaPlayerId: "asc" } }),
     );
+  });
+
+  it("counts each distinct game behind the rows once, and no game a row doesn't come from", async () => {
+    function statIn(gameId: string) {
+      return {
+        gameId, points: 10, rebounds: 5, assists: 5, steals: 1, blocks: 1, fieldGoalsMade: 4, fieldGoalsAttempted: 9,
+        threesMade: 1, threesAttempted: 3, freeThrowsMade: 1, freeThrowsAttempted: 2,
+      };
+    }
+    function player(nbaPlayerId: number, gameIds: string[]) {
+      return {
+        id: `p${nbaPlayerId}`, nbaPlayerId, firstName: "P", lastName: `${nbaPlayerId}`, position: "G",
+        team: { abbreviation: "ORD" }, gameStats: gameIds.map(statIn),
+      };
+    }
+    // Two teammates in g1, one of them in g2 too; the third player has no
+    // played game this season, so he's no row and no game.
+    const prisma = {
+      player: { findMany: vi.fn().mockResolvedValue([player(1, ["g1", "g2"]), player(2, ["g1"]), player(3, [])]) },
+    };
+
+    const result = await new DatasetReleasesService(prisma as never).generateSeasonCsv("2025-26");
+
+    expect(result.rowCount).toBe(2);
+    expect(result.gamesCount).toBe(2);
+  });
+
+  // Only played, reviewed games have stat rows to read; a season's
+  // scheduled games have none, so a season that hasn't started has nothing.
+  it("reads only the season's reviewed games' stat rows", async () => {
+    const prisma = { player: { findMany: vi.fn().mockResolvedValue([]) } };
+
+    const result = await new DatasetReleasesService(prisma as never).generateSeasonCsv("2026-27");
+
+    expect(result).toMatchObject({ rowCount: 0, gamesCount: 0 });
+    const statFilter = prisma.player.findMany.mock.calls[0][0].include.gameStats.where;
+    expect(statFilter.game).toMatchObject({ season: "2026-27", ...PUBLISHED_GAME_FILTER });
   });
 });

@@ -31,8 +31,12 @@ export class DatasetReleaseDto {
   @ApiProperty({ description: "SHA-256 of the release CSV, to verify a download" })
   checksum!: string;
 
-  @ApiProperty() gamesCount!: number;
-  @ApiProperty() playersCount!: number;
+  @ApiProperty({ description: "Played, reviewed games the CSV's averages are taken from (not the season's whole schedule)" })
+  gamesCount!: number;
+
+  @ApiProperty({ description: "Players in the CSV: one row each" })
+  playersCount!: number;
+
   @ApiProperty() eventsCount!: number;
 
   @ApiProperty({ type: [DatasetFieldDto], description: "Every CSV column, with its type and meaning" })

@@ -15,7 +15,12 @@ export interface DatasetRelease {
   description: string;
   season: string;
   checksum: string;
+  /** Played, reviewed games the file's averages come from. Releases
+   * published before it was counted that way give every game of the season
+   * loaded at the time instead, unplayed scheduled games included. */
   gamesCount: number;
+  /** Players in the file, one row each. 0 means the season had no played
+   * games when the release was published. */
   playersCount: number;
   eventsCount: number;
   /** Set when an event correction landed after this release was cut, so the

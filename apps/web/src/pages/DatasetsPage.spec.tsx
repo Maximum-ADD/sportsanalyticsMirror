@@ -112,6 +112,31 @@ describe("DatasetsPage", () => {
     await expectNoAccessibilityViolations(container);
   });
 
+  it("shows how many players and games a release covers", async () => {
+    signInAs(null);
+    mockReleases([makeRelease({ playersCount: 50, gamesCount: 100 })]);
+
+    renderWithProviders(<DatasetsPage />);
+
+    expect(await screen.findByText("50 players")).toBeInTheDocument();
+    expect(screen.getByText("100 games")).toBeInTheDocument();
+    expect(screen.queryByText("No game data")).not.toBeInTheDocument();
+  });
+
+  // F25: an older release of a season that hadn't started counted its whole
+  // loaded schedule as games, so it read as a season that was loaded.
+  it("labels a release with no player rows instead of showing its counts", async () => {
+    signInAs(null);
+    mockReleases([makeRelease({ version: "2026-27.1", season: "2026-27", playersCount: 0, gamesCount: 1230 })]);
+
+    renderWithProviders(<DatasetsPage />);
+
+    expect(await screen.findByText("No game data")).toBeInTheDocument();
+    expect(screen.getByText(/No 2026-27 games had been played when this release was published/)).toBeInTheDocument();
+    expect(screen.queryByText("1230 games")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 players")).not.toBeInTheDocument();
+  });
+
   it("hides publishedBy when null", async () => {
     signInAs(null);
     mockReleases([makeRelease({ publishedBy: null })]);
@@ -294,6 +319,26 @@ describe("DatasetsPage", () => {
         }),
       );
       expect(await screen.findByText("Published 2025-26.2.")).toBeInTheDocument();
+    });
+
+    it("shows why the API refused to publish a season with no played games", async () => {
+      const user = userEvent.setup();
+      signInAs("ADMIN");
+      mockReleases([makeRelease()]);
+      vi.mocked(publishDatasetRelease).mockRejectedValue(
+        new ApiError("Season 2026-27 has 1230 games loaded, but none has been played and passed review yet", 409),
+      );
+
+      renderWithProviders(<DatasetsPage />);
+      await screen.findByText("2025-26.1");
+
+      await user.type(screen.getByLabelText("Release version"), "2026-27.1");
+      await user.type(screen.getByLabelText("Release season"), "2026-27");
+      await user.type(screen.getByLabelText("Release description"), "Opening night");
+      await user.click(screen.getByRole("button", { name: "Publish" }));
+
+      expect(await screen.findByText(/none has been played and passed review yet/)).toBeInTheDocument();
+      expect(screen.queryByText(/^Published /)).not.toBeInTheDocument();
     });
 
     it("keeps publish disabled until every field is filled in", async () => {

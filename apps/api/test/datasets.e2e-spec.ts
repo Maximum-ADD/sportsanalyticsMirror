@@ -411,6 +411,44 @@ describe("Datasets API", () => {
       expect(afterStale.text).toBe(atPublish.text);
     });
 
+    // F25: the schedule loads every game of a season up front with no
+    // stats, so counting Game rows made a season that hadn't started look
+    // loaded.
+    it("counts only the games the file was built from, not the scheduled ones", async () => {
+      await seedSeasonWithOnePlayer();
+      const team = await testPrisma.team.findFirstOrThrow();
+      await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-SCHEDULED-${uid()}`, gameDate: new Date("2026-04-01"), season: "2025-26",
+          seasonType: "REGULAR", homeTeamId: team.id, awayTeamId: team.id,
+        },
+      });
+
+      const published = await app
+        .get(DatasetReleasesService)
+        .publishRelease({ version: "2025-26.1", description: "Snapshot", season: "2025-26" });
+
+      expect(published.gamesCount).toBe(1);
+      expect(published.playersCount).toBe(1);
+    });
+
+    it("refuses to publish a season whose games are only scheduled", async () => {
+      const team = await testPrisma.team.create({
+        data: { nbaTeamId: uid(), name: "Future FC", abbreviation: "FUT", city: "City", conference: "East", division: "Atlantic" },
+      });
+      await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-FUTURE-${uid()}`, gameDate: new Date("2026-10-21"), season: "2026-27",
+          seasonType: "REGULAR", homeTeamId: team.id, awayTeamId: team.id,
+        },
+      });
+
+      await expect(
+        app.get(DatasetReleasesService).publishRelease({ version: "2026-27.1", description: "Too early", season: "2026-27" }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(await testPrisma.datasetRelease.count()).toBe(0);
+    });
+
     it("never includes the stored file in list or detail responses", async () => {
       await seedSeasonWithOnePlayer();
       await app
