@@ -845,6 +845,64 @@ describe("Players API", () => {
       expect(response.status).toBe(200);
       expect(response.body.leaders).toEqual({ ppg: null, rpg: null, apg: null, tsPct: null });
     });
+
+    // The players page sends its list filters along, so the band shows who
+    // leads among the players listed under it, not the whole league.
+    describe("with the player list's filters", () => {
+      it("picks the leaders from one team's players when teamId is given", async () => {
+        const { scorer, playmaker, efficient } = await seedOneCategoryLeaderEach();
+        const awayTeamId = playmaker.teamId as string;
+
+        const response = await request(app.getHttpServer()).get(`/v1/players/leaders?minGames=1&teamId=${awayTeamId}`);
+
+        expect(response.status).toBe(200);
+        // The league's top scorer plays for the other team, so this team's
+        // best scorer leads instead.
+        expect(response.body.leaders.ppg.player.id).toBe(efficient.id);
+        expect(response.body.leaders.ppg.player.id).not.toBe(scorer.id);
+        expect(response.body.leaders.apg.player.id).toBe(playmaker.id);
+        for (const leader of Object.values(response.body.leaders) as { player: { teamId: string } }[]) {
+          expect(leader.player.teamId).toBe(awayTeamId);
+        }
+      });
+
+      it("searches names the same accent-insensitive way the list does", async () => {
+        const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+        const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+        const manon = await createPlayer({ teamId: home.id, firstName: "Juan", lastName: "Mañón" });
+        const star = await createPlayer({ teamId: home.id, firstName: "LeBron", lastName: "James" });
+        await seedGamesForPlayer(manon.id, home.id, away.id, 1, "REGULAR", { points: 10 });
+        await seedGamesForPlayer(star.id, home.id, away.id, 1, "REGULAR", { points: 30 });
+
+        const response = await request(app.getHttpServer()).get("/v1/players/leaders?minGames=1&search=manon");
+
+        expect(response.status).toBe(200);
+        expect(response.body.leaders.ppg).toMatchObject({ player: { id: manon.id }, value: 10 });
+      });
+
+      it("narrows by position alongside the search", async () => {
+        const home = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+        const away = await createTeam({ name: "Celtics", abbreviation: "BOS" });
+        const guard = await createPlayer({ teamId: home.id, firstName: "Sam", lastName: "Guard", position: "G" });
+        const forward = await createPlayer({ teamId: home.id, firstName: "Sam", lastName: "Forward", position: "F" });
+        await seedGamesForPlayer(guard.id, home.id, away.id, 1, "REGULAR", { points: 12 });
+        await seedGamesForPlayer(forward.id, home.id, away.id, 1, "REGULAR", { points: 25 });
+
+        const response = await request(app.getHttpServer()).get("/v1/players/leaders?minGames=1&search=sam&position=G");
+
+        expect(response.status).toBe(200);
+        expect(response.body.leaders.ppg.player.id).toBe(guard.id);
+      });
+
+      it("returns every category null when the filters match nobody", async () => {
+        await seedOneCategoryLeaderEach();
+
+        const response = await request(app.getHttpServer()).get("/v1/players/leaders?minGames=1&search=nobody");
+
+        expect(response.status).toBe(200);
+        expect(response.body.leaders).toEqual({ ppg: null, rpg: null, apg: null, tsPct: null });
+      });
+    });
   });
 
   describe("GET /v1/players/stats-batch", () => {

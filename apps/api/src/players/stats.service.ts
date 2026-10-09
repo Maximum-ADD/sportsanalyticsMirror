@@ -555,18 +555,29 @@ export class StatsService {
   }
 
   // The leader in each headline category for one segment — the four figures
-  // behind the /players page's "League leaders" band. Every figure is
-  // derived from the player's season totals with the same formulas and
-  // rounding as the per-player season line (see perGameRate and
-  // trueShootingPercentageFromTotals), ranked league-wide after the
-  // participation floor; a category with no qualified player comes back
-  // null rather than padded with a zero.
-  async getSeasonLeaders(seasonType: SeasonType, minGames: number): Promise<SeasonLeaders> {
-    // League-wide by definition — no team/position/search narrowing. That
-    // makes this the same cached base as an unfiltered ranked listing in the
-    // same segment, so the players page's leaders band and its default
-    // leaderboard share one pair of queries.
-    const { players, totalsByPlayerId } = await this.readRankingBase({}, seasonType);
+  // behind the /players page's leaders band. Every figure is derived from
+  // the player's season totals with the same formulas and rounding as the
+  // per-player season line (see perGameRate and
+  // trueShootingPercentageFromTotals), ranked after the participation
+  // floor; a category with no qualified player comes back null rather than
+  // padded with a zero.
+  //
+  // `filters` takes the players list's own filters (teamId, position,
+  // search, participated) and narrows the pool the same way, through the
+  // same parsePlayerFilters — so with the list filtered to one team the
+  // band shows that team's leaders instead of contradicting the list under
+  // it with the league's. No filters means league-wide, as before.
+  async getSeasonLeaders(
+    seasonType: SeasonType,
+    minGames: number,
+    filters: Record<string, unknown> = {}
+  ): Promise<SeasonLeaders> {
+    // The same cached base as a ranked listing with the same filters in the
+    // same segment, so the players page's leaders band and its leaderboard
+    // share one pair of queries. The segment is pinned to the one being
+    // ranked, so a `participated` filter always means "appeared in this
+    // segment" whatever seasonType the filters carried.
+    const { players, totalsByPlayerId } = await this.readRankingBase({ ...filters, seasonType }, seasonType);
 
     const pickLeader = (selectValue: (totals: SeasonStatTotals) => number): SeasonLeader | null => {
       let leader: SeasonLeader | null = null;
