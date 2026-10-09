@@ -3,9 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchEloRatings, fetchTeamRecords, fetchTeams } from "@/lib/nbaApi";
 import { useSession } from "@/lib/authClient";
+import { fetchMe } from "@/lib/meApi";
 import { expectNoAccessibilityViolations } from "@/test/accessibility";
 import { renderWithProviders } from "@/test/renderWithProviders";
-import type { Team } from "@/types/nba";
+import type { MeProfile, Team } from "@/types/nba";
 import { TeamsListPage } from "./TeamsListPage";
 
 vi.mock("@/lib/nbaApi", () => ({
@@ -16,6 +17,11 @@ vi.mock("@/lib/nbaApi", () => ({
 
 vi.mock("@/lib/authClient", () => ({
   useSession: vi.fn(),
+}));
+
+vi.mock("@/lib/meApi", () => ({
+  fetchMe: vi.fn(),
+  updateMe: vi.fn(),
 }));
 
 const LAKERS: Team = {
@@ -100,6 +106,52 @@ describe("TeamsListPage", () => {
     expect(await screen.findByText("1587")).toBeInTheDocument();
     expect(screen.getByText("10–5")).toBeInTheDocument();
     expect(screen.getByText("67%")).toBeInTheDocument();
+  });
+
+  function signInFollowing(favoriteTeam: Team) {
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "user-1" } }, isPending: false } as never);
+    vi.mocked(fetchMe).mockResolvedValue({
+      id: "user-1",
+      email: "user@example.com",
+      name: "Test User",
+      username: "testuser",
+      avatarUrl: null,
+      favoriteTeam,
+      followedPlayers: [],
+      role: "USER",
+    } satisfies MeProfile);
+  }
+
+  it("shows the user's own team in a card above the list, leaving the list's sort alone", async () => {
+    signInFollowing(CELTICS);
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS, CELTICS], page: 1, pageSize: 30, total: 2 });
+    vi.mocked(fetchEloRatings).mockResolvedValue([
+      { team: LAKERS, elo: 1600, asOfGameId: "g1", asOfGameDate: "2026-01-01" },
+      { team: CELTICS, elo: 1400, asOfGameId: "g2", asOfGameDate: "2026-01-01" },
+    ]);
+
+    renderWithProviders(<TeamsListPage />);
+
+    const yourTeam = await screen.findByRole("region", { name: "Your team" });
+    expect(within(yourTeam).getByText("Boston Celtics")).toBeInTheDocument();
+    // The card plus the Celtics' own place in the list, still below the
+    // higher-rated Lakers.
+    const cardNames = screen.getAllByText(/^(Los Angeles Lakers|Boston Celtics)$/).map((name) => name.textContent);
+    expect(cardNames).toEqual(["Boston Celtics", "Los Angeles Lakers", "Boston Celtics"]);
+  });
+
+  it("hides the Your team card while a filter narrows the list", async () => {
+    signInFollowing(CELTICS);
+    vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS, CELTICS], page: 1, pageSize: 30, total: 2 });
+    const user = userEvent.setup();
+
+    renderWithProviders(<TeamsListPage />);
+    await screen.findByRole("region", { name: "Your team" });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter teams by conference" }), "East");
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Your team" })).not.toBeInTheDocument());
+    expect(screen.getByText("Boston Celtics")).toBeInTheDocument();
   });
 
   it("shows a clear message when no teams match", async () => {
