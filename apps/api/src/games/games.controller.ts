@@ -1,11 +1,20 @@
-import { Controller, Get, HttpStatus, Param, Query, Res, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
+import { applyDecorators, Controller, Get, HttpStatus, Param, Query, Res, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { OptionalSessionGuard } from "../common/optional-session.guard.js";
+import {
+  ApiKeyOrSessionAccess,
+  ApiNotFoundError,
+  ApiPageQuery,
+  ApiSeasonTypeQuery,
+} from "../common/openapi/api-docs.decorators.js";
+import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
 import { parsePageParams } from "../common/pagination.js";
 import { toCsv, type ColumnSpec } from "../common/csv.js";
 import type { Response } from "express";
+import { GameEventPageDto } from "./game-event.dto.js";
+import { GamePageDto } from "./game.dto.js";
 import { GameDetailService } from "./game-detail.service.js";
 import { GamesService } from "./games.service.js";
 
@@ -17,6 +26,7 @@ import { GamesService } from "./games.service.js";
 // plain anonymous requests get a 401.
 @ApiTags("games")
 @UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/games")
 export class GamesController {
   constructor(
@@ -25,14 +35,18 @@ export class GamesController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: "List games (paginated, most recent first)" })
-  @ApiResponse({ status: 200, description: "Paginated game list with predictions" })
+  @ApiOperation({ summary: "List games (paginated: soonest upcoming first, then most recently completed)" })
+  @ApiGameFilters()
+  @ApiPageQuery()
+  @ApiResponse({ status: 200, description: "Paginated game list with predictions", type: GamePageDto })
   listGames(@Query() query: Record<string, unknown>) {
     return this.gamesService.getGames(query);
   }
 
   @Get("export")
-  @ApiOperation({ summary: "Export a filtered game slice as CSV" })
+  @ApiOperation({ summary: "Export a filtered game slice as CSV (up to 5,000 games, newest first)" })
+  @ApiGameFilters()
+  @ApiResponse({ status: 200, description: "CSV file" })
   async exportGames(@Query() query: Record<string, unknown>, @Res() response: Response): Promise<void> {
     const games = await this.gamesService.getGamesForExport(query, 5_000);
     const columns: ColumnSpec<(typeof games)[number]>[] = [
@@ -57,6 +71,8 @@ export class GamesController {
   // isn't swallowed as a game id — Nest matches routes in declaration
   // order. Backs the Predictions page's season filter with real options.
   @Get("seasons")
+  @ApiOperation({ summary: "Every season with at least one game, most recent first" })
+  @ApiResponse({ status: 200, description: "Season labels, e.g. 2025-26" })
   listSeasons() {
     return this.gamesService.getSeasons();
   }
@@ -64,6 +80,15 @@ export class GamesController {
   @Get(":id/live")
   @ApiOperation({ summary: "Poll newly received events for an in-progress fixture" })
   @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiQuery({
+    name: "afterSequence",
+    required: false,
+    type: Number,
+    description: "Return only events after this sequence; pass the previous response's nextSequence. Omit for every event",
+  })
+  @ApiResponse({ status: 200, description: "New events, the cursor for the next poll, and how long to wait" })
+  @ApiResponse({ status: 400, description: "afterSequence is not a non-negative integer", type: ErrorResponseDto })
+  @ApiNotFoundError("Game not found")
   async getLiveFeed(@Param("id") id: string, @Query("afterSequence") rawAfterSequence: unknown) {
     const game = await this.gamesService.getGameById(id);
     if (!game) throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
@@ -83,7 +108,7 @@ export class GamesController {
   @ApiOperation({ summary: "Get game detail with prediction and predicted scorers" })
   @ApiParam({ name: "id", description: "Game UUID" })
   @ApiResponse({ status: 200, description: "Full game detail" })
-  @ApiResponse({ status: 404, description: "Game not found" })
+  @ApiNotFoundError("Game not found")
   async getGame(@Param("id") id: string) {
     const detail = await this.gameDetailService.getGameDetail(id);
     if (!detail) {
@@ -150,8 +175,9 @@ export class GamesController {
   @Get(":id/events")
   @ApiOperation({ summary: "Get a game's ordered play-by-play events" })
   @ApiParam({ name: "id", description: "Game UUID" })
-  @ApiResponse({ status: 200, description: "Paginated game events" })
-  @ApiResponse({ status: 404, description: "Game not found" })
+  @ApiPageQuery()
+  @ApiResponse({ status: 200, description: "Paginated game events, in sequence order", type: GameEventPageDto })
+  @ApiNotFoundError("Game not found")
   async getGameEvents(@Param("id") id: string, @Query() query: Record<string, unknown>) {
     const game = await this.gamesService.getGameById(id);
     if (!game) {
@@ -160,4 +186,16 @@ export class GamesController {
     const { page, pageSize } = parsePageParams(query);
     return this.gamesService.getGameEvents(id, page, pageSize);
   }
+}
+
+/**
+ * Documents the filters the game list and the CSV export share (see
+ * GamesService's parseStatusFilter and parseSeasonFilter).
+ */
+function ApiGameFilters(): MethodDecorator {
+  return applyDecorators(
+    ApiQuery({ name: "status", required: false, enum: ["upcoming", "completed"], description: "Omit for both" }),
+    ApiQuery({ name: "season", required: false, description: "League year, e.g. 2025-26 (see GET /v1/games/seasons)" }),
+    ApiSeasonTypeQuery("Omit for every segment"),
+  );
 }

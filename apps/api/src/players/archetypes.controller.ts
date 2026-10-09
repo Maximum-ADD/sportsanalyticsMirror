@@ -3,6 +3,7 @@ import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { OptionalSessionGuard } from "../common/optional-session.guard.js";
+import { ApiKeyOrSessionAccess } from "../common/openapi/api-docs.decorators.js";
 import {
   ArchetypesService,
   type ArchetypeSummary,
@@ -15,6 +16,7 @@ import {
 // whole season's fit.
 @ApiTags("archetypes")
 @UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/archetypes")
 export class ArchetypesController {
   constructor(private readonly archetypesService: ArchetypesService) {}

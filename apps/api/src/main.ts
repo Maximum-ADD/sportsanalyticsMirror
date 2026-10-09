@@ -9,6 +9,7 @@ import helmet from "helmet";
 import { auth, allowedOrigins } from "./auth/auth.config.js";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter.js";
+import { API_KEY_SECURITY_NAME } from "./common/openapi/api-docs.decorators.js";
 import { AppModule } from "./app.module.js";
 
 const DEFAULT_PORT = 4000;
@@ -61,6 +62,18 @@ async function bootstrap() {
       name: "better-auth.session_token",
       description: "BetterAuth session cookie. Required for auth-gated endpoints.",
     })
+    // The public read endpoints (players, teams, games, analytics, datasets)
+    // take either this key or a session. "Authorize" in Swagger UI then
+    // sends it on every "Try it out" request.
+    .addApiKey(
+      {
+        type: "apiKey",
+        in: "header",
+        name: "X-API-Key",
+        description: "An API key from your profile page (or an admin). Rate-limited per minute, with a daily quota.",
+      },
+      API_KEY_SECURITY_NAME,
+    )
     .addTag("health", "Service health check")
     .addTag("players", "Player data and statistics (public)")
     .addTag("teams", "Team data (public)")

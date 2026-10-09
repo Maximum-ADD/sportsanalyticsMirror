@@ -16,6 +16,9 @@ import { Role } from "@prisma/client";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { OptionalSessionGuard } from "../common/optional-session.guard.js";
+import { ApiKeyOrSessionAccess, ApiNotFoundError, ApiPageQuery } from "../common/openapi/api-docs.decorators.js";
+import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
+import { DatasetReleaseDto, DatasetReleasePageDto } from "./dataset-release.dto.js";
 import { Roles } from "../common/roles.decorator.js";
 import { RolesGuard } from "../common/roles.guard.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
@@ -46,6 +49,7 @@ export function parsePublishBody(body: unknown): { version: string; description:
 
 @ApiTags("datasets")
 @UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/datasets")
 export class DatasetReleasesController {
   constructor(private readonly datasetsService: DatasetReleasesService) {}
@@ -53,11 +57,10 @@ export class DatasetReleasesController {
   // GET /v1/datasets — public paginated list of all published releases.
   @Get()
   @ApiOperation({ summary: "List all published dataset releases" })
-  @ApiQuery({ name: "page", required: false, type: Number })
-  @ApiQuery({ name: "pageSize", required: false, type: Number })
+  @ApiPageQuery()
   @ApiQuery({ name: "sort", required: false, enum: ["date", "season"], description: "Order by publish date (default) or by the season covered" })
   @ApiQuery({ name: "order", required: false, enum: ["asc", "desc"], description: "Sort direction (default desc)" })
-  @ApiResponse({ status: 200, description: "Paginated release list" })
+  @ApiResponse({ status: 200, description: "Paginated release list", type: DatasetReleasePageDto })
   listReleases(@Query() query: Record<string, unknown>) {
     return this.datasetsService.listReleases(query);
   }
@@ -67,7 +70,7 @@ export class DatasetReleasesController {
   @ApiQuery({ name: "from", required: true, description: "Earlier release version" })
   @ApiQuery({ name: "to", required: true, description: "Later release version" })
   @ApiResponse({ status: 200, description: "Release metadata differences" })
-  @ApiResponse({ status: 404, description: "One or both releases not found" })
+  @ApiNotFoundError("One or both releases not found")
   async diffReleases(@Query("from") fromVersion: string, @Query("to") toVersion: string) {
     const result = await this.datasetsService.diffReleases(fromVersion, toVersion);
     if (!result) throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "One or both dataset releases were not found");
@@ -76,7 +79,9 @@ export class DatasetReleasesController {
 
   @Get("changes")
   @ApiOperation({ summary: "List dataset releases published after a cursor" })
-  @ApiQuery({ name: "since", required: true, description: "ISO-8601 timestamp cursor" })
+  @ApiQuery({ name: "since", required: true, description: "ISO-8601 timestamp cursor; pass the previous response's nextSince" })
+  @ApiResponse({ status: 200, description: "Releases published after the cursor, oldest first, and the next cursor" })
+  @ApiResponse({ status: 400, description: "since is not an ISO-8601 timestamp", type: ErrorResponseDto })
   async getChanges(@Query("since") rawSince: string) {
     const since = new Date(rawSince);
     if (Number.isNaN(since.getTime())) {
@@ -90,8 +95,8 @@ export class DatasetReleasesController {
   @Get(":version")
   @ApiOperation({ summary: "Get a single dataset release by version" })
   @ApiParam({ name: "version", description: "Release version (e.g. '2025-26.1')" })
-  @ApiResponse({ status: 200, description: "Release details" })
-  @ApiResponse({ status: 404, description: "Release not found" })
+  @ApiResponse({ status: 200, description: "Release details", type: DatasetReleaseDto })
+  @ApiNotFoundError("Release not found")
   async getRelease(@Param("version") version: string): Promise<ReleaseWithPublisher> {
     const release = await this.datasetsService.getReleaseByVersion(version);
     if (!release) {

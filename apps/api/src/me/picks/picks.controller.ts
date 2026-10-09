@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
 import { parseBody } from "../../common/parse-body.js";
 import { SessionAuthGuard } from "../../common/session-auth.guard.js";
@@ -17,6 +18,7 @@ const createPickSchema = z.object({
   pickedTeamId: z.string().min(1),
 });
 
+@ApiTags("me")
 @Controller("v1/me/picks")
 @UseGuards(SessionAuthGuard)
 export class PicksController {
@@ -28,6 +30,7 @@ export class PicksController {
   // GET /v1/me/picks/record — the signed-in user's win/loss record beside the
   // model's record over exactly the games that user called.
   @Get("record")
+  @ApiOperation({ summary: "Your Beat the Model win/loss record beside the model's, over the games you called" })
   getPickRecord(@Req() request: AuthenticatedRequest) {
     return this.pickRecordService.getPickRecord(request.user.id);
   }
@@ -35,6 +38,8 @@ export class PicksController {
   // POST /v1/me/picks — call a game; responds 201 with the graded result and
   // the final score, which this is the first response allowed to reveal.
   @Post()
+  @ApiOperation({ summary: "Call a challenge game; returns the graded result and the final score" })
+  @ApiResponse({ status: 201, description: "The graded pick" })
   createPick(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.picksService.createPick(request.user.id, parseBody(createPickSchema, body));
   }

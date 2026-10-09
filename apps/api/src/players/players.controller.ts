@@ -5,6 +5,10 @@ import type { Response } from "express";
 import { ApiException } from "../common/api-exception.js";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
 import { OptionalSessionGuard } from "../common/optional-session.guard.js";
+import { ApiKeyOrSessionAccess, ApiNotFoundError, ApiSeasonTypeQuery } from "../common/openapi/api-docs.decorators.js";
+import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
+import { PlayerDto, PlayerPageDto } from "./player.dto.js";
+import { PlayerStatsDto } from "./player-stats.dto.js";
 import { toCsv } from "../common/csv.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService, type PlayerWithTeam } from "./players.service.js";
@@ -102,6 +106,7 @@ function parseBatchStatsIds(ids: unknown): string[] {
 
 @ApiTags("players")
 @UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/players")
 export class PlayersController {
   constructor(
@@ -127,7 +132,7 @@ export class PlayersController {
   @ApiQuery({ name: "sort", required: false, description: "Rank by a season stat (ppg, rpg, apg, ts); omitted means alphabetical" })
   @ApiQuery({ name: "order", required: false, description: "Sort direction (asc, desc); defaults to desc for stat rankings, asc for alphabetical" })
   @ApiQuery({ name: "minGames", required: false, type: Number, description: "Only players with at least this many games in the segment" })
-  @ApiResponse({ status: 200, description: "Paginated player list" })
+  @ApiResponse({ status: 200, description: "Paginated player list", type: PlayerPageDto })
   listPlayers(@Query() query: Record<string, unknown>) {
     if (
       parsePlayerStatSort(query.sort) !== undefined ||
@@ -224,6 +229,10 @@ export class PlayersController {
   // this app's own bug, not bad input worth surfacing to the caller as an
   // error.
   @Get("stats-batch")
+  @ApiOperation({ summary: "Season averages and game logs for up to 50 players in one request" })
+  @ApiQuery({ name: "ids", required: true, description: "Comma-separated player UUIDs (1-50); unknown ids are skipped" })
+  @ApiSeasonTypeQuery("Omit to combine every segment")
+  @ApiResponse({ status: 200, description: "One entry per requested player, in request order" })
   async getPlayerStatsBatch(
     @Query("ids") ids: unknown,
     @Query("seasonType") rawSeasonType: unknown
@@ -300,6 +309,7 @@ export class PlayersController {
   @ApiOperation({ summary: "Aggregate player metrics by team or position" })
   @ApiQuery({ name: "metric", required: true, description: "pointsPerGame, reboundsPerGame, or assistsPerGame" })
   @ApiQuery({ name: "groupBy", required: false, description: "team or position; defaults to team" })
+  @ApiSeasonTypeQuery("Defaults to REGULAR")
   async getAggregates(
     @Query("metric") rawMetric: unknown,
     @Query("groupBy") rawGroupBy: unknown,
@@ -394,8 +404,8 @@ export class PlayersController {
   @Get(":id")
   @ApiOperation({ summary: "Get player by ID" })
   @ApiParam({ name: "id", description: "Player UUID" })
-  @ApiResponse({ status: 200, description: "Player details with team" })
-  @ApiResponse({ status: 404, description: "Player not found" })
+  @ApiResponse({ status: 200, description: "Player details with team", type: PlayerDto })
+  @ApiNotFoundError("Player not found")
   async getPlayer(@Param("id") id: string) {
     const player = await this.playersService.getPlayerById(id);
     if (!player) {
@@ -409,6 +419,10 @@ export class PlayersController {
   // comparison view makes one request instead of four. Declared before
   // ":id/stats" so "splits" is never read as part of that route.
   @Get(":id/stats/splits")
+  @ApiOperation({ summary: "Season averages for every season segment at once (regular season, play-in, playoffs, Finals)" })
+  @ApiParam({ name: "id", description: "Player UUID" })
+  @ApiResponse({ status: 200, description: "One season line per segment, keyed by segment" })
+  @ApiNotFoundError("Player not found")
   async getPlayerStatsSplits(@Param("id") id: string): Promise<{ playerId: string; splits: PlayerSeasonSplits }> {
     const player = await this.playersService.getPlayerById(id);
     if (!player) {
@@ -428,9 +442,15 @@ export class PlayersController {
   @Get(":id/stats")
   @ApiOperation({ summary: "Get player season averages and game log" })
   @ApiParam({ name: "id", description: "Player UUID" })
-  @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
-  @ApiResponse({ status: 200, description: "Season averages and game log" })
-  @ApiResponse({ status: 404, description: "Player not found" })
+  @ApiSeasonTypeQuery("Defaults to REGULAR")
+  @ApiQuery({
+    name: "asOf",
+    required: false,
+    description: "ISO-8601 instant. Only games finished by then are counted: the figures as they stood on that date",
+  })
+  @ApiResponse({ status: 200, description: "Season averages and game log", type: PlayerStatsDto })
+  @ApiResponse({ status: 400, description: "Invalid seasonType or asOf", type: ErrorResponseDto })
+  @ApiNotFoundError("Player not found")
   async getPlayerStats(
     @Param("id") id: string,
     @Query("seasonType") rawSeasonType: unknown,

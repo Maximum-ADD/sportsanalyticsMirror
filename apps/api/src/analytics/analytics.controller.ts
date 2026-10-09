@@ -1,5 +1,7 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ApiKeyGuard } from "../common/api-key.guard.js";
+import { ApiKeyOrSessionAccess } from "../common/openapi/api-docs.decorators.js";
 import { OptionalSessionGuard } from "../common/optional-session.guard.js";
 import { EvaluatedGamesService } from "./evaluated-games.service.js";
 import { LeaderboardService, type Leaderboard } from "./leaderboard.service.js";
@@ -9,7 +11,9 @@ import { ModelAccuracyService, type ModelAccuracyReport } from "./model-accuracy
 // other caller must present a valid X-API-Key — the first-party site proxy
 // attaches its own key for signed-out browsers, so requests with neither
 // are rejected with 401.
+@ApiTags("analytics")
 @UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/analytics")
 export class AnalyticsController {
   constructor(
@@ -25,6 +29,8 @@ export class AnalyticsController {
   // API key; plain anonymous requests are rejected. Not paginated either —
   // it is a fixed-size summary, not a list.
   @Get("model-accuracy")
+  @ApiOperation({ summary: "How the prediction model has scored on finished games: hit rate, Brier score and calibration" })
+  @ApiResponse({ status: 200, description: "Model accuracy report" })
   async getModelAccuracy(): Promise<ModelAccuracyReport> {
     const evaluatedGames = await this.evaluatedGamesService.getEvaluatedGames();
     return this.modelAccuracyService.buildAccuracyReport(evaluatedGames);
@@ -41,6 +47,8 @@ export class AnalyticsController {
   // rather it were private. Only User.name is ever selected; see
   // LeaderboardService.readDisplayNames.
   @Get("leaderboard")
+  @ApiOperation({ summary: "Beat the Model leaderboard, with the model as the benchmark" })
+  @ApiResponse({ status: 200, description: "Ranked players and the model's own record" })
   async getLeaderboard(): Promise<Leaderboard> {
     const evaluatedGames = await this.evaluatedGamesService.getEvaluatedGames();
     return this.leaderboardService.getLeaderboard(evaluatedGames);
