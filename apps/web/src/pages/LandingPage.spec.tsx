@@ -8,6 +8,13 @@ import { signInWithGoogle, useSession } from "@/lib/authClient";
 
 vi.mock("@/lib/nbaApi", () => ({
   fetchGames: vi.fn(),
+  fetchEloRatings: vi.fn().mockResolvedValue([]),
+}));
+
+// The header scoreboard reads the live feed first; an empty board sends it to
+// the stored games above.
+vi.mock("@/lib/liveGamesApi", () => ({
+  fetchLiveGames: vi.fn().mockResolvedValue({ live: [], upcoming: [], recent: [] }),
 }));
 
 vi.mock("@/lib/authClient", () => ({
