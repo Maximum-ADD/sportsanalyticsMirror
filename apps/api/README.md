@@ -37,6 +37,7 @@ One Nest module per area under `src/`:
 | `admin` | Batch review, event corrections with recompute and undo, anomaly flags, ingestion pulls, API consumers, users |
 | `me` | The signed-in user's profile, follows, picks, saved items and API keys |
 | `become-pro`, `optimizer`, `live` | Become Pro, the lineup optimizer and the live-games feed |
+| `all-time-leaders` | The NBA's all-time career leaders by category, with player bios (stored by `apps/ingestion/all_time_leaders.py`) |
 | `common` | Guards (session, API key, roles, version, origin), the error filter, pagination, OpenAPI helpers |
 | `cache` | The in-memory response cache for public reads |
 
