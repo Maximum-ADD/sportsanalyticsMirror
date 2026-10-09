@@ -43,6 +43,9 @@ One Nest module per area under `src/`:
 Public read controllers take a session or an `X-API-Key`. Keys are checked
 by `ApiKeyGuard`, which caches lookups and counts rate limits and quotas in
 memory (see `common/api-key-lookup.service.ts` and
-`common/consumer-rate-limiter.service.ts`). Architecture, the ERD and the
+`common/consumer-rate-limiter.service.ts`). For callers, see
+[Using the public API](../../docs/PUBLIC_API.md); which routes need a key,
+and a proposal to change that, is in the
+[route audit](../../docs/API_ROUTE_AUDIT.md). Architecture, the ERD and the
 ADRs are on the
 [docs site](https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/).

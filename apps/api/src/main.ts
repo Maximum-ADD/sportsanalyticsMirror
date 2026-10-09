@@ -13,6 +13,8 @@ import { API_KEY_SECURITY_NAME } from "./common/openapi/api-docs.decorators.js";
 import { AppModule } from "./app.module.js";
 
 const DEFAULT_PORT = 4000;
+// The guide for outside callers: no-account routes, keys, limits, errors.
+const PUBLIC_API_GUIDE_URL = "https://sdp.ms.wits.ac.za/innovation/sportsanalytics/src/branch/main/docs/PUBLIC_API.md";
 
 async function bootstrap() {
   // Built and wired up manually, then handed to Nest via ExpressAdapter,
@@ -53,7 +55,10 @@ async function bootstrap() {
       "REST API for the NBA Analytics & Optimisation Engine. " +
       "Provides player/team/game data ingested from nba_api, " +
       "Elo-based game predictions, Four Factors analysis, and " +
-      "MILP fantasy lineup optimisation."
+      "MILP fantasy lineup optimisation.\n\n" +
+      "No account needed for `/v1/live/games` and `/v1/health`. The data routes need an " +
+      "`X-API-Key` header (sign in, then Profile > API keys) or a signed-in session. " +
+      `Limits, errors and examples: [Using the public API](${PUBLIC_API_GUIDE_URL}).`
     )
     .setVersion("1.0")
     .addCookieAuth("better-auth.session_token", {
@@ -75,9 +80,9 @@ async function bootstrap() {
       API_KEY_SECURITY_NAME,
     )
     .addTag("health", "Service health check")
-    .addTag("players", "Player data and statistics (public)")
-    .addTag("teams", "Team data (public)")
-    .addTag("games", "Game data and predictions (auth required)")
+    .addTag("players", "Player data and statistics (API key or session)")
+    .addTag("teams", "Team data (API key or session)")
+    .addTag("games", "Game data and predictions (API key or session)")
     .addTag("optimizer", "Fantasy lineup optimiser (auth required)")
     .addTag("me", "Current user's profile, avatar, and followed players (auth required)")
     .addTag("live", "Live and recent games, read straight from the NBA's live feed (public)")
