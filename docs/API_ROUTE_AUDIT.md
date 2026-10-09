@@ -71,8 +71,9 @@ controls cost or exposure:
   the real client IP: everything through the site proxy reaches Render from
   Cloudflare, so the proxy would need to forward the visitor's IP and the API
   would need to trust that header only from the proxy.
-- **Key (or session):** bulk and costly routes (CSV exports, dataset
-  downloads, the 50-player batch) and the Beat the Model leaderboard, which
+- **Key (or session):** bulk and costly routes (CSV exports and the
+  `/v1/exports` routes that serve queued ones, dataset downloads, the
+  50-player batch) and the Beat the Model leaderboard, which
   shows other users' display names. Here the per-consumer quota is the right
   control, and the key tells us who is downloading. A signed-in browser keeps
   working, as it does today. The optimizer's precomputed lineup and
@@ -107,7 +108,7 @@ data). In the Proposed column, "Key" means a key or a signed-in session, as
 | Method | Path | Guards today | Returns | Proposed | Why |
 |---|---|---|---|---|---|
 | GET | `/v1/players` | Key or session | Paginated players; ranked league-wide when `sort`, `order` or `minGames` is set | No key + per-IP limit | Public data, at most 100 rows a page, ranking base cached |
-| GET | `/v1/players/export` | Key or session | CSV of up to 5,000 players (bio fields) | Key | Bulk download; the quota should count it |
+| GET | `/v1/players/export` | Key or session | CSV of up to 5,000 players (bio fields); with `async=true`, a queued export (202) | Key | Bulk download; the quota should count it |
 | GET | `/v1/players/compare` | Key or session | Season lines for 2 to 4 players | No key + per-IP limit | Bounded: two queries whatever the count |
 | GET | `/v1/players/stats-batch` | Key or session | Averages and game logs for up to 50 players | Key | Heaviest player read, uncached |
 | GET | `/v1/players/leaders` | Key or session | Season leaders by category | No key + per-IP limit | Public data, one fixed-size answer |
@@ -137,7 +138,7 @@ data). In the Proposed column, "Key" means a key or a signed-in session, as
 | Method | Path | Guards today | Returns | Proposed | Why |
 |---|---|---|---|---|---|
 | GET | `/v1/games` | Key or session | Paginated games with predictions | No key + per-IP limit | Public data, cached |
-| GET | `/v1/games/export` | Key or session | CSV of up to 5,000 games | Key | Bulk download; the quota should count it |
+| GET | `/v1/games/export` | Key or session | CSV of up to 5,000 games; with `async=true`, a queued export (202) | Key | Bulk download; the quota should count it |
 | GET | `/v1/games/seasons` | Key or session | Seasons that have games | No key + per-IP limit | Public data, cached |
 | GET | `/v1/games/:id` | Key or session | Game detail, prediction, odds, predicted scorers | No key + per-IP limit | Public data, cached |
 | GET | `/v1/games/:id/prediction` | Key or session | Elo win chance and Four Factors margin | No key + per-IP limit | Predictions are a core part of the public API |
@@ -162,6 +163,17 @@ data). In the Proposed column, "Key" means a key or a signed-in session, as
 | GET | `/v1/datasets/:version` | Key or session | One release's schema and checksum | No key + per-IP limit | Metadata only |
 | GET | `/v1/datasets/:version/download` | Key or session | The release as CSV; older releases are rebuilt on request | Key | Large file, and a rebuild is costly |
 | POST | `/v1/datasets/admin/publish` | Key or session, then session + ADMIN | Creates a release (write) | Session + ADMIN (no change) | Admin write |
+
+### Exports
+
+For exports queued with `async=true` on `/v1/players/export` or
+`/v1/games/export`. A background job in the API builds the CSV and keeps it
+for 24 hours.
+
+| Method | Path | Guards today | Returns | Proposed | Why |
+|---|---|---|---|---|---|
+| GET | `/v1/exports/:id` | Key or session | The export's status (`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`) and row count | Key | Goes with the export routes above |
+| GET | `/v1/exports/:id/download` | Key or session | The finished CSV | Key | Bulk download, same as the export routes |
 
 ### Optimizer
 
@@ -223,8 +235,8 @@ request.
 
 ### Admin (`/v1/admin`)
 
-Session + ADMIN today. Proposed: **no change**. These routes manage data,
-users and API consumers.
+Session + ADMIN today, except `submit-events`, which ANALYST can use too.
+Proposed: **no change**. These routes manage data, users and API consumers.
 
 | Method | Path | Returns |
 |---|---|---|
@@ -237,6 +249,7 @@ users and API consumers.
 | POST | `/v1/admin/games/:gameId/events/:sequence/preview` | Dry run of a correction |
 | POST | `/v1/admin/corrections/:id/revert` | Undoes a correction (write) |
 | POST | `/v1/admin/games/:gameId/replay` | Re-derives a game's stats (write) |
+| POST | `/v1/admin/games/:gameId/submit-events` | Submits a game's play-by-play by hand as a batch for review (write; ANALYST or ADMIN) |
 | GET | `/v1/admin/batches`, `/v1/admin/batches/:id` | Ingestion batches |
 | POST | `/v1/admin/batches/:id/approve`, `/v1/admin/batches/:id/reject` | Approves or rejects a batch (write) |
 | GET, PUT | `/v1/admin/ingestion/schedule` | Reads or sets the ingestion schedule |

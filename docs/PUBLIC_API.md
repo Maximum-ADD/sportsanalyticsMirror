@@ -96,6 +96,7 @@ A key works on these read routes. A signed-in browser can use them too.
 | Games | `/v1/games`, `/v1/games/seasons`, `/v1/games/{id}`, `/v1/games/{id}/prediction`, `/v1/games/{id}/prediction/history`, `/v1/games/{id}/events` (play-by-play), `/v1/games/{id}/live`, `/v1/games/export` (CSV) |
 | Analytics | `/v1/analytics/model-accuracy`, `/v1/analytics/leaderboard` |
 | Datasets | `/v1/datasets`, `/v1/datasets/{version}`, `/v1/datasets/diff`, `/v1/datasets/changes`, `/v1/datasets/{version}/download` (CSV) |
+| Exports | `/v1/exports/{id}`, `/v1/exports/{id}/download` (CSV), for exports queued with `async=true` |
 
 A key never reaches personal or admin routes: `/v1/me/...`, `/v1/admin/...`,
 `/v1/optimizer/...` and `/v1/custom-statistics/...` need a signed-in
@@ -175,12 +176,25 @@ curl -s -H "X-API-Key: $NBA_API_KEY" "$API/v1/datasets"
 curl -s -H "X-API-Key: $NBA_API_KEY" -o dataset.csv "$API/v1/datasets/VERSION/download"
 ```
 
-**CSV exports** of players (up to 5,000 rows) and games (up to 5,000 games,
-newest first). Both take the same filters as their list routes.
+**CSV exports** of players (up to 5,000 rows, by last name) and games (up
+to 5,000 games, newest first). They take their list route's filters, but
+not paging: `teamId`, `position` and `search` for players; `status`,
+`season` and `seasonType` for games.
 
 ```sh
 curl -s -H "X-API-Key: $NBA_API_KEY" -o players.csv "$API/v1/players/export?position=C"
 curl -s -H "X-API-Key: $NBA_API_KEY" -o games.csv "$API/v1/games/export?season=2025-26"
+```
+
+Add `async=true` to queue the export instead of waiting for it. You get
+`202` and a body with an `id` and a `status`. Poll `/v1/exports/{id}` until
+`status` is `SUCCEEDED` (or `FAILED`), then download the file within 24
+hours. Each poll counts against your limits.
+
+```sh
+curl -s -H "X-API-Key: $NBA_API_KEY" "$API/v1/games/export?season=2025-26&async=true"
+curl -s -H "X-API-Key: $NBA_API_KEY" "$API/v1/exports/EXPORT_ID"
+curl -s -H "X-API-Key: $NBA_API_KEY" -o games.csv "$API/v1/exports/EXPORT_ID/download"
 ```
 
 Swagger UI lists every query parameter for each route.
@@ -220,13 +234,13 @@ Check `code` in your code. The `message` is for people and can change.
 | Status | `code` | When |
 |---|---|---|
 | 401 | `API_KEY_REQUIRED` | The route needs a key and you sent none |
-| 401 | `UNAUTHORIZED` | The key is wrong, revoked or deleted (message: "Invalid or inactive API key") |
+| 401 | `UNAUTHORIZED` | The key is wrong, revoked or deleted, or an admin has switched off its account (message: "Invalid or inactive API key") |
 | 401 | `UNAUTHENTICATED` | The route needs a signed-in session, such as `/v1/me`; a key does not help (message: "Sign in required") |
 | 403 | `FORBIDDEN` | You are signed in but lack the role the route needs (message: "Insufficient permissions"), or a write came from a website the API does not trust |
 | 429 | `RATE_LIMIT_EXCEEDED` | Too many requests this minute (message: "Rate limit of 60 requests per minute exceeded") |
 | 429 | `DAILY_QUOTA_EXCEEDED` | Too many requests today (message: "Daily quota of 5000 requests exceeded") |
 | 400 | `BAD_REQUEST` | A query parameter is wrong, such as an unknown `seasonType` |
-| 404 | `NOT_FOUND` | No such player, team, game or release, or no such route |
+| 404 | `NOT_FOUND` | No such player, team, game, release or export (or the export is not finished, or older than 24 hours), or no such route |
 | 406 | `UNSUPPORTED_API_VERSION` | You sent an `Accept-Version` other than `1` |
 | 503 | `LIVE_DATA_UNAVAILABLE` | The NBA's live feed could not be read (live routes only) |
 | 500 | `INTERNAL_ERROR` | Something went wrong on our side |
