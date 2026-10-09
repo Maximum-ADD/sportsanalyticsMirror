@@ -15,6 +15,7 @@ function createServiceMock() {
     calculateDefinition: vi.fn(),
     createDefinition: vi.fn(),
     listDefinitions: vi.fn().mockResolvedValue([]),
+    listVersions: vi.fn(),
     updateDefinition: vi.fn(),
   };
 }
@@ -67,6 +68,32 @@ describe("CustomStatisticsController", () => {
     await expect(controller.calculateDefinition(request, "definition-1", "player-1", undefined)).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
     service.calculateDefinition.mockResolvedValue({ value: 18 });
     await expect(controller.calculateDefinition(request, "definition-1", "player-1", "PLAYOFFS")).resolves.toEqual({ value: 18 });
-    expect(service.calculateDefinition).toHaveBeenLastCalledWith("author-1", "definition-1", "player-1", "PLAYOFFS");
+    expect(service.calculateDefinition).toHaveBeenLastCalledWith("author-1", "definition-1", "player-1", "PLAYOFFS", undefined);
+  });
+
+  it("passes a requested version through, and rejects one that isn't a positive whole number", async () => {
+    const service = createServiceMock();
+    service.calculateDefinition.mockResolvedValue({ value: 12, version: 1 });
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.calculateDefinition(request, "definition-1", "player-1", undefined, "1")).resolves.toEqual({ value: 12, version: 1 });
+    expect(service.calculateDefinition).toHaveBeenLastCalledWith("author-1", "definition-1", "player-1", undefined, 1);
+    for (const invalidVersion of ["0", "-1", "1.5", "latest"]) {
+      await expect(controller.calculateDefinition(request, "definition-1", "player-1", undefined, invalidVersion)).rejects.toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
+  });
+
+  it("lists a definition's versions, and 404s one the caller doesn't own", async () => {
+    const service = createServiceMock();
+    const controller = new CustomStatisticsController(service as never);
+    service.listVersions.mockResolvedValueOnce([{ version: 1, expression: "points" }]).mockResolvedValueOnce(null);
+
+    await expect(controller.listVersions(request, "definition-1")).resolves.toEqual({
+      definitionId: "definition-1",
+      versions: [{ version: 1, expression: "points" }],
+    });
+    await expect(controller.listVersions(request, "someone-elses")).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
   });
 });
