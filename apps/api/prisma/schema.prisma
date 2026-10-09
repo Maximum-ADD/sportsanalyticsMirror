@@ -1273,6 +1273,64 @@ enum IngestionFrequency {
   WEEKLY
 }
 
+// A large consumer CSV export (/v1/players/export, /v1/games/export), run
+// as a background job instead of inside the request — the Advanced tier's
+// "large requests as jobs", mirrored on IngestionRequest's own
+// queued/polled shape rather than a new queue library: a status column a
+// caller polls, picked up by an in-process worker (ExportWorkerService),
+// not a separate pull-worker process the way ingestion needs (nothing
+// here depends on an environment the API doesn't already have — it's the
+// same Prisma/CSV code the synchronous path used before this existed).
+//
+// Below MAX_SYNCHRONOUS_EXPORT_ROWS (see the resource's own controller)
+// the synchronous CSV response never goes away; this is additive for the
+// requests actually large enough to be worth not blocking on.
+model ExportRequest {
+  id     String              @id @default(uuid())
+  status ExportRequestStatus @default(QUEUED)
+
+  // Which export this is and its filters, exactly as received —
+  // re-validated by the resource's own query parser when the worker builds
+  // the CSV, the same as a synchronous export would.
+  resource ExportResource
+  query    Json
+
+  // No requester identity: the synchronous export this replaces for large
+  // requests never tracked one either (an ApiKeyGuard-authenticated caller
+  // has an ApiConsumer, not a User, and a session caller may have neither
+  // reason nor consent to be named on a CSV they're exporting). This id
+  // itself is the only credential polling needs — same shape as
+  // DatasetRelease's public download.
+  requestedAt DateTime @default(now())
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  // The failure reason, set only when status is FAILED.
+  message    String?
+
+  // The finished CSV, stored the same way DatasetRelease.csv is — ephemeral
+  // here rather than kept forever, so expiresAt is what actually bounds
+  // its lifetime: a row past expiry is treated as gone even if this column
+  // hasn't been cleared yet, and a periodic sweep clears both together.
+  csv       String?
+  rowCount  Int?
+  expiresAt DateTime?
+
+  @@index([status, requestedAt])
+}
+
+enum ExportRequestStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ExportResource {
+  PLAYERS
+  GAMES
+}
+
 // ── Become Pro ─────────────────────────────────────────────────────────────
 // A user's own playing career, self-reported, priced against the published NBA
 // rookie salary scale and compared with real NBA rookies.
