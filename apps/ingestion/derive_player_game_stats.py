@@ -262,6 +262,17 @@ def aggregate_player_game_stats(events: list[dict], first_name_by_person_id: dic
                 if block_id is not None:
                     stats_by_player[block_id]["blocks"] += 1
 
+        elif action_type == "heave":
+            # The heave itself is deliberately uncredited (see
+            # KNOWN_ACTION_TYPES's comment: NBA's own boxscore leaves it out
+            # of the shooter's attempts/points). A block on one is still a
+            # real block NBA's boxscore counts, though, so that credit is
+            # read the same way a missed 2pt/3pt's is, just without an
+            # attempt being added for the (uncredited) shooter.
+            block_id = resolve_secondary_player(event["description"], "blocks", roster, event.get("teamId"))
+            if block_id is not None:
+                stats_by_player[block_id]["blocks"] += 1
+
         elif action_type == "freethrow":
             if person_id is not None and person_id != TEAM_ACTION_PERSON_ID:
                 line = stats_by_player[person_id]

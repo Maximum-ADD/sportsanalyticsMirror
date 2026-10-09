@@ -10,6 +10,7 @@ import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
 import { PlayerDto, PlayerPageDto } from "./player.dto.js";
 import { PlayerStatsDto } from "./player-stats.dto.js";
 import { toCsv } from "../common/csv.js";
+import { ExportRequestsService } from "../common/export-requests.service.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PlayersService, type PlayerWithTeam } from "./players.service.js";
 import { ArchetypesService, type PlayerArchetypeResponse } from "./archetypes.service.js";
@@ -112,8 +113,14 @@ export class PlayersController {
   constructor(
     private readonly playersService: PlayersService,
     private readonly statsService: StatsService,
-    private readonly archetypesService: ArchetypesService
-  ) {}
+    private readonly archetypesService: ArchetypesService,
+    private readonly exportRequests: ExportRequestsService
+  ) {
+    this.exportRequests.registerBuilder("PLAYERS", {
+      fetchRows: (query, maximumRows) => this.playersService.getMatchingPlayers(query, maximumRows),
+      columns: PLAYER_EXPORT_COLUMNS,
+    });
+  }
 
   // GET /v1/players?teamId=&position=&search=&page=&pageSize=&sort=&order=&minGames=
   // — paginated player list. Alphabetical by last name is the default; once
@@ -156,13 +163,32 @@ export class PlayersController {
   // roster export is still a real, useful "filtered slice… for use
   // elsewhere" on its own; joining stats in is a documented follow-up, not
   // silently missing scope.
+  // async=true defers the same export to a background job instead of
+  // blocking this response on it — see ExportRequestsService's own module
+  // comment. Still synchronous by default: today's real row counts (~530
+  // players) never approach MAX_EXPORT_ROWS, so nothing about the existing
+  // response changes unless a caller opts in.
   @Get("export")
   @ApiOperation({ summary: "Export a filtered slice of players as CSV" })
   @ApiQuery({ name: "teamId", required: false, description: "Filter by team ID" })
   @ApiQuery({ name: "position", required: false, description: "Filter by position (PG, SG, SF, PF, C)" })
   @ApiQuery({ name: "search", required: false, description: "Search by player name" })
-  @ApiResponse({ status: 200, description: "CSV file" })
+  @ApiQuery({
+    name: "async",
+    required: false,
+    description: "true to queue this export as a background job instead of waiting for it (see GET /v1/exports/:id)",
+  })
+  @ApiResponse({ status: 200, description: "CSV file (synchronous)" })
+  @ApiResponse({ status: 202, description: "Export queued (async=true); poll GET /v1/exports/:id" })
   async exportPlayers(@Query() query: Record<string, unknown>, @Res() res: Response): Promise<void> {
+    if (query.async === "true") {
+      const exportQuery = { ...query };
+      delete exportQuery.async;
+      const request = await this.exportRequests.queueExport("PLAYERS", exportQuery);
+      res.status(HttpStatus.ACCEPTED).json(request);
+      return;
+    }
+
     const players = await this.playersService.getMatchingPlayers(query, MAX_EXPORT_ROWS);
     const csv = toCsv(players, PLAYER_EXPORT_COLUMNS);
     res

@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import type { Player, Team } from "@prisma/client";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ExportRequestsService } from "../src/common/export-requests.service.js";
 import { createTestApp } from "./create-test-app.js";
 import { resetDatabase, testPrisma } from "./test-db.js";
 
@@ -763,6 +764,43 @@ describe("Games API", () => {
       expect(response.body.predictedScorers).toHaveLength(1);
       expect(response.body.predictedScorers[0].predictedPoints).toBe(20);
       expect(response.body.predictedScorers[0].gamesConsidered).toBe(1);
+    });
+  });
+
+  describe("GET /v1/games/export", () => {
+    it("async=true queues the export instead of returning the CSV directly", async () => {
+      const lakers = await createTeam({ nbaTeamId: 1, name: "Lakers", abbreviation: "LAL" });
+      const celtics = await createTeam({ nbaTeamId: 2, name: "Celtics", abbreviation: "BOS" });
+      await testPrisma.game.create({
+        data: {
+          nbaGameId: "EXPORT-TEST",
+          gameDate: new Date("2026-01-01"),
+          season: "2025-26",
+          homeTeamId: lakers.id,
+          awayTeamId: celtics.id,
+          homeScore: 100,
+          awayScore: 98,
+        },
+      });
+
+      const queued = await request(app.getHttpServer()).get("/v1/games/export?async=true");
+
+      expect(queued.status).toBe(202);
+      expect(queued.body).toMatchObject({ status: "QUEUED", resource: "GAMES" });
+
+      // The in-process worker ticks every 5 seconds (ExportRequestsService's
+      // own @Cron) — run it directly rather than waiting out a real
+      // interval in a test.
+      const exportRequestsService = app.get(ExportRequestsService);
+      await exportRequestsService.processNextQueued();
+
+      const status = await request(app.getHttpServer()).get(`/v1/exports/${queued.body.id}`);
+      expect(status.body).toMatchObject({ status: "SUCCEEDED", rowCount: 1 });
+
+      const download = await request(app.getHttpServer()).get(`/v1/exports/${queued.body.id}/download`);
+      expect(download.status).toBe(200);
+      expect(download.headers["content-disposition"]).toContain('attachment; filename="games.csv"');
+      expect(download.text).toContain("EXPORT-TEST");
     });
   });
 });

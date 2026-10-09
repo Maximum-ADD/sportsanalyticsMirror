@@ -20,6 +20,8 @@ import { AdminTeamsController } from "./admin-teams.controller.js";
 import { AdminTeamsService } from "./admin-teams.service.js";
 import { AdminUsersController } from "./admin-users.controller.js";
 import { AdminUsersService } from "./admin-users.service.js";
+import { ManualSubmissionController } from "./manual-submission.controller.js";
+import { ManualSubmissionService } from "./manual-submission.service.js";
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -33,6 +35,7 @@ import { AdminUsersService } from "./admin-users.service.js";
     AdminConsumersController,
     AdminIngestionController,
     AdminAnomaliesController,
+    ManualSubmissionController,
   ],
   providers: [
     AdminTeamsService,
@@ -44,6 +47,7 @@ import { AdminUsersService } from "./admin-users.service.js";
     AdminConsumersService,
     AdminIngestionService,
     AdminAnomaliesService,
+    ManualSubmissionService,
     SessionAuthGuard,
     RolesGuard,
   ],

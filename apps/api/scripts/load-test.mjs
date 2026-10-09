@@ -38,10 +38,12 @@
 // tier and Supabase's pooled connection under concurrent load. Revisit if
 // real usage shows it's the wrong number.
 //
-// This script was written but could not be run against a real, at-scale
-// database in the environment that authored it (no local Postgres). Treat
-// its first real run, not this file's existence, as the actual evidence —
-// record that run's output alongside docs/PROJECT_OVERVIEW.md.
+// First real run: 2026-10-09, local Postgres, ~2,300 real ingested events
+// across 243 games (short of "hundreds per game" — a from-scratch
+// ingestion pull kept hitting stats.nba.com network timeouts). All four
+// endpoints passed with 35-90x margin on both targets. See
+// docs/PROJECT_OVERVIEW.md's "Load test" section for the full numbers and
+// re-run instructions once a complete pull succeeds.
 
 import autocannon from "autocannon";
 
