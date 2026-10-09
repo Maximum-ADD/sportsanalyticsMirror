@@ -500,6 +500,8 @@ describe("PredictionsPage", () => {
     const playerLink = await screen.findByRole("link", { name: /lebron james/i });
     expect(playerLink).toHaveAttribute("href", "/players/player-1");
     expect(playerLink).toHaveTextContent("27.4");
+    // The mini card opens the profile, and now says so.
+    expect(playerLink).toHaveTextContent("View profile");
   });
 
   it("shows the model's longest streak, high-confidence accuracy, and most predictable team", async () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { pickHighlightCards, type ReliablePlayer } from "./PlayerCards";
+import { screen } from "@testing-library/react";
+import { renderWithProviders } from "@/test/renderWithProviders";
+import { PlayerCardsDisplay, pickHighlightCards, type ReliablePlayer } from "./PlayerCards";
 import type { Player, PredictedScorer, Team } from "@/types/nba";
 
 const TEAM: Team = {
@@ -112,5 +114,24 @@ describe("pickHighlightCards", () => {
 
     expect(cards).toHaveLength(2);
     expect(cards.map((card) => card.kind)).toEqual(["match", "consistency"]);
+  });
+});
+
+describe("PlayerCardsDisplay", () => {
+  // The card had no route into the player's page at all, which is how the
+  // reviewer concluded profiles did not exist.
+  it("gives every card a visible link to the player's profile", () => {
+    renderWithProviders(
+      <PlayerCardsDisplay
+        title="Top 5 to watch"
+        description="Standout predicted scorers."
+        players={[makeEntry("top-scorer", 32, 0.6), makeEntry("most-reliable", 18, 0.95)]}
+        isPending={false}
+      />
+    );
+
+    const links = screen.getAllByRole("link", { name: /view profile/i });
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAttribute("href", "/players/top-scorer");
   });
 });

@@ -72,10 +72,18 @@ describe("WatchlistBoard", () => {
   it("links each player by the internal id the route actually resolves", async () => {
     renderWithProviders(<WatchlistBoard />);
 
-    expect(await screen.findByRole("link", { name: "Shai Gilgeous-Alexander" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "View Shai Gilgeous-Alexander's profile" })).toHaveAttribute(
       "href",
       "/players/player-sga"
     );
+  });
+
+  // The reviewer read the card as static: the hover border tint alone was
+  // not a link cue. The footer now says what the card does.
+  it("cues that the card opens the player's profile", async () => {
+    renderWithProviders(<WatchlistBoard />);
+
+    expect(await screen.findByText("View profile →")).toBeInTheDocument();
   });
 
   // The API sends most-recent-first; a left-to-right trend line that is not

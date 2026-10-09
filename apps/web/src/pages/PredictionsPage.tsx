@@ -741,7 +741,7 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
               <Link
                 key={player.id}
                 to={`/players/${player.id}`}
-                className="flex flex-col items-center border border-landing-light bg-landing-hero p-3 text-center transition-colors hover:border-locker-leather"
+                className="group flex flex-col items-center border border-landing-light bg-landing-hero p-3 text-center transition-colors hover:border-locker-leather focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
               >
                 <PlayerHeadshot player={player} size="sm" />
                 <p className="mt-2 text-[11px] text-landing-ink">
@@ -754,6 +754,11 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
                   {predictedPoints !== undefined ? predictedPoints : "—"}
                 </p>
                 <p className="font-mono text-[8px] tracking-[0.08em] text-locker-ink-muted uppercase">Pred pts</p>
+                {/* The mini card opens the profile; say so rather than
+                    leaving the hover border to imply it. */}
+                <span className="mt-1.5 font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase transition-colors group-hover:text-locker-leather">
+                  View profile <span aria-hidden>→</span>
+                </span>
               </Link>
             ))}
           </div>

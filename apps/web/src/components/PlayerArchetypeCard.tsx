@@ -78,7 +78,7 @@ function SimilarPlayerTile({ entry }: { entry: SimilarPlayer }) {
     <li>
       <Link
         to={`/players/${player.id}`}
-        className="flex h-full flex-col items-center gap-2 border border-landing-light bg-landing-hero px-3 py-3 text-center transition hover:border-locker-leather"
+        className="group flex h-full flex-col items-center gap-2 border border-landing-light bg-landing-hero px-3 py-3 text-center transition hover:border-locker-leather focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
       >
         <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
           {entry.rank === 1 ? "Most similar" : `#${entry.rank}`}
@@ -94,6 +94,11 @@ function SimilarPlayerTile({ entry }: { entry: SimilarPlayer }) {
           <span className="font-display text-[15px] tabular-nums text-locker-ink-muted">
             {Math.round(entry.similarityScore)}
           </span>
+        </span>
+        {/* The whole tile is the link, but nothing said so; the cue names
+            the destination and lights up with the hover border tint. */}
+        <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase transition-colors group-hover:text-locker-leather">
+          View profile <span aria-hidden>→</span>
         </span>
       </Link>
     </li>
