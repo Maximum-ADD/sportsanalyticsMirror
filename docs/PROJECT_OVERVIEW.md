@@ -525,18 +525,29 @@ left to go stale.
 **Deliberately out of scope for the event-derivation work above** — the
 brief's Intermediate/Advanced submission-pipeline requirements go well
 beyond what a single automated ingestion source needs, and weren't
-realistic to also attempt alongside making derivation itself real: a
-multi-human-submitter workflow with per-submitter approval (this project
-has one automated "submitter" — the pipeline itself, source-tagged per
-`IngestionBatch` — not many competing ones), batch staging/validation with
-resume-from-partial-failure at the scale a whole-season upload implies,
-versioned dataset releases with checksums, API keys/rate limits/quotas for
-external consumers, user-definable derived statistics evaluated over the
-event schema, a live/late-arriving event feed (this pipeline is
-batch-per-game, run after the fact, not a feed from a fixture in
-progress), point-in-time ("what was this stat as of date X") queries, and
-API contract testing/a published deprecation path. None of these are
-started; none should be assumed done because event-derivation now is.
+realistic to also attempt alongside making derivation itself real: batch
+staging/validation with resume-from-partial-failure at the scale a
+whole-season upload implies, versioned dataset releases with checksums,
+API keys/rate limits/quotas for external consumers, user-definable derived
+statistics evaluated over the event schema, a live/late-arriving event
+feed (this pipeline is batch-per-game, run after the fact, not a feed from
+a fixture in progress), point-in-time ("what was this stat as of date X")
+queries, and API contract testing/a published deprecation path. None of
+these are started; none should be assumed done because event-derivation
+now is.
+
+A human submitter path now exists (`ManualSubmissionService`,
+`POST /v1/admin/games/:gameId/submit-events`, ANALYST or ADMIN only): a
+full game's play-by-play typed in by hand, validated against the same
+event schema a correction is held to (`manual-submission-request.ts`),
+and landed as a new `IngestionBatch` (`source: "human"`,
+`submittedById` set) in `PENDING_REVIEW` — the same admin Batches tab
+approve/reject flow the automated pipeline's own `--review` runs go
+through, never a second, looser path into `GameEvent`. Scoped to a game
+with no existing events (a fresh submission, not a correction) and to one
+role tier, not per-submitter/per-team scopes — every ANALYST or ADMIN can
+submit for any game, the same granularity `custom-statistics` already
+uses.
 
 ## Personalization preferences
 
