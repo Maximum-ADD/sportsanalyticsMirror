@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { fetchLatestLineup, fetchPlayerPrediction, fetchPlayerPredictions } from "@/lib/nbaApi";
+import { fetchLatestLineup, fetchPlayerPrediction, fetchPlayerPredictions, solveLineup } from "@/lib/nbaApi";
 import { saveLineup, type SaveLineupParams } from "@/lib/meApi";
 import { useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
@@ -14,7 +14,13 @@ import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
 import { PageLoading } from "@/components/ui/loading-overlay";
 import { PageTutorial } from "@/components/tutorial/PageTutorial";
 import { OPTIMIZER_TUTORIAL } from "@/components/tutorial/definitions/optimizerTutorial";
-import type { LineupSlot, Player, PlayerPredictionListItem, PlayerPredictionSummary } from "@/types/nba";
+import type {
+  LineupSlot,
+  Player,
+  PlayerPredictionListItem,
+  PlayerPredictionSummary,
+  SolvedLineup,
+} from "@/types/nba";
 
 // A fantasy lineup is a 5-player roster (see apps/optimizer/optimize.py) —
 // local "what if" edits stay within that shape rather than growing unbounded.
@@ -35,6 +41,10 @@ const SUGGESTION_COUNT = 4;
 // the server rejects anything longer, so the box caps typing at the same
 // bound rather than the save failing after the click.
 const MAX_LINEUP_NAME_LENGTH = 50;
+
+// How many times a solve that failed on the server's side (a 5xx or a
+// network error) is retried before the page says so and offers Try again.
+const SOLVE_RETRIES_ON_SERVER_ERROR = 1;
 
 const MODULE_HEADING_CLASS =
   "font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase";
@@ -57,6 +67,32 @@ function formatDollarsPerPoint(slot: LineupSlot): string {
     return "—";
   }
   return `$${Math.round(salary / predictedFantasyPoints).toLocaleString("en-US")}/pt`;
+}
+
+function playerName(player: Player): string {
+  return `${player.firstName} ${player.lastName}`;
+}
+
+// A solved lineup in the board's own slot shape, so the totals, the table,
+// the solver checks and saving all work on it unchanged. Solved lineups
+// aren't stored, so each slot is keyed by its player.
+function toBoardSlots(lineup: SolvedLineup): LineupSlot[] {
+  return lineup.slots.map((slot) => ({
+    id: slot.playerId,
+    lineupId: `solved-${lineup.rank}`,
+    playerId: slot.playerId,
+    player: slot.player,
+    predictedFantasyPoints: slot.predictedFantasyPoints,
+    salary: slot.salary,
+  }));
+}
+
+// The solver's own words for why no lineup fits the rules: the API answers
+// 400 INFEASIBLE_LINEUP with a message naming the rule to change ("You
+// locked 6 players, but a lineup has only 5 slots..."). Null for any other
+// failure — a server or network error, which trying again may fix.
+function describeSolveFailure(error: unknown): string | null {
+  return error instanceof ApiError && error.status === 400 ? error.message : null;
 }
 
 function formatTimeAgo(isoDate: string): string {
@@ -217,7 +253,195 @@ function SaveLineupDialog({
   );
 }
 
-function PageHeader({ solvedAt, budget }: { solvedAt?: string; budget?: number }) {
+// One side of the rules panel: the players under that rule, each with a
+// button to drop it, and a search to add another. Dropping a rule removes
+// its button, so focus moves to this side's search box rather than falling
+// back to the page body.
+function RuleColumn({
+  title,
+  players,
+  emptyText,
+  removeLabel,
+  onRemove,
+  onAdd,
+  searchLabel,
+  searchPlaceholder,
+  ruledPlayerIds,
+}: {
+  title: string;
+  players: Player[];
+  emptyText: string;
+  removeLabel: (name: string) => string;
+  onRemove: (playerId: string) => void;
+  onAdd: (player: Player) => void;
+  searchLabel: string;
+  searchPlaceholder: string;
+  ruledPlayerIds: string[];
+}) {
+  const columnRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div ref={columnRef} className="border border-landing-light bg-landing-hero p-3">
+      <h3 className="font-mono text-[10px] tracking-[0.14em] text-locker-leather uppercase">{title}</h3>
+      {players.length === 0 ? (
+        <p className="mt-2 text-[12px] text-locker-ink-muted">{emptyText}</p>
+      ) : (
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {players.map((player) => (
+            <li
+              key={player.id}
+              className="inline-flex items-center gap-1.5 border border-landing-light bg-locker-surface py-0.5 pr-0.5 pl-2 font-display text-[11.5px] text-landing-ink uppercase"
+            >
+              {playerName(player)}
+              <button
+                type="button"
+                aria-label={removeLabel(playerName(player))}
+                onClick={() => {
+                  columnRef.current?.querySelector("input")?.focus();
+                  onRemove(player.id);
+                }}
+                className="inline-flex size-7 items-center justify-center font-mono text-[10px] text-locker-ink-muted transition-colors hover:text-locker-bad"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3">
+        <PlayerSearchCombobox
+          onSelect={onAdd}
+          excludedPlayerIds={ruledPlayerIds}
+          placeholder={searchPlaceholder}
+          label={searchLabel}
+          variant="locker"
+        />
+      </div>
+    </div>
+  );
+}
+
+// "Your rules": the players the solver must include and the ones it must
+// leave out. Any rule at all switches the page from the precomputed lineup
+// to one solved on demand (POST /v1/optimizer/solve) under those rules.
+function LineupRulesPanel({
+  lockedPlayers,
+  excludedPlayers,
+  status,
+  onLock,
+  onUnlock,
+  onExclude,
+  onUnexclude,
+  onClear,
+}: {
+  lockedPlayers: Player[];
+  excludedPlayers: Player[];
+  status: string;
+  onLock: (player: Player) => void;
+  onUnlock: (playerId: string) => void;
+  onExclude: (player: Player) => void;
+  onUnexclude: (playerId: string) => void;
+  onClear: () => void;
+}) {
+  const panelRef = useRef<HTMLElement>(null);
+  const hasRules = lockedPlayers.length > 0 || excludedPlayers.length > 0;
+  // A player can be under one rule at most, so neither search offers anyone
+  // already under either.
+  const ruledPlayerIds = [...lockedPlayers, ...excludedPlayers].map((player) => player.id);
+
+  return (
+    <section ref={panelRef} className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
+      <SectionHeading eyebrow="02" title="Your rules" />
+      <p className="-mt-1 mb-4 max-w-2xl text-[12.5px] leading-relaxed text-locker-ink-muted">
+        Tell the solver who must be in the lineup and who to leave out, and it finds the best lineup that follows
+        your rules. Use the buttons on each row of the lineup, or search for any player here. Changing a rule
+        solves the lineup again and replaces any edits on the board.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <RuleColumn
+          title="Must include"
+          players={lockedPlayers}
+          emptyText="No one yet. Every lineup will include the players you add here."
+          removeLabel={(name) => `Stop requiring ${name}`}
+          onRemove={onUnlock}
+          onAdd={onLock}
+          searchLabel="Search for a player the lineup must include"
+          searchPlaceholder="Add a must-include player"
+          ruledPlayerIds={ruledPlayerIds}
+        />
+        <RuleColumn
+          title="Excluded"
+          players={excludedPlayers}
+          emptyText="No one yet. No lineup will include the players you add here."
+          removeLabel={(name) => `Allow ${name} again`}
+          onRemove={onUnexclude}
+          onAdd={onExclude}
+          searchLabel="Search for a player to leave out of the lineup"
+          searchPlaceholder="Add a player to exclude"
+          ruledPlayerIds={ruledPlayerIds}
+        />
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-landing-light pt-4">
+        <p role="status" className="min-w-52 flex-1 text-[12.5px] text-locker-ink-muted">
+          {status}
+        </p>
+        {hasRules && (
+          <button
+            type="button"
+            onClick={() => {
+              // The button goes away with the rules; keep focus in the panel.
+              panelRef.current?.querySelector("input")?.focus();
+              onClear();
+            }}
+            className="border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
+          >
+            Clear all rules
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Stands in for the totals, the board and the checks when a solve under the
+// user's rules fails: showing the precomputed lineup instead would quietly
+// ignore the rules. The rules panel above stays, so the fix is one click up.
+function SolveFailureNotice({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const reason = describeSolveFailure(error);
+  return (
+    <section className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
+      <h2 className="font-display text-sm tracking-[0.14em] text-landing-ink uppercase">
+        {reason ? "No lineup fits your rules" : "Couldn't solve with your rules"}
+      </h2>
+      <p role="alert" className="mt-2 max-w-2xl text-[12.5px] leading-relaxed text-landing-ink">
+        {reason ?? "Something went wrong on our side while solving. Your rules are kept, so try again."}
+      </p>
+      {reason ? (
+        <p className="mt-2 max-w-2xl text-[12px] text-locker-ink-muted">
+          Change a rule above, or clear them all to go back to the solver's own lineup.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-3 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
+        >
+          Try again
+        </button>
+      )}
+    </section>
+  );
+}
+
+function PageHeader({
+  solvedAt,
+  budget,
+  solvedWithYourRules = false,
+}: {
+  solvedAt?: string;
+  budget?: number;
+  solvedWithYourRules?: boolean;
+}) {
   return (
     <header className="mb-6 border border-landing-light bg-locker-surface p-4 sm:p-6">
       <p className="mb-2 font-mono text-[10px] tracking-[0.2em] text-locker-leather uppercase">
@@ -232,7 +456,7 @@ function PageHeader({ solvedAt, budget }: { solvedAt?: string; budget?: number }
       </p>
       {solvedAt && (
         <p className="mt-3 font-mono text-[10px] tracking-[0.1em] text-locker-ink-muted uppercase">
-          Solved {formatTimeAgo(solvedAt)}
+          {solvedWithYourRules ? "Solved with your rules" : `Solved ${formatTimeAgo(solvedAt)}`}
           {budget !== undefined && ` · budget ${formatSalary(budget)}`}
         </p>
       )}
@@ -261,6 +485,36 @@ export function OptimizerPage() {
   // the save button, closed by Cancel/Escape or by the save succeeding.
   const [isNamePromptOpen, setIsNamePromptOpen] = useState(false);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const lineupHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  // The user's rules for the solver: players every lineup must include, and
+  // players none may. Kept as whole players, not ids, so the rules panel can
+  // name them without a lookup. A player is under one rule at most.
+  const [lockedPlayers, setLockedPlayers] = useState<Player[]>([]);
+  const [excludedPlayers, setExcludedPlayers] = useState<Player[]>([]);
+  const lockedIds = lockedPlayers.map((player) => player.id);
+  const excludedIds = excludedPlayers.map((player) => player.id);
+  const hasRules = lockedIds.length > 0 || excludedIds.length > 0;
+
+  // With no rules the page shows the precomputed lineup above; any rule
+  // solves one on demand instead. The previous answer stays on screen while
+  // the next one loads, so the board doesn't blank out on every click. An
+  // infeasible rule set (a 4xx) says the same thing however often it's
+  // retried, so only server and network errors are, and only once: the
+  // user can always retry by hand from the error.
+  const solveQuery = useQuery({
+    queryKey: ["optimizerSolve", data?.budget, [...lockedIds].sort(), [...excludedIds].sort()],
+    queryFn: () => solveLineup({ budget: data!.budget, lockedPlayerIds: lockedIds, excludedPlayerIds: excludedIds }),
+    enabled: data !== undefined && hasRules,
+    placeholderData: keepPreviousData,
+    retry: (failureCount, solveError) =>
+      !(solveError instanceof ApiError && solveError.status < 500) && failureCount < SOLVE_RETRIES_ON_SERVER_ERROR,
+  });
+  const solvedBest = hasRules ? solveQuery.data?.lineups[0] : undefined;
+  // What the board starts from before any local edit: the lineup solved
+  // under the rules once there is one, else the precomputed lineup.
+  const baseSlots = solvedBest ? toBoardSlots(solvedBest) : (data?.slots ?? []);
+  const boardKey = solvedBest ? `solved:${baseSlots.map((slot) => slot.playerId).join(",")}` : data?.id;
 
   useEffect(() => {
     setIsEditingLineup(false);
@@ -268,7 +522,32 @@ export function OptimizerPage() {
     setBudgetOverride(null);
     setLineupName("");
     setIsNamePromptOpen(false);
-  }, [data?.id]);
+  }, [boardKey]);
+
+  function lockPlayer(player: Player) {
+    setExcludedPlayers((previous) => previous.filter((excluded) => excluded.id !== player.id));
+    setLockedPlayers((previous) => (previous.some((locked) => locked.id === player.id) ? previous : [...previous, player]));
+  }
+
+  function unlockPlayer(playerId: string) {
+    setLockedPlayers((previous) => previous.filter((locked) => locked.id !== playerId));
+  }
+
+  function excludePlayer(player: Player) {
+    setLockedPlayers((previous) => previous.filter((locked) => locked.id !== player.id));
+    setExcludedPlayers((previous) =>
+      previous.some((excluded) => excluded.id === player.id) ? previous : [...previous, player]
+    );
+  }
+
+  function unexcludePlayer(playerId: string) {
+    setExcludedPlayers((previous) => previous.filter((excluded) => excluded.id !== playerId));
+  }
+
+  function clearRules() {
+    setLockedPlayers([]);
+    setExcludedPlayers([]);
+  }
 
   const saveMutation = useMutation({
     mutationFn: (params: SaveLineupParams) => saveLineup(params),
@@ -289,7 +568,7 @@ export function OptimizerPage() {
   // Latest predictions for every player, fetched only while the user could
   // actually add someone — backs the value-suggestion panel. One round trip
   // for the whole pool, not one lookup per candidate.
-  const currentSlotCount = (editedSlots ?? data?.slots ?? []).length;
+  const currentSlotCount = (editedSlots ?? baseSlots).length;
   const suggestionsQuery = useQuery({
     queryKey: ["playerPredictions"],
     queryFn: fetchPlayerPredictions,
@@ -303,7 +582,7 @@ export function OptimizerPage() {
   }
 
   function removeSlot(slotId: string) {
-    setEditedSlots((previous) => (previous ?? data!.slots).filter((slot) => slot.id !== slotId));
+    setEditedSlots((previous) => (previous ?? baseSlots).filter((slot) => slot.id !== slotId));
     saveMutation.reset();
   }
 
@@ -313,7 +592,7 @@ export function OptimizerPage() {
   async function addPlayer(player: Player, prediction?: PlayerPredictionSummary) {
     const latest = prediction ?? (await fetchPlayerPrediction(player.id));
     setEditedSlots((previous) => [
-      ...(previous ?? data!.slots),
+      ...(previous ?? baseSlots),
       {
         id: player.id,
         lineupId: data!.id,
@@ -372,14 +651,14 @@ export function OptimizerPage() {
     return null;
   }
 
-  const slots = editedSlots ?? data.slots;
+  const slots = editedSlots ?? baseSlots;
   const hasLineupEdits = editedSlots !== null || budgetOverride !== null;
   const totalPredictedPoints = editedSlots !== null
     ? slots.reduce((sum, slot) => sum + (slot.predictedFantasyPoints ?? 0), 0)
-    : data.totalPredictedPoints;
+    : (solvedBest?.totalPredictedPoints ?? data.totalPredictedPoints);
   const totalSalary = editedSlots !== null
     ? slots.reduce((sum, slot) => sum + (slot.salary ?? 0), 0)
-    : data.totalSalary;
+    : (solvedBest?.totalSalary ?? data.totalSalary);
   const effectiveBudget = budgetOverride ?? data.budget;
   const isOverBudget = totalSalary > effectiveBudget;
   const salaryHeadroomInDollars = Math.abs(effectiveBudget - totalSalary);
@@ -494,16 +773,66 @@ export function OptimizerPage() {
     });
   }
 
+  const isSolving = hasRules && solveQuery.isFetching;
+  const solveFailed = hasRules && solveQuery.isError && !isSolving;
+  let rulesStatus: string;
+  if (!hasRules) {
+    rulesStatus = "No rules set, so the lineup below is the solver's own pick.";
+  } else if (isSolving) {
+    rulesStatus = "Solving with your rules…";
+  } else if (solveFailed) {
+    rulesStatus = "No lineup to show yet. The note below says why.";
+  } else {
+    rulesStatus = "The lineup below is the best one that follows your rules.";
+  }
+
+  // The header and the rules panel open the page whether or not the rules
+  // could be solved. Both branches below place them first, so React keeps
+  // the panel (and whatever is typed in its searches) across the switch.
+  const pageHeader = (
+    <Reveal replay={false}>
+      <PageHeader solvedAt={data.createdAt} budget={data.budget} solvedWithYourRules={solvedBest !== undefined} />
+    </Reveal>
+  );
+  const rulesPanel = (
+    <Reveal replay={false} delay={1}>
+      <LineupRulesPanel
+        lockedPlayers={lockedPlayers}
+        excludedPlayers={excludedPlayers}
+        status={rulesStatus}
+        onLock={lockPlayer}
+        onUnlock={unlockPlayer}
+        onExclude={excludePlayer}
+        onUnexclude={unexcludePlayer}
+        onClear={clearRules}
+      />
+    </Reveal>
+  );
+
+  if (solveFailed) {
+    return (
+      <div className="min-h-full bg-landing-hero">
+        <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8">
+          {pageHeader}
+          {rulesPanel}
+          <Reveal replay={false} delay={2}>
+            <SolveFailureNotice error={solveQuery.error} onRetry={() => void solveQuery.refetch()} />
+          </Reveal>
+        </div>
+        <PageTutorial tutorial={OPTIMIZER_TUTORIAL} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-full bg-landing-hero">
       <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8">
-        <Reveal replay={false}>
-          <PageHeader solvedAt={data.createdAt} budget={data.budget} />
-        </Reveal>
+        {pageHeader}
+        {rulesPanel}
 
-        <Reveal replay={false} delay={1}>
+        <Reveal replay={false} delay={2}>
           <section className="mb-6">
-            <SectionHeading eyebrow="02" title="Lineup totals" />
+            <SectionHeading eyebrow="03" title="Lineup totals" />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <StatTile label="Projected points">
                 <div className="mt-1 font-display text-3xl text-locker-leather tabular-nums">
@@ -565,11 +894,15 @@ export function OptimizerPage() {
           </section>
         </Reveal>
 
-        <Reveal replay={false} delay={2}>
+        <Reveal replay={false} delay={3}>
           <section className="mb-6">
             <div className="mb-3 flex flex-wrap items-center gap-3.5">
-              <span className="font-mono text-[10px] tracking-[0.2em] text-locker-leather">03</span>
-              <h2 className={MODULE_HEADING_CLASS}>The lineup</h2>
+              <span className="font-mono text-[10px] tracking-[0.2em] text-locker-leather">04</span>
+              {/* Focusable so excluding a row's player (which removes the row
+                  and its button) can hand focus somewhere sensible. */}
+              <h2 ref={lineupHeadingRef} tabIndex={-1} className={MODULE_HEADING_CLASS}>
+                The lineup
+              </h2>
               <span aria-hidden className={MODULE_RULE_CLASS} />
               <div className="flex items-center gap-2.5">
                 {hasLineupEdits && (
@@ -661,8 +994,12 @@ export function OptimizerPage() {
               </div>
             )}
 
-            <div className="overflow-x-auto border border-landing-light bg-locker-surface">
-              <table className="w-full text-left">
+            <div
+              className={`overflow-x-auto border border-landing-light bg-locker-surface transition-opacity ${
+                isSolving ? "opacity-60" : ""
+              }`}
+            >
+              <table className="w-full text-left" aria-busy={isSolving}>
                 <thead>
                   <tr className="border-b border-landing-light bg-landing-hero">
                     <th className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Player</th>
@@ -671,7 +1008,11 @@ export function OptimizerPage() {
                     <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Proj pts</th>
                     <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Salary</th>
                     <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase hidden sm:table-cell">$ / PT</th>
-                    {isEditingLineup && <th className="px-3 py-2.5"><span className="sr-only">Remove</span></th>}
+                    {isEditingLineup ? (
+                      <th className="px-3 py-2.5"><span className="sr-only">Remove</span></th>
+                    ) : (
+                      <th className="px-3 py-2.5 text-right font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">Rules</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -710,7 +1051,7 @@ export function OptimizerPage() {
                       <td className="hidden px-3 py-2.5 text-right text-[12.5px] text-landing-ink tabular-nums sm:table-cell">
                         {formatDollarsPerPoint(slot)}
                       </td>
-                      {isEditingLineup && (
+                      {isEditingLineup ? (
                         <td className="px-3 py-2.5 text-right">
                           <button
                             type="button"
@@ -720,6 +1061,33 @@ export function OptimizerPage() {
                           >
                             ✕
                           </button>
+                        </td>
+                      ) : (
+                        <td className="px-3 py-2.5 text-right">
+                          <span className="inline-flex gap-1.5">
+                            <button
+                              type="button"
+                              aria-pressed={lockedIds.includes(slot.player.id)}
+                              aria-label={`Must include ${playerName(slot.player)}`}
+                              onClick={() =>
+                                lockedIds.includes(slot.player.id) ? unlockPlayer(slot.player.id) : lockPlayer(slot.player)
+                              }
+                              className="border border-landing-light px-2 py-1 font-mono text-[9.5px] tracking-[0.1em] text-locker-ink-muted uppercase transition-colors hover:border-locker-leather hover:text-landing-ink aria-pressed:border-locker-leather aria-pressed:bg-locker-leather aria-pressed:text-landing-hero"
+                            >
+                              Must include
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Exclude ${playerName(slot.player)}`}
+                              onClick={() => {
+                                lineupHeadingRef.current?.focus();
+                                excludePlayer(slot.player);
+                              }}
+                              className="border border-landing-light px-2 py-1 font-mono text-[9.5px] tracking-[0.1em] text-locker-ink-muted uppercase transition-colors hover:border-locker-bad hover:text-locker-bad"
+                            >
+                              Exclude
+                            </button>
+                          </span>
                         </td>
                       )}
                     </tr>
@@ -733,7 +1101,7 @@ export function OptimizerPage() {
         <Reveal replay={false} delay={3}>
           <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
             <div className="mb-4 flex items-center gap-3.5">
-              <span className="font-mono text-[10px] tracking-[0.2em] text-locker-leather">04</span>
+              <span className="font-mono text-[10px] tracking-[0.2em] text-locker-leather">05</span>
               <h2 className={MODULE_HEADING_CLASS}>Solver checks</h2>
               <span aria-hidden className={MODULE_RULE_CLASS} />
             </div>
