@@ -19,6 +19,7 @@ import { formatNumber, formatPercentage, formatPlusMinus, formatRatio } from "@/
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import { COMPARISON_PLAYER_COLORS } from "@/lib/comparisonColors";
+import { requireStat } from "@/lib/statGlossary";
 import type { Player, PlayerComparisonEntry, SeasonAverages, SeasonType } from "@/types/nba";
 
 const MAX_PLAYERS = 4;
@@ -248,13 +249,12 @@ const STAT_GROUPS: StatGroup[] = [
 // Plain-terms gloss for every abbreviation this page's table and radar use,
 // shown once at the bottom rather than repeated next to each stat — a
 // glossary a reader checks when they hit a term they don't recognise,
-// not something that has to sit beside the number every time.
+// not something that has to sit beside the number every time. The wording
+// comes from the shared glossary, so it reads the same here as on the
+// profile's stat tiles; the two ratings share one entry because the table
+// shows them as a pair.
 const GLOSSARY_TERMS: { term: string; explain: string }[] = [
-  { term: "TS%", explain: "True shooting percentage — scoring efficiency that counts threes and free throws, so volume shooters and efficient scorers aren't lumped together." },
-  { term: "eFG%", explain: "Effective field goal percentage — adjusts shooting percentage to weigh a three-pointer as worth more than a two." },
-  { term: "Usage %", explain: "The share of their team's possessions that end in this player shooting, drawing a foul, or turning it over while they're on the floor." },
-  { term: "AST:TO", explain: "Assist-to-turnover ratio — playmaking weighed against mistakes. Above 2.0 means a player creates twice as often as they cough it up." },
-  { term: "+/-", explain: "Point differential while this player is on the floor — positive means their team outscored the opponent during their minutes." },
+  ...["TS%", "eFG%", "Usage %", "AST:TO", "+/-"].map((term) => ({ term, explain: requireStat(term).explain })),
   { term: "Offensive / defensive rating", explain: "Points scored (offensive) or allowed (defensive) per 100 possessions — pace-adjusted so a fast team and a slow team can be compared fairly. Lower is better on defense." },
 ];
 

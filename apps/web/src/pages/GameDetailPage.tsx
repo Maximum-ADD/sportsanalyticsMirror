@@ -21,6 +21,7 @@ import {
   CLOSE_PREDICTION_TOLERANCE,
   type PredictionReliability,
 } from "@/lib/reliability";
+import { requireStat } from "@/lib/statGlossary";
 import type { Game, PredictedScorer } from "@/types/nba";
 
 const PERCENT = (value: number) => `${Math.round(value * 100)}%`;
@@ -154,6 +155,10 @@ function PlayerDetailPanel({ scorer, onClose, isEditing, onToggleEditing, onPoin
                   {label}
                 </div>
                 <div className="mt-0.5 font-display text-[15px] text-landing-ink tabular-nums">{value}</div>
+                {/* Spelled out under the figure, as on the profile's stat
+                    tiles; it wraps to two lines in the narrow desktop panel,
+                    which still beats an abbreviation nobody can look up. */}
+                <div className="mt-0.5 text-[10px] leading-tight text-locker-ink-muted">{requireStat(label).name}</div>
               </div>
             ))}
           </div>

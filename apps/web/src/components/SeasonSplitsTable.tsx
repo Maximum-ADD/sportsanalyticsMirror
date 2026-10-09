@@ -1,4 +1,5 @@
 import { NO_VALUE } from "@/lib/playerBio";
+import { requireStat } from "@/lib/statGlossary";
 import { SEASON_TYPES_IN_ORDER, formatSeasonTypeShort, isSmallSample } from "@/lib/seasonType";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PlayerSeasonSplits, SeasonAverages, SeasonType } from "@/types/nba";
@@ -142,6 +143,12 @@ export function SeasonSplitsTable({ splits, playerName }: SeasonSplitsTableProps
             <TableRow key={row.field} className="hover:bg-landing-hero/60">
               <TableCell className="font-mono text-[10px] tracking-[0.08em] uppercase text-locker-ink-muted">
                 {row.label}
+                {/* Spelled out under the abbreviation, as on the stat tiles
+                    — the table is read row by row, and "AST:TO" alone means
+                    nothing to someone who doesn't already know it. */}
+                <div className="mt-0.5 font-sans text-[11px] tracking-normal whitespace-nowrap normal-case">
+                  {requireStat(row.label).name}
+                </div>
               </TableCell>
               {playedSegments.map((seasonType) => {
                 const value = splits[seasonType][row.field];

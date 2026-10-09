@@ -10,6 +10,7 @@ import { FollowPlayerButton } from "@/components/FollowPlayerButton";
 import { MatchupAnalysis } from "@/components/MatchupAnalysis";
 import { PlayerArchetypeCard } from "@/components/PlayerArchetypeCard";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { StatGlossaryInfo } from "@/components/StatGlossaryInfo";
 import { TeamBadge } from "@/components/TeamBadge";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { LockerSegmentControl } from "@/components/LockerSegmentControl";
@@ -21,6 +22,7 @@ import { Reveal } from "@/components/landing/Reveal";
 import { formatAge, formatHeight, formatPosition } from "@/lib/playerBio";
 import { formatNumber, formatPercentage, formatPlusMinus } from "@/lib/advancedStats";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
+import { describeStat } from "@/lib/statGlossary";
 import type { Player, PlayerStatsResponse, SeasonAverages, SeasonType, UpcomingGameProjection } from "@/types/nba";
 
 // The locker-outline button the header row shares — sharp border, mono
@@ -31,6 +33,12 @@ const LOCKER_BUTTON_CLASS =
   "min-h-10 border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather sm:min-h-0";
 const LOCKER_BUTTON_ACTIVE_CLASS =
   "min-h-10 border border-locker-leather bg-locker-leather px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-white uppercase transition-colors sm:min-h-0";
+
+// The stats on this page whose name alone does not say how to read them,
+// grouped by the section they appear in, for each section's glossary panel.
+const ADVANCED_STAT_LABELS = ["USG%", "+/-", "ORTG", "DRTG"] as const;
+const SHOOTING_STAT_LABELS = ["TS%", "eFG%", "FTA/G"] as const;
+const CAREER_TABLE_COLUMNS = ["Season", "GP", "PPG", "RPG", "APG", "FG%", "3P%", "TS%"] as const;
 
 // A card-internal section title in the predictions/home pattern: display
 // type, wide tracking, hairline rule running out to the card's right edge.
@@ -427,6 +435,13 @@ export function PlayerProfilePage() {
               <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
                 Showing {formatSeasonType(seasonType).toLowerCase()} figures only
               </span>
+              {/* Every tile below spells out its own name; the four advanced
+                  figures also need saying what they count, which is longer
+                  than a tile caption. At the row's right-hand end because the
+                  panel opens leftwards. */}
+              <div className="ml-auto">
+                <StatGlossaryInfo label="What USG%, +/-, ORTG and DRTG mean" stats={ADVANCED_STAT_LABELS} />
+              </div>
             </div>
 
             {isEditingStats && (
@@ -577,7 +592,10 @@ export function PlayerProfilePage() {
           <Reveal className="xl:col-span-3">
             <SectionLoading loading={isSwitchingStatsSegment} label="Loading player stats">
             <section className="border border-landing-light bg-locker-surface p-4 sm:p-6">
-              <SectionHeading title="Shooting splits" />
+              <SectionHeading
+                title="Shooting splits"
+                info={<StatGlossaryInfo label="What TS%, eFG% and FTA/G mean" stats={SHOOTING_STAT_LABELS} />}
+              />
             {/* Six across so the two efficiency measures sit on the same
                 line as the raw percentages they contextualise — TS% and
                 eFG% are only meaningful next to FG% and 3P%. */}
@@ -767,9 +785,30 @@ export function PlayerProfilePage() {
                     <table className="w-full border-collapse text-left">
                       <thead>
                         <tr className="border-b border-landing-light bg-landing-hero">
-                          {["Season", "GP", "PPG", "RPG", "APG", "FG%", "3P%", "TS%"].map((h) => (
-                            <th key={h} className="px-2.5 py-1.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase">{h}</th>
-                          ))}
+                          {/* The header keeps the short form so eight columns fit,
+                              with the full name as a tooltip for a mouse and as
+                              the cell's spoken text for a screen reader (which
+                              would otherwise spell out "R-P-G"). The tiles
+                              above already show the names on screen. */}
+                          {CAREER_TABLE_COLUMNS.map((h) => {
+                            const definition = describeStat(h);
+                            return (
+                              <th
+                                key={h}
+                                title={definition?.name}
+                                className="px-2.5 py-1.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase"
+                              >
+                                {definition ? (
+                                  <>
+                                    <span aria-hidden>{h}</span>
+                                    <span className="sr-only normal-case">{definition.name}</span>
+                                  </>
+                                ) : (
+                                  h
+                                )}
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody>

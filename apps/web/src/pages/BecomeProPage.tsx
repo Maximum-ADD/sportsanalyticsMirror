@@ -5,6 +5,7 @@ import { ComparisonTraitsRadar } from "@/components/ComparisonTraitsRadar";
 import { ErrorState } from "@/components/ErrorState";
 import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart } from "@/components/PointsTrendChart";
+import { StatGlossaryInfo } from "@/components/StatGlossaryInfo";
 import { StatTile } from "@/components/StatTile";
 import { ProspectValueCard } from "@/components/becomepro/ProspectValueCard";
 import { SeasonEntryPanel } from "@/components/becomepro/SeasonEntryPanel";
@@ -229,7 +230,10 @@ function BecomeProView({ data, onSelectSeason }: { data: MyBecomePro; onSelectSe
 
           {averages && gamesPlayed > 0 && (
             <Reveal delay={1}>
-              <LockerSection title="Season line">
+              <LockerSection
+                title="Season line"
+                action={<StatGlossaryInfo label="What TS% means" stats={["TS%"]} />}
+              >
                 <SeasonStatGrid averages={averages} />
                 {isSmallSample(gamesPlayed) && (
                   <p className="mt-2 text-[11px] text-locker-ink-muted">

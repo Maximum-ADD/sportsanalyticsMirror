@@ -5,6 +5,7 @@ import { fetchWatchlist } from "@/lib/nbaApi";
 import { unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY } from "@/lib/useMe";
 import { signInWithGoogle } from "@/lib/authClient";
+import { requireStat } from "@/lib/statGlossary";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
 import { LockerSection } from "./LockerSection";
@@ -21,11 +22,16 @@ const BOARD_PAGE_SIZE = 100;
 /** The query key the unfollow mutation invalidates, alongside the profile. */
 export const WATCHLIST_QUERY_KEY = ["watchlist"];
 
+// The card is too narrow to spell each label out under its figure the way a
+// stat tile does, so the board carries one visible key line under the grid
+// instead, and each label is read out in full to a screen reader rather than
+// spelled "P-P-G".
 function StatPair({ label, value }: { label: string; value: number }) {
   return (
     <div>
       <span className="block font-mono text-[9px] tracking-[0.14em] text-locker-ink-muted uppercase">
-        {label}
+        <span aria-hidden>{label}</span>
+        <span className="sr-only normal-case">{requireStat(label).name}</span>
       </span>
       <span className="block font-display text-lg text-landing-ink tabular-nums">{value.toFixed(1)}</span>
     </div>
@@ -132,13 +138,21 @@ export function WatchlistBoard() {
           and follow them — this board fills out from the boxscores we already hold.
         </p>
       ) : (
-        <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-          {entries.map((entry) => (
-            <li key={entry.player.id}>
-              <WatchlistCard entry={entry} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+            {entries.map((entry) => (
+              <li key={entry.player.id}>
+                <WatchlistCard entry={entry} />
+              </li>
+            ))}
+          </ul>
+          {/* Says what the averages span as well as what they are: they take
+              in every game we hold for the player, so "this season" would be
+              wrong for anyone with earlier seasons or playoffs on record. */}
+          <p className="mt-2.5 text-[11.5px] text-locker-ink-muted">
+            PPG, RPG and APG are points, rebounds and assists per game, across every game we hold for the player.
+          </p>
+        </>
       )}
     </LockerSection>
   );
