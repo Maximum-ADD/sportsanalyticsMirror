@@ -38,7 +38,9 @@ export class ManualSubmissionService {
    * play backfill runs — is exactly the gap this closes.
    *
    * @throws ApiException 404 when the game doesn't exist, 409 when it
-   *   already has events, 400 when the submission fails validation.
+   *   already has events (including when a concurrent submission for the
+   *   same game won the race to write first), 400 when the submission
+   *   fails validation.
    */
   async submitGameEvents(gameId: string, submitterId: string, rawBody: unknown): Promise<SubmittedBatchSummary> {
     const request = this.parseBody(rawBody);
@@ -51,7 +53,26 @@ export class ManualSubmissionService {
       throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", errors.join("; "));
     }
 
-    return this.writeBatch(gameId, submitterId, request, context);
+    try {
+      return await this.writeBatch(gameId, submitterId, request, context);
+    } catch (error) {
+      // GameEvent's own (gameId, sequence) unique constraint is what
+      // actually stops two concurrent submissions from both landing: the
+      // in-transaction recheck in writeBatch closes the common case, but
+      // READ COMMITTED (Postgres's default) does not serialize two
+      // transactions that both start before either commits, so the
+      // constraint is the backstop that makes the race impossible to win
+      // for both writers. Translated into the same 409 a non-concurrent
+      // double submission gets, rather than a raw 500.
+      if (isUniqueConstraintError(error)) {
+        throw new ApiException(
+          HttpStatus.CONFLICT,
+          "CONFLICT",
+          "This game already has events — submit a correction instead of a new batch",
+        );
+      }
+      throw error;
+    }
   }
 
   private parseBody(rawBody: unknown): ManualSubmissionRequest {
@@ -62,20 +83,21 @@ export class ManualSubmissionService {
     }
   }
 
+  // Only confirms the game exists and loads its team ids — NOT whether it
+  // already has events. That check is re-run inside writeBatch's own
+  // transaction, immediately before the writes: checking it here as a
+  // separate, earlier query would leave a window where two submissions for
+  // the same empty game (an automated pull and a human submission, or two
+  // human submissions) could both pass this check before either had
+  // written anything, and both then try to create a batch for a game that,
+  // by the time either commits, already has events.
   private async loadGameForSubmission(gameId: string): Promise<{ id: string; homeTeamId: string; awayTeamId: string }> {
     const game = await this.prisma.game.findUnique({
       where: { id: gameId },
-      select: { id: true, homeTeamId: true, awayTeamId: true, _count: { select: { events: true } } },
+      select: { id: true, homeTeamId: true, awayTeamId: true },
     });
     if (!game) {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
-    }
-    if (game._count.events > 0) {
-      throw new ApiException(
-        HttpStatus.CONFLICT,
-        "CONFLICT",
-        "This game already has events — submit a correction instead of a new batch",
-      );
     }
     return game;
   }
@@ -134,6 +156,24 @@ export class ManualSubmissionService {
     const derivedStatsByPlayerId = deriveGameEventStats(derivableEvents, namesByPlayerId);
 
     return this.prisma.$transaction(async (transaction) => {
+      // Re-checked here, inside the transaction, rather than trusting the
+      // same check loadGameForSubmission already ran: two submissions for
+      // the same empty game (another human, or the automated pipeline)
+      // could both have passed that earlier check before either reached
+      // this point. GameEvent's own (gameId, sequence) unique constraint
+      // would reject the losing createMany below regardless, but that
+      // surfaces as an opaque unique-constraint error — this turns the
+      // same race into the same clean 409 a non-concurrent double
+      // submission gets.
+      const existingEventCount = await transaction.gameEvent.count({ where: { gameId } });
+      if (existingEventCount > 0) {
+        throw new ApiException(
+          HttpStatus.CONFLICT,
+          "CONFLICT",
+          "This game already has events — submit a correction instead of a new batch",
+        );
+      }
+
       const batch = await transaction.ingestionBatch.create({
         data: {
           gameId,
@@ -202,4 +242,12 @@ export class ManualSubmissionService {
       };
     });
   }
+}
+
+// Prisma throws a PrismaClientKnownRequestError with code "P2002" for a
+// unique constraint violation. Narrow-checked structurally (duck-typed)
+// rather than importing the Prisma error class, matching me-api-keys
+// .service.ts and MeController's own identical check.
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }

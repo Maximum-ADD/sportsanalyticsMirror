@@ -25,18 +25,16 @@ function madeTwo(overrides: Record<string, unknown> = {}) {
 
 function createMockPrisma() {
   const transactionClient = {
+    gameEvent: {
+      count: vi.fn().mockResolvedValue(0),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     ingestionBatch: { create: vi.fn().mockResolvedValue({ id: "batch-1" }) },
-    gameEvent: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
     playerGameStat: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
   };
   return {
     game: {
-      findUnique: vi.fn().mockResolvedValue({
-        id: GAME_ID,
-        homeTeamId: HOME_TEAM,
-        awayTeamId: AWAY_TEAM,
-        _count: { events: 0 },
-      }),
+      findUnique: vi.fn().mockResolvedValue({ id: GAME_ID, homeTeamId: HOME_TEAM, awayTeamId: AWAY_TEAM }),
     },
     player: {
       findMany: vi.fn().mockResolvedValue([{ id: CURRY, teamId: HOME_TEAM, firstName: "Steph", lastName: "Curry" }]),
@@ -65,16 +63,32 @@ describe("ManualSubmissionService", () => {
   });
 
   it("throws 409 when the game already has events", async () => {
-    prisma.game.findUnique.mockResolvedValue({
-      id: GAME_ID,
-      homeTeamId: HOME_TEAM,
-      awayTeamId: AWAY_TEAM,
-      _count: { events: 10 },
-    });
+    prisma.__transactionClient.gameEvent.count.mockResolvedValue(10);
 
     await expect(
       service.submitGameEvents(GAME_ID, SUBMITTER_ID, { events: [madeTwo()], minutesByPlayerId: { [CURRY]: 34 } }),
     ).rejects.toMatchObject({ status: 409 });
+    expect(prisma.__transactionClient.gameEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("throws 409 (not a raw 500) when a concurrent submission wins the race and violates the unique constraint", async () => {
+    // Simulates two submissions for the same empty game both passing the
+    // in-transaction count check before either commits (READ COMMITTED
+    // doesn't serialize that) — the losing createMany then hits
+    // GameEvent's own (gameId, sequence) unique constraint instead.
+    prisma.__transactionClient.gameEvent.createMany.mockRejectedValue({ code: "P2002" });
+
+    await expect(
+      service.submitGameEvents(GAME_ID, SUBMITTER_ID, { events: [madeTwo()], minutesByPlayerId: { [CURRY]: 34 } }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("propagates an unrelated transaction error unchanged", async () => {
+    prisma.__transactionClient.gameEvent.createMany.mockRejectedValue(new Error("connection reset"));
+
+    await expect(
+      service.submitGameEvents(GAME_ID, SUBMITTER_ID, { events: [madeTwo()], minutesByPlayerId: { [CURRY]: 34 } }),
+    ).rejects.toThrow("connection reset");
   });
 
   it("throws 400 on a malformed body before touching the database", async () => {
