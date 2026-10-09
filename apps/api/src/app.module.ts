@@ -6,6 +6,7 @@ import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
 import { ApiKeyAccessModule } from "./common/api-key-access.module.js";
 import { ApiVersionGuard } from "./common/api-version.guard.js";
+import { ExportRequestsModule } from "./common/export-requests.module.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
 import { DatasetsModule } from "./datasets/datasets.module.js";
 import { GamesModule } from "./games/games.module.js";
@@ -30,6 +31,7 @@ import { PrivacyModule } from "./privacy/privacy.module.js";
     PrismaModule,
     ResponseCacheModule,
     ApiKeyAccessModule,
+    ExportRequestsModule,
     PlayersModule,
     TeamsModule,
     GamesModule,
