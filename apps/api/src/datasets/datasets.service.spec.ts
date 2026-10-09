@@ -67,8 +67,10 @@ describe("DatasetReleasesService.downloadRelease", () => {
     expect(result).toMatchObject({ kind: "ready", csv: STORED_CSV, source: "stored" });
   });
 
+  const PUBLISHED_AT = new Date("2026-01-15T12:00:00.000Z");
+
   it("rebuilds a release published before files were stored", async () => {
-    const prisma = makePrisma({ csv: null, isStale: false, checksum: "old-checksum", season: "2025-26" });
+    const prisma = makePrisma({ csv: null, isStale: false, checksum: "old-checksum", season: "2025-26", publishedAt: PUBLISHED_AT });
 
     const result = await new DatasetReleasesService(prisma as never).downloadRelease("2025-26.1");
 
@@ -76,14 +78,30 @@ describe("DatasetReleasesService.downloadRelease", () => {
     expect(prisma.player.findMany).toHaveBeenCalled();
   });
 
-  it("refuses to rebuild a stale release that has no stored file", async () => {
-    // A rebuild would put corrected figures under the old version name.
-    const prisma = makePrisma({ csv: null, isStale: true, checksum: "old-checksum", season: "2025-26" });
+  // F26: refusing left the user with no file at all once any stat in the
+  // season had been edited. The checksum, not the stale flag, says whether
+  // the rebuild is the file that was published.
+  it("still rebuilds a stale release that has no stored file, labelled as a rebuild", async () => {
+    const prisma = makePrisma({ csv: null, isStale: true, checksum: "old-checksum", season: "2025-26", publishedAt: PUBLISHED_AT });
     const service = new DatasetReleasesService(prisma as never);
 
-    await expect(service.downloadRelease("2025-26.1")).resolves.toEqual({ kind: "stale", checksum: "old-checksum" });
+    const result = await service.downloadRelease("2025-26.1");
+
+    expect(result).toMatchObject({ kind: "ready", source: "rebuilt" });
     expect(prisma.datasetRelease.findUnique).toHaveBeenCalledWith({ where: { version: "2025-26.1" } });
-    expect(prisma.player.findMany).not.toHaveBeenCalled();
+  });
+
+  it("leaves games played after the release was published out of its rebuild", async () => {
+    const prisma = makePrisma({ csv: null, isStale: true, checksum: "old-checksum", season: "2025-26", publishedAt: PUBLISHED_AT });
+
+    await new DatasetReleasesService(prisma as never).downloadRelease("2025-26.1");
+
+    const query = prisma.player.findMany.mock.calls[0][0];
+    expect(query.include.gameStats.where.game).toEqual({
+      season: "2025-26",
+      ...PUBLISHED_GAME_FILTER,
+      gameDate: { lte: PUBLISHED_AT },
+    });
   });
 
   it("reports a missing release", async () => {
@@ -280,6 +298,7 @@ describe("DatasetReleasesService.generateSeasonCsv", () => {
 
     expect(result).toMatchObject({ rowCount: 0, gamesCount: 0 });
     const statFilter = prisma.player.findMany.mock.calls[0][0].include.gameStats.where;
-    expect(statFilter.game).toMatchObject({ season: "2026-27", ...PUBLISHED_GAME_FILTER });
+    // No date cutoff when publishing: everything played so far goes in.
+    expect(statFilter.game).toEqual({ season: "2026-27", ...PUBLISHED_GAME_FILTER });
   });
 });

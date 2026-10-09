@@ -48,7 +48,10 @@ export class DatasetReleaseDto {
   @ApiProperty({ type: String, format: "date-time" })
   publishedAt!: string;
 
-  @ApiProperty({ description: "True once a later event correction changed figures this snapshot holds" })
+  @ApiProperty({
+    description:
+      "True once an event correction in this season was saved after the release was published, so some of its figures may be out of date. The release still downloads; publish a new one for the corrected figures.",
+  })
   isStale!: boolean;
 
   @ApiProperty({ type: DatasetPublisherDto, nullable: true })

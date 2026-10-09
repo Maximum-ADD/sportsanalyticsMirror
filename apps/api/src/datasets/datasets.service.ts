@@ -91,12 +91,13 @@ function buildReleaseOrderBy(sort: ReleaseSort) {
 // Where a served file came from. "stored" is the snapshot captured at
 // publish time; "rebuilt" is regenerated from live data, which only happens
 // for releases published before files were stored — and can differ from
-// what was originally released.
+// what was originally released. The checksum sent with the file is what
+// tells for certain: a rebuild that hashes to the release's published
+// checksum is byte-for-byte the file that was published.
 export type ReleaseFileSource = "stored" | "rebuilt";
 
 export type DownloadReleaseResult =
   | { kind: "missing" }
-  | { kind: "stale"; checksum: string }
   | { kind: "ready"; csv: string; checksum: string; source: ReleaseFileSource };
 
 const DIFFABLE_RELEASE_FIELDS: (keyof Pick<ReleaseMetadata, "checksum" | "season" | "gamesCount" | "playersCount" | "eventsCount" | "fieldSchema">)[] = [
@@ -211,7 +212,15 @@ export class DatasetReleasesService {
   // include every scheduled game not yet played (apps/ingestion/schedule.py
   // loads a whole season's schedule ahead of time) and games still awaiting
   // review, none of which are in the file.
-  async generateSeasonCsv(season: string): Promise<{ csv: string; rowCount: number; gamesCount: number; checksum: string }> {
+  //
+  // `playedBy` limits the file to games dated on or before it. Publishing
+  // leaves it off (everything played so far); rebuilding an older release
+  // passes the release's publish time, so games played since then don't end
+  // up in a file that stands for that release.
+  async generateSeasonCsv(
+    season: string,
+    playedBy?: Date,
+  ): Promise<{ csv: string; rowCount: number; gamesCount: number; checksum: string }> {
     // Fetch all players with their game stats for this season.
     //
     // The explicit order is what makes the checksum reproducible. Without
@@ -226,7 +235,9 @@ export class DatasetReleasesService {
       include: {
         team: { select: { abbreviation: true } },
         gameStats: {
-          where: { game: { season, ...PUBLISHED_GAME_FILTER } },
+          where: {
+            game: { season, ...PUBLISHED_GAME_FILTER, ...(playedBy ? { gameDate: { lte: playedBy } } : {}) },
+          },
           include: { game: true },
         },
       },
@@ -361,7 +372,9 @@ export class DatasetReleasesService {
   }
 
   /**
-   * The file for a release download.
+   * The file for a release download. Every release that exists downloads:
+   * there is always a file to hand over, and the source and checksum sent
+   * with it say what it is.
    *
    * A release with a stored file serves exactly that file — the snapshot
    * captured at publish time — even if it has since gone stale. Serving a
@@ -370,10 +383,16 @@ export class DatasetReleasesService {
    * exists.
    *
    * A release published before files were stored has nothing to serve but
-   * a rebuild from live data. If it is stale, a rebuild would put corrected
-   * figures under the old version name, so it is refused; otherwise it is
-   * rebuilt, and the checksum sent back lets the caller tell whether the
-   * data has drifted since publishing.
+   * a rebuild from live data, limited to games played by its publish date.
+   * That includes a stale one. Refusing it, as this used to, left the user
+   * with no file at all once any stat in the season had been edited, while
+   * an un-stale rebuild — which drifts just as surely when a game is
+   * re-ingested — was served. The stale flag can't say whether a rebuild
+   * matches (any correction in the season sets it, even one to a game the
+   * release never covered); the checksum can. The caller compares it with
+   * the release's published checksum to say whether the file is exactly as
+   * published, and the "rebuilt" source names the file as a rebuild so it
+   * can't be taken for the original snapshot later.
    */
   async downloadRelease(version: string): Promise<DownloadReleaseResult> {
     const release = await this.prisma.datasetRelease.findUnique({ where: { version } });
@@ -382,9 +401,8 @@ export class DatasetReleasesService {
     if (typeof release.csv === "string") {
       return { kind: "ready", csv: release.csv, checksum: hashCsv(release.csv), source: "stored" };
     }
-    if (release.isStale) return { kind: "stale", checksum: release.checksum };
 
-    const { csv, checksum } = await this.generateSeasonCsv(release.season);
+    const { csv, checksum } = await this.generateSeasonCsv(release.season, release.publishedAt);
     return { kind: "ready", csv, checksum, source: "rebuilt" };
   }
 }

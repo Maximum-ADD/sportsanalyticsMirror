@@ -23,9 +23,11 @@ export interface DatasetRelease {
    * games when the release was published. */
   playersCount: number;
   eventsCount: number;
-  /** Set when an event correction landed after this release was cut, so the
-   * snapshot no longer matches the data it was derived from. Stale releases
-   * refuse to download — a replacement has to be published instead. */
+  /** Set when an event correction in this season was saved after the
+   * release was published, so some of its figures may be out of date. A
+   * stale release still downloads; the corrected figures need a new release.
+   * It can't say whether this release's own file changed — the checksum
+   * check after a download does that. */
   isStale: boolean;
   fieldSchema: DatasetFieldDescriptor[];
   publishedAt: string;
@@ -66,20 +68,40 @@ function saveBlobAsFile(blob: Blob, fileName: string): void {
 }
 
 /**
+ * Where a downloaded file came from: "stored" is the snapshot captured when
+ * the release was published; "rebuilt" is regenerated from current data,
+ * for a release published before files were stored. null when the response
+ * didn't say.
+ */
+export type DownloadSource = "stored" | "rebuilt" | null;
+
+export interface DownloadedRelease {
+  /** The server's SHA-256 of the bytes just sent, or null if it sent none. */
+  checksum: string | null;
+  source: DownloadSource;
+}
+
+function readSource(header: string | null): DownloadSource {
+  return header === "stored" || header === "rebuilt" ? header : null;
+}
+
+/**
  * Downloads a release's CSV.
  *
  * Fetched rather than linked with a plain anchor so failures are visible:
- * the endpoint answers 404 for an unknown version and 409 for a release
- * gone stale after a correction, and an anchor would navigate the browser
- * to that raw JSON error (or silently save it as a .csv) instead of
- * letting the page report it. Sends credentials because the endpoint
- * accepts a session as well as an API key.
+ * the endpoint answers 404 for an unknown version (or an error if the
+ * server fails), and an anchor would navigate the browser to that raw JSON
+ * error (or silently save it as a .csv) instead of letting the page report
+ * it. Sends credentials because the endpoint accepts a session as well as
+ * an API key.
  *
- * Returns the server's SHA-256 of the bytes just sent, so the caller can
- * show whether the download still matches the release's published
- * checksum. Throws ApiError with the API's own message on failure.
+ * A rebuilt file is saved as dataset-<version>-rebuilt.csv, matching the
+ * name the server gives it, so once it is on disk it can't be taken for the
+ * snapshot published under that version. Returns the checksum and source so
+ * the caller can say whether the file is exactly as published. Throws
+ * ApiError with the API's own message on failure.
  */
-export async function downloadDatasetRelease(version: string): Promise<{ checksum: string | null }> {
+export async function downloadDatasetRelease(version: string): Promise<DownloadedRelease> {
   const path = `/v1/datasets/${encodeURIComponent(version)}/download`;
   const response = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
 
@@ -87,8 +109,10 @@ export async function downloadDatasetRelease(version: string): Promise<{ checksu
     throw new ApiError(await errorMessageFrom(response, path), response.status);
   }
 
-  saveBlobAsFile(await response.blob(), `dataset-${version}.csv`);
-  return { checksum: response.headers.get("X-Checksum-SHA256") };
+  const source = readSource(response.headers.get("X-Dataset-Source"));
+  const fileName = source === "rebuilt" ? `dataset-${version}-rebuilt.csv` : `dataset-${version}.csv`;
+  saveBlobAsFile(await response.blob(), fileName);
+  return { checksum: response.headers.get("X-Checksum-SHA256"), source };
 }
 
 export interface PublishReleaseBody {
