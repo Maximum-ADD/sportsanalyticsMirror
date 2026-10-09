@@ -6,12 +6,14 @@ import {
   createMyApiKey,
   deleteMyApiKey,
   fetchMyApiKeys,
+  fetchMyApiUsageBreakdown,
   revokeMyApiKey,
 } from "@/lib/meApi";
 import { renderWithProviders } from "@/test/renderWithProviders";
 
 vi.mock("@/lib/meApi", () => ({
   fetchMyApiKeys: vi.fn(),
+  fetchMyApiUsageBreakdown: vi.fn().mockResolvedValue(null),
   createMyApiKey: vi.fn(),
   revokeMyApiKey: vi.fn(),
   deleteMyApiKey: vi.fn(),
@@ -77,6 +79,26 @@ describe("ApiKeysSection", () => {
     // revoked keys lose their Revoke button; Delete is always available
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+  });
+
+  it("renders the usage breakdown once the consumer exists", async () => {
+    vi.mocked(fetchMyApiKeys).mockResolvedValue({ consumer: CONSUMER, keys: [makeKey()] });
+    vi.mocked(fetchMyApiUsageBreakdown).mockResolvedValue({
+      byEndpoint: [{ endpoint: "GET /v1/players", count: 10 }],
+      byDay: [{ date: "2026-10-01", count: 10 }],
+    });
+    renderWithProviders(<ApiKeysSection />);
+
+    expect(await screen.findByText("By endpoint")).toBeInTheDocument();
+    expect(screen.getByText("GET /v1/players")).toBeInTheDocument();
+  });
+
+  it("does not fetch the usage breakdown before the user has a consumer", async () => {
+    vi.mocked(fetchMyApiKeys).mockResolvedValue({ consumer: null, keys: [] });
+    renderWithProviders(<ApiKeysSection />);
+
+    await screen.findByText("No API keys yet — generate one above to get started.");
+    expect(fetchMyApiUsageBreakdown).not.toHaveBeenCalled();
   });
 
   it("generates a key, shows it once, and dismisses it", async () => {

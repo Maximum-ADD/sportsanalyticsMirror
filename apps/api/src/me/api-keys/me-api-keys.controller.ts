@@ -15,7 +15,7 @@ import { parseBody } from "../../common/parse-body.js";
 import { SessionAuthGuard } from "../../common/session-auth.guard.js";
 import type { CreatedApiKey } from "../../common/api-keys.js";
 import type { AuthenticatedRequest } from "../picks/authenticated-request.js";
-import { MeApiKeysService, type MyApiKeysView } from "./me-api-keys.service.js";
+import { MeApiKeysService, type MyApiKeysView, type MyApiUsageBreakdown } from "./me-api-keys.service.js";
 import { ApiException } from "../../common/api-exception.js";
 
 // POST /v1/me/api-keys accepts nothing but an optional human-readable
@@ -44,6 +44,16 @@ export class MeApiKeysController {
   @ApiResponse({ status: 401, description: "Unauthenticated" })
   listMyKeys(@Req() request: AuthenticatedRequest): Promise<MyApiKeysView> {
     return this.meApiKeysService.listMyApiKeys(request.user.id);
+  }
+
+  // GET /v1/me/api-keys/usage — how the caller's total usage breaks down,
+  // by endpoint and by recent day.
+  @Get("usage")
+  @ApiOperation({ summary: "Breakdown of the current user's API usage by endpoint and by day" })
+  @ApiResponse({ status: 200, description: "Usage broken down by endpoint and by day, or null with no keys yet" })
+  @ApiResponse({ status: 401, description: "Unauthenticated" })
+  getMyUsageBreakdown(@Req() request: AuthenticatedRequest): Promise<MyApiUsageBreakdown | null> {
+    return this.meApiKeysService.getMyApiUsageBreakdown(request.user.id);
   }
 
   // POST /v1/me/api-keys — mint a key (personal consumer created on first

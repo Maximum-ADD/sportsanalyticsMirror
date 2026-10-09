@@ -97,6 +97,18 @@ export function fetchMyApiKeys(): Promise<MyApiKeysView> {
   return fetchJson<MyApiKeysView>("/v1/me/api-keys");
 }
 
+// What the lifetime usageCount above is made of: by endpoint (most called
+// first) and by recent day (oldest first, for a left-to-right chart). null
+// with no personal consumer yet, same as MyApiKeysView.consumer.
+export interface MyApiUsageBreakdown {
+  byEndpoint: { endpoint: string; count: number }[];
+  byDay: { date: string; count: number }[];
+}
+
+export function fetchMyApiUsageBreakdown(): Promise<MyApiUsageBreakdown | null> {
+  return fetchJson<MyApiUsageBreakdown | null>("/v1/me/api-keys/usage");
+}
+
 export function createMyApiKey(label?: string): Promise<CreatedMyApiKey> {
   return sendJson<CreatedMyApiKey>("/v1/me/api-keys", "POST", { label });
 }
