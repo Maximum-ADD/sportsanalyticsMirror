@@ -345,7 +345,10 @@ envelope `{ error: { code, message } }`.
 | GET | `/v1/games/:id/prediction` | Public |
 | GET | `/v1/games/:id/prediction/history` | Public; every model version's prediction for this game |
 | GET | `/v1/games/:id/events` | Public; paginated, ordered by `sequence` — this game's raw play-by-play |
-| GET | `/v1/players/export` | CSV file. Same filters as `/v1/players` (`teamId`, `position`, `search`) |
+| GET | `/v1/players/export` | CSV file. Same filters as `/v1/players` (`teamId`, `position`, `search`). `?async=true` queues it instead (see below) |
+| GET | `/v1/games/export` | CSV file, up to 5,000 games. `?async=true` queues it instead (see below) |
+| GET | `/v1/exports/:id` | Status of a queued export (`QUEUED`/`RUNNING`/`SUCCEEDED`/`FAILED`) |
+| GET | `/v1/exports/:id/download` | The finished CSV, once `SUCCEEDED` |
 | GET | `/v1/optimizer/lineup` | Auth required; latest optimized lineup |
 | ALL | `*` | Catch-all → `404 NOT_FOUND` |
 
@@ -362,6 +365,19 @@ segments.
 
 Optimizer routes require a BetterAuth session. Player, team and game
 routes are public. No route currently requires a role above `USER`.
+
+**Large exports as a background job** (`src/common/export-requests.*`):
+`?async=true` on either export route queues an `ExportRequest` (mirrors
+`IngestionRequest`'s queued/polled shape) instead of blocking the response
+on it, for the two consumer-facing requests large enough to be worth not
+waiting on (both capped at `MAX_EXPORT_ROWS` = 5,000 rows). Picked up by
+an in-process worker (`ExportRequestsService.processNextQueued`, a 5-second
+`@Cron` tick) rather than a separate process the way `apps/ingestion`'s
+pull worker needs — nothing an export does requires an environment this
+server doesn't already have. The synchronous response is unchanged and
+still the default: at today's real scale (~530 players, 243 games) neither
+export ever approaches the cap, so this is additive capacity for growth,
+not a fix for an endpoint that is actually slow yet.
 
 ## Frontend architecture (`apps/web`)
 
@@ -463,6 +479,38 @@ cd apps/web
 npm test                        # or npm run test:cov
 ```
 
+### Load test (`apps/api/scripts/load-test.mjs`)
+
+The Intermediate tier's stated target — p97.5 < 300ms, p99 < 800ms,
+against a database at the brief's stated scale ("hundreds of fixtures,
+each with hundreds of events"), for the four hot read paths the schema's
+indexing is built around. The script existed but had never actually been
+run (see its own header comment); this is that first real run.
+
+**2026-10-09, local Postgres (docker-compose `postgres` service), 30
+teams, 243 games, 530 players, ~2,300 real ingested play-by-play events,
+~6,000 real `PlayerGameStat` rows** (seeded by `apps/ingestion/ingest.py`
+against stats.nba.com, not the mock seed — short of the full "hundreds of
+events per game" target because the ingestion run hit repeated
+stats.nba.com network timeouts partway through a from-scratch pull, not
+because of anything this result is measuring):
+
+```
+OK   GET /v1/games                p50=2ms p97.5=5ms p99=6ms (3790.6 req/s)
+OK   GET /v1/games/:id/events     p50=3ms p97.5=5ms p99=6ms (2525.8 req/s)
+OK   GET /v1/players              p50=5ms p97.5=8ms p99=9ms (1691.4 req/s)
+OK   GET /v1/players/:id/stats    p50=1ms p97.5=4ms p99=5ms (4612.0 req/s)
+```
+
+All four pass with wide margin (35-90x under target), zero non-2xx
+responses, zero timeouts. This is also the first real evidence that PR
+#204 (API keys and rate limits checked in memory rather than per request)
+actually improved production tail latency rather than just removing a
+code-level round trip — the original regression that prompted it measured
+2.6-4.7s per request in production. Re-run against a fuller-scale database
+once a complete ingestion pull succeeds, to confirm the margin holds at
+the brief's literal "hundreds of events per game."
+
 ## CI/CD (`.gitea/workflows/ci.yml`)
 
 Targets **Gitea Actions** (this repo's remote is `sdp.ms.wits.ac.za`), run
@@ -525,18 +573,29 @@ left to go stale.
 **Deliberately out of scope for the event-derivation work above** — the
 brief's Intermediate/Advanced submission-pipeline requirements go well
 beyond what a single automated ingestion source needs, and weren't
-realistic to also attempt alongside making derivation itself real: a
-multi-human-submitter workflow with per-submitter approval (this project
-has one automated "submitter" — the pipeline itself, source-tagged per
-`IngestionBatch` — not many competing ones), batch staging/validation with
-resume-from-partial-failure at the scale a whole-season upload implies,
-versioned dataset releases with checksums, API keys/rate limits/quotas for
-external consumers, user-definable derived statistics evaluated over the
-event schema, a live/late-arriving event feed (this pipeline is
-batch-per-game, run after the fact, not a feed from a fixture in
-progress), point-in-time ("what was this stat as of date X") queries, and
-API contract testing/a published deprecation path. None of these are
-started; none should be assumed done because event-derivation now is.
+realistic to also attempt alongside making derivation itself real: batch
+staging/validation with resume-from-partial-failure at the scale a
+whole-season upload implies, versioned dataset releases with checksums,
+API keys/rate limits/quotas for external consumers, user-definable derived
+statistics evaluated over the event schema, a live/late-arriving event
+feed (this pipeline is batch-per-game, run after the fact, not a feed from
+a fixture in progress), point-in-time ("what was this stat as of date X")
+queries, and API contract testing/a published deprecation path. None of
+these are started; none should be assumed done because event-derivation
+now is.
+
+A human submitter path now exists (`ManualSubmissionService`,
+`POST /v1/admin/games/:gameId/submit-events`, ANALYST or ADMIN only): a
+full game's play-by-play typed in by hand, validated against the same
+event schema a correction is held to (`manual-submission-request.ts`),
+and landed as a new `IngestionBatch` (`source: "human"`,
+`submittedById` set) in `PENDING_REVIEW` — the same admin Batches tab
+approve/reject flow the automated pipeline's own `--review` runs go
+through, never a second, looser path into `GameEvent`. Scoped to a game
+with no existing events (a fresh submission, not a correction) and to one
+role tier, not per-submitter/per-team scopes — every ANALYST or ADMIN can
+submit for any game, the same granularity `custom-statistics` already
+uses.
 
 ## Personalization preferences
 

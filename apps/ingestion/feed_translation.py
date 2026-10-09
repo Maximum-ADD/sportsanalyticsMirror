@@ -76,13 +76,20 @@ OFFICIAL_ACTION_TYPES = {"instant replay"}
 MISSED_FREE_THROW_PREFIX = "MISS "
 REBOUND_TALLY = re.compile(r"\(Off:(\d+) Def:(\d+)\)")
 
-# A standalone credit row's pattern -> the feed type of the row it belongs
-# to, and the suffix code the derivers read. The name is taken as NBA wrote
-# it on the credit row ("St. Curry STEAL", "L. James BLOCK", "Green BLOCK"),
-# so a folded credit reads exactly like an assist credit NBA wrote itself.
+# A standalone credit row's pattern -> the feed type(s) its partner can be,
+# and the suffix code the derivers read. The name is taken as NBA wrote it
+# on the credit row ("St. Curry STEAL", "L. James BLOCK", "Green BLOCK"), so
+# a folded credit reads exactly like an assist credit NBA wrote itself.
+#
+# A block's partner is "Missed Shot" for an ordinary attempt, but "Heave" for
+# a blocked buzzer-beater — NBA files a heave under its own feed type rather
+# than "Missed Shot" even though it's still a missed shot. Both are listed so
+# a blocked heave's credit still finds its partner instead of being dropped
+# as an unmatched standalone row (confirmed missing a block this way: 2026
+# Finals Game 1, action 357, "Wembanyama BLOCK (3 BLK)" on a Knicks heave).
 CREDIT_ROWS = (
-    (re.compile(r"^(.+?) BLOCK \((\d+) BLK\)"), "Missed Shot", "BLK"),
-    (re.compile(r"^(.+?) STEAL \((\d+) STL\)"), "Turnover", "STL"),
+    (re.compile(r"^(.+?) BLOCK \((\d+) BLK\)"), ("Missed Shot", "Heave"), "BLK"),
+    (re.compile(r"^(.+?) STEAL \((\d+) STL\)"), ("Turnover",), "STL"),
 )
 
 
@@ -141,16 +148,16 @@ def _classify_rebounds(actions: list[dict]) -> dict[tuple[int, int, int], str]:
     return kinds
 
 
-def _credit_suffix(action: dict) -> tuple[str, str] | None:
-    """(partner feed type, "(Name N BLK)") for a standalone block or steal
-    row; None for every other row."""
+def _credit_suffix(action: dict) -> tuple[tuple[str, ...], str] | None:
+    """(acceptable partner feed types, "(Name N BLK)") for a standalone
+    block or steal row; None for every other row."""
     if action.get("actionType"):
         return None
     description = (action.get("description") or "").strip()
-    for pattern, partner_type, code in CREDIT_ROWS:
+    for pattern, partner_types, code in CREDIT_ROWS:
         match = pattern.search(description)
         if match:
-            return partner_type, f"({match.group(1)} {match.group(2)} {code})"
+            return partner_types, f"({match.group(1)} {match.group(2)} {code})"
     return None
 
 
@@ -164,8 +171,15 @@ def _fold_credit_rows(actions: list[dict]) -> list[dict]:
     for action in actions:
         credit = _credit_suffix(action)
         if credit is not None:
-            partner_type, suffix = credit
-            partner_index = partner_index_by_key.get((action.get("actionNumber"), partner_type))
+            partner_types, suffix = credit
+            partner_index = next(
+                (
+                    partner_index_by_key[(action.get("actionNumber"), partner_type)]
+                    for partner_type in partner_types
+                    if (action.get("actionNumber"), partner_type) in partner_index_by_key
+                ),
+                None,
+            )
             if partner_index is not None:
                 partner = copies[partner_index]
                 partner["description"] = f"{partner.get('description') or ''} {suffix}".strip()

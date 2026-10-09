@@ -97,6 +97,18 @@ class TestBlocksAndSteals:
         translated = translate_game_actions([orphan])
         assert translated[0]["actionType"] == ""
 
+    def test_a_block_on_a_heave_is_folded_into_the_heave_it_shares_a_number_with(self):
+        # A buzzer-beater heave is still a missed shot, but NBA files it
+        # under its own "Heave" feed type rather than "Missed Shot" — found
+        # missing a block entirely (2026 Finals Game 1, action 357,
+        # "Wembanyama BLOCK (3 BLK)" on a Knicks heave) by replaying that
+        # game's derived stats against its official boxscore.
+        heave = row(357, "Heave", "KNICKS Heave", personId=TEAM_ACTION_PERSON_ID, teamId=NUGGETS)
+        block = row(357, "", "Wembanyama BLOCK (3 BLK)", personId=EDWARDS, teamId=TIMBERWOLVES)
+        translated = translate_game_actions([heave, block])
+        assert len(translated) == 1
+        assert translated[0]["description"] == "KNICKS Heave (Wembanyama 3 BLK)"
+
 
 class TestNonPlayers:
     def test_instant_replay_carries_a_referee_not_a_player(self):
