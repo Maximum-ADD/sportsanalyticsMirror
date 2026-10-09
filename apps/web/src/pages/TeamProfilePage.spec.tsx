@@ -15,6 +15,12 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchTeamRecords: vi.fn(),
 }));
 
+// The injuries section reads ESPN through the API; TeamInjuriesSection's own
+// spec covers it, so here it just answers with no injuries.
+vi.mock("@/lib/injuriesApi", () => ({
+  fetchTeamInjuries: vi.fn().mockResolvedValue({ fetchedAt: "2026-10-09T18:00:00.000Z", injuries: [] }),
+}));
+
 vi.mock("@/lib/authClient", () => ({
   useSession: vi.fn(),
 }));
