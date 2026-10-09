@@ -130,7 +130,8 @@ page. In short:
   be reproduced with `?version=`.
 - **Beyond the brief.** Elo and Four Factors game predictions beside
   bookmakers' odds (The Odds API), a MILP fantasy lineup optimizer, Beat the
-  Model, Become Pro, player archetypes and a live-games tab.
+  Model, Become Pro, player archetypes, a live-games tab and an all-time
+  career leaders page.
 - **Auth.** Google sign-in through BetterAuth, with account deletion and
   `USER`, `ANALYST` and `ADMIN` roles enforced by `RolesGuard`. Password
   reset doesn't apply to Google-only accounts; the lecturer confirmed it
