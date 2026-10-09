@@ -50,8 +50,9 @@ curl -s https://sportsanalytics-api.onrender.com/v1/live/games/0012600028
 ```
 
 You can also read the whole API reference in Swagger UI without an account,
-and use "Try it out" on the routes above. Any other route answers
-`401 API_KEY_REQUIRED` until you add a key.
+and use "Try it out" on the routes above. Any other data route answers
+`401 API_KEY_REQUIRED` until you add a key or sign in; the personal and
+admin routes need a signed-in session.
 
 On Windows PowerShell, type `curl.exe` instead of `curl`, because `curl` is
 an alias for a different command there.
