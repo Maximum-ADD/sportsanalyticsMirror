@@ -82,6 +82,24 @@ describe("BeatTheModelCard", () => {
     expect(screen.queryByText("DEN 64%")).not.toBeInTheDocument();
   });
 
+  // F20: "model likes GSW 62%" and the name "Beat the model" were opaque.
+  // The card now explains itself where it stands: every state carries a
+  // one-line description of the game, and the question names the percentage
+  // for what it is and says what Elo means.
+  it("explains the game and the win-chance figure on the card itself", async () => {
+    renderWithProviders(<BeatTheModelCard />);
+    await screen.findByText(/result hidden/i);
+
+    expect(
+      screen.getByText(/pick the winner of a real, finished nba game with the final score hidden/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/pre-game win chance/i)).toBeInTheDocument();
+    // The Elo figures are labelled with their teams...
+    expect(screen.getByText(/elo ratings before the game: okc 1612, den 1548/i)).toBeInTheDocument();
+    // ...and one sentence says what Elo is.
+    expect(screen.getByText(/elo is a team-strength rating/i)).toBeInTheDocument();
+  });
+
   it("grades the call and reveals the real score only afterwards", async () => {
     const user = userEvent.setup();
     renderWithProviders(<BeatTheModelCard />);
@@ -91,6 +109,9 @@ describe("BeatTheModelCard", () => {
     expect(await screen.findByText(/121\s*—\s*118/)).toBeInTheDocument();
     expect(screen.getByText("Correct")).toBeInTheDocument();
     expect(screen.getByText(/the model missed this one/i)).toBeInTheDocument();
+    // The graded line names the figure for what it is (F20), not "the model
+    // had it at 64%".
+    expect(screen.getByText(/gave OKC a 64% chance of winning before the game/i)).toBeInTheDocument();
     expect(submitPick).toHaveBeenCalledWith("game-1", DENVER.id);
   });
 
@@ -180,6 +201,8 @@ describe("BeatTheModelCard", () => {
 
     expect(await screen.findByRole("button", { name: /sign in to play/i })).toBeInTheDocument();
     expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
+    // Even before signing in, the card says what the game is (F20).
+    expect(screen.getByText(/pick the winner of a real, finished nba game/i)).toBeInTheDocument();
   });
 
   it("says it is waiting for new games when every game has been called", async () => {

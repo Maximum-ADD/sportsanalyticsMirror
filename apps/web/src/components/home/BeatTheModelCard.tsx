@@ -24,10 +24,21 @@ const CHALLENGE_QUERY_KEY = ["challenge", "next"];
 
 const PERCENT = (value: number) => `${Math.round(value * 100)}%`;
 
+// True of apps/predictor/elo.py: ratings move after every result, and the
+// home win chance comes from the rating gap plus a fixed home-court bonus.
+const ELO_EXPLANATION =
+  "Elo is a team-strength rating that goes up after a win and down after a loss. The model turns the gap between the two teams' ratings, plus a small home-court edge, into each side's chance of winning.";
+
+// What the game is, in one line, on every state of the card. "Beat the
+// model" on its own did not say what you do or who "the model" is, and the
+// only explanation was the home tutorial, which shows once.
+const GAME_DESCRIPTION =
+  "Pick the winner of a real, finished NBA game with the final score hidden, then see whether you called it better than our prediction model.";
+
 function Shell({ kicker, badge, children }: { kicker: string; badge?: string; children: React.ReactNode }) {
   return (
     <Card className="rounded-none border-landing-light bg-locker-surface p-4 sm:p-6 shadow-[0_10px_26px_rgba(0,0,0,0.16)]">
-      <div className="mb-2 flex items-center gap-3">
+      <div className="mb-1.5 flex items-center gap-3">
         <p className="font-mono text-[10px] tracking-[0.2em] text-locker-ink-muted uppercase">{kicker}</p>
         {badge && (
           <span className="ml-auto border border-landing-light px-2.5 py-0.5 font-mono text-[9.5px] tracking-[0.14em] whitespace-nowrap text-locker-ink-muted uppercase">
@@ -35,6 +46,7 @@ function Shell({ kicker, badge, children }: { kicker: string; badge?: string; ch
           </span>
         )}
       </div>
+      <p className="mb-4 max-w-[62ch] text-[12.5px] text-locker-ink-muted">{GAME_DESCRIPTION}</p>
       {children}
     </Card>
   );
@@ -180,9 +192,8 @@ export function BeatTheModelCard() {
     return (
       <Shell kicker="Beat the model" badge="Sign in">
         <p className="mb-4 max-w-[62ch] text-[12.5px] text-locker-ink-muted">
-          We hold a completed game with the final score withheld. Call it and we grade you against the result —
-          and against what the Elo model said. Your record is kept to your account, which is the only way the
-          server can hide the answer from you and still score you on it.
+          Your record is kept to your account, which is the only way the server can hide the answer from you and
+          still score you on it.
         </p>
         <button
           type="button"
@@ -283,14 +294,12 @@ function ChallengeQuestion({
     : 1 - game.prediction.homeWinProbability;
   const margin = game.prediction.predictedMarginHome;
   const marginTeam = margin === null ? null : margin >= 0 ? game.homeTeam : game.awayTeam;
+  const underdog = modelLikesHome ? game.awayTeam : game.homeTeam;
+  const favouriteElo = modelLikesHome ? game.prediction.homeTeamEloPre : game.prediction.awayTeamEloPre;
+  const underdogElo = modelLikesHome ? game.prediction.awayTeamEloPre : game.prediction.homeTeamEloPre;
 
   return (
     <>
-      <p className="mb-4 max-w-[62ch] text-[12.5px] text-locker-ink-muted">
-        A completed {game.season} game with the final score withheld on the server. Call it, and we grade you
-        against the result — and against what the Elo model said.
-      </p>
-
       <div className="flex flex-wrap items-center justify-center gap-5 pb-3">
         <span className="flex items-center gap-2.5">
           <TeamBadge team={{ abbreviation: game.awayTeam.abbreviation, logoUrl: game.awayTeam.logoUrl }} />
@@ -304,17 +313,27 @@ function ChallengeQuestion({
       </div>
       <p className="mb-4 text-center text-[11.5px] text-locker-ink-muted">
         {new Date(game.gameDate).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}
+        {" · "}
+        {game.season} season
       </p>
 
+      {/* The percentage is named for what it is — the chance of winning the
+          model gave before tip-off — rather than "the model likes OKC 64%",
+          which read as a confidence score or a betting line. The Elo figures
+          are labelled with their teams, and one sentence says what Elo is,
+          because "Elo 1612 vs 1548" meant nothing to anyone who did not
+          already know. */}
       <div className="mb-4 border border-landing-light bg-landing-hero px-3.5 py-3">
-        <p className="flex flex-wrap items-baseline gap-2 text-[13px] text-locker-ink-muted">
-          <span>The model likes</span>
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px] text-locker-ink-muted">
+          <span>Model&rsquo;s pre-game win chance</span>
           <b className="font-semibold text-locker-model tabular-nums">
             {favourite.abbreviation} {PERCENT(favouriteProbability)}
           </b>
+        </p>
+        <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11.5px] text-locker-ink-muted tabular-nums">
           <span>
-            · Elo {Math.round(modelLikesHome ? game.prediction.homeTeamEloPre : game.prediction.awayTeamEloPre)} vs{" "}
-            {Math.round(modelLikesHome ? game.prediction.awayTeamEloPre : game.prediction.homeTeamEloPre)}
+            Elo ratings before the game: {favourite.abbreviation} {Math.round(favouriteElo)}, {underdog.abbreviation}{" "}
+            {Math.round(underdogElo)}
             {marginTeam && margin !== null && ` · predicted margin ${marginTeam.abbreviation} by ${Math.abs(margin).toFixed(1)}`}
           </span>
           {game.prediction.marginMethod === "heuristic" && (
@@ -325,7 +344,7 @@ function ChallengeQuestion({
         </p>
         <div
           role="img"
-          aria-label={`Model win probability: ${game.homeTeam.abbreviation} ${PERCENT(game.prediction.homeWinProbability)}, ${game.awayTeam.abbreviation} ${PERCENT(1 - game.prediction.homeWinProbability)}`}
+          aria-label={`Model's pre-game win chance: ${game.awayTeam.abbreviation} ${PERCENT(1 - game.prediction.homeWinProbability)}, ${game.homeTeam.abbreviation} ${PERCENT(game.prediction.homeWinProbability)}`}
           className="mt-2.5 flex h-1.5 bg-[#c3bfb9]"
         >
           <span className="block h-full bg-locker-model" style={{ width: `${(1 - game.prediction.homeWinProbability) * 100}%` }} />
@@ -334,6 +353,9 @@ function ChallengeQuestion({
           <span>{game.awayTeam.abbreviation} {PERCENT(1 - game.prediction.homeWinProbability)}</span>
           <span>{game.homeTeam.abbreviation} {PERCENT(game.prediction.homeWinProbability)}</span>
         </div>
+        <p className="mt-2.5 text-[11px] leading-snug text-locker-ink-muted">
+          {ELO_EXPLANATION}
+        </p>
       </div>
 
       {errorMessage && (
@@ -386,8 +408,8 @@ function GradedResult({ game, graded }: { game: ChallengeGame; graded: GradedPic
       <p className="mt-3 text-[13px] text-locker-ink-muted">
         You called {calledTeam.city}.{" "}
         {graded.model.outcome === "CORRECT"
-          ? `The model had it too — ${modelTeam.abbreviation} at ${PERCENT(Math.max(graded.model.homeWinProbability, 1 - graded.model.homeWinProbability))}.`
-          : `The model missed this one — it had ${modelTeam.abbreviation} at ${PERCENT(Math.max(graded.model.homeWinProbability, 1 - graded.model.homeWinProbability))}.`}
+          ? `The model had it too — it gave ${modelTeam.abbreviation} a ${PERCENT(Math.max(graded.model.homeWinProbability, 1 - graded.model.homeWinProbability))} chance of winning before the game.`
+          : `The model missed this one — it gave ${modelTeam.abbreviation} a ${PERCENT(Math.max(graded.model.homeWinProbability, 1 - graded.model.homeWinProbability))} chance of winning before the game.`}
       </p>
     </div>
   );

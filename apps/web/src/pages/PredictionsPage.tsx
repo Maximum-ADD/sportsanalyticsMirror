@@ -118,8 +118,13 @@ function GameHighlightBody({ game }: { game: Game }) {
           <TeamBadge team={game.homeTeam} size="sm" />
         </span>
       </div>
+      {/* The number is the win chance the model set before the game —
+          "model likes OKC 64%" read as a confidence score and never said what
+          it measured. The home card's Beat the model section says it the same
+          way (F20). */}
       <p className="mt-2 text-[11.5px] text-locker-ink-muted">
-        {new Date(game.gameDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · model likes{" "}
+        {new Date(game.gameDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · model&rsquo;s
+        pre-game win chance{" "}
         <span className="font-semibold text-landing-ink">
           {favored.abbreviation} {PERCENT(favoredProbability)}
         </span>
@@ -708,7 +713,7 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
             </span>
             {favoriteTeamNextGame.prediction && (
               <span className="text-[11.5px] text-locker-ink-muted">
-                model likes{" "}
+                model&rsquo;s pre-game win chance{" "}
                 <span className="font-semibold text-landing-ink">
                   {favoriteTeamNextGame.prediction.homeWinProbability >= 0.5
                     ? favoriteTeamNextGame.homeTeam.abbreviation
