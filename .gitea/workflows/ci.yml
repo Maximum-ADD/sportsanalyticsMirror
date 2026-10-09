@@ -92,6 +92,45 @@ jobs:
       - name: Typecheck
         run: npx tsc -b --noEmit
 
+  python:
+    name: Python services — tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # One environment for all five services: their pinned versions agree,
+      # and one install is much faster on the shared runner than five. The
+      # retry and timeout flags bound a stalled registry connection, for the
+      # same reason the npm installs above bound theirs.
+      - name: Install dependencies
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          for service in ingestion predictor optimizer valuation similarity; do
+            python -m pip install --retries 5 --timeout 60 -r "apps/$service/requirements.txt"
+          done
+
+      # Every suite runs from its own folder and in its own process, as it
+      # does locally: the tests import their modules by bare name, and
+      # several services have a module of the same name (db.py). None of
+      # them needs a database or the network.
+      - name: Run tests
+        run: |
+          set -euo pipefail
+          for service in ingestion predictor optimizer valuation similarity; do
+            echo "::group::apps/$service"
+            (cd "apps/$service" && python -m pytest -q)
+            echo "::endgroup::"
+          done
+
   coverage:
     name: API and Web — test coverage
     runs-on: ubuntu-latest
