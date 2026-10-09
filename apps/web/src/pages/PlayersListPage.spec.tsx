@@ -628,6 +628,26 @@ describe("PlayersListPage", () => {
       expect(rows[2]).toHaveTextContent("LeBron James");
     });
 
+    // The followed view searches in the browser, so it has to ignore
+    // accents the same way the API's search does: "manon" finds "Mañón".
+    it("finds a followed player by name whatever accents the search is typed with", async () => {
+      const user = userEvent.setup();
+      const lebron = makePlayer();
+      const manon = makePlayer({ id: "player-2", firstName: "Juan", lastName: "Mañón" });
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([lebron, manon]));
+      mockSignedIn({ ...ME_BASE, followedPlayers: [lebron, manon] });
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByText("Juan Mañón");
+      await user.click(screen.getByRole("button", { name: "Show followed players only" }));
+
+      fireEvent.change(screen.getByRole("searchbox", { name: "Search players" }), { target: { value: "manon" } });
+
+      await waitFor(() => expect(screen.queryByText("LeBron James")).not.toBeInTheDocument());
+      expect(screen.getByText("Juan Mañón")).toBeInTheDocument();
+    });
+
     it("tells a signed-in visitor following nobody how to build the list", async () => {
       const user = userEvent.setup();
       vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });

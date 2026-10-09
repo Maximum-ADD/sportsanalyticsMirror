@@ -17,6 +17,7 @@ import { SectionLoading } from "@/components/ui/loading-overlay";
 import { Reveal } from "@/components/landing/Reveal";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useMe } from "@/lib/useMe";
+import { playerNameMatchesSearch } from "@/lib/nameSearch";
 import { SEASON_TYPES_IN_ORDER, formatSeasonType, parseUrlSegment, toUrlSegment } from "@/lib/seasonType";
 import type { Player, PlayerLeadersResponse, PlayerSeasonLeader, PlayerStatsBatchEntry, SeasonType } from "@/types/nba";
 
@@ -205,17 +206,16 @@ export function PlayersListPage() {
   // because the client-side ranking and min-games floor below read every
   // followed player's games played — the same figures back both jobs.
   // A long followed list can outgrow the batch endpoint's per-request id
-  // cap, so that view fetches in chunks instead.
+  // cap, so that view fetches in chunks instead. The name search uses the
+  // same accent-blind rules as the API's, so "manon" finds a followed
+  // "Mañón" here just as it does in the full list.
   const followedViewFiltered = useMemo(
     () =>
       followedPlayers.filter(
         (player) =>
           (teamId === undefined || player.teamId === teamId) &&
           (position === undefined || player.position === position) &&
-          (debouncedSearchTerm === "" ||
-            `${player.firstName} ${player.lastName}`
-              .toLowerCase()
-              .includes(debouncedSearchTerm.toLowerCase()))
+          playerNameMatchesSearch(player, debouncedSearchTerm)
       ),
     [followedPlayers, teamId, position, debouncedSearchTerm]
   );

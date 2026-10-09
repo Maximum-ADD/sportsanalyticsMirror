@@ -187,6 +187,25 @@ describe("Players API", () => {
       expect(response.body.data[0]).toMatchObject({ firstName: "LeBron", lastName: "James" });
     });
 
+    // Postgres's ILIKE folds case but not accents, which is why "manon" once
+    // missed "Mañón". The search now folds both, in either direction (see
+    // src/players/player-name-search.ts), on the plain and ranked listings.
+    it("finds names whatever accents they are stored or searched with", async () => {
+      await createPlayer({ firstName: "Juan", lastName: "Mañón" });
+      await createPlayer({ firstName: "Pierre", lastName: "Manon" });
+      await createPlayer({ firstName: "LeBron", lastName: "James" });
+      const lastNamesFor = async (path: string) => {
+        const response = await request(app.getHttpServer()).get(path);
+        expect(response.status).toBe(200);
+        return response.body.data.map((player: { lastName: string }) => player.lastName).sort();
+      };
+
+      expect(await lastNamesFor("/v1/players?search=manon")).toEqual(["Manon", "Mañón"]);
+      expect(await lastNamesFor(`/v1/players?search=${encodeURIComponent("Mañón")}`)).toEqual(["Manon", "Mañón"]);
+      expect(await lastNamesFor(`/v1/players?search=${encodeURIComponent("juan mañon")}`)).toEqual(["Mañón"]);
+      expect(await lastNamesFor("/v1/players?search=manon&sort=ppg")).toEqual(["Manon", "Mañón"]);
+    });
+
     it("combines search with team and position filters", async () => {
       const lakers = await createTeam({ name: "Lakers", abbreviation: "LAL" });
       const celtics = await createTeam({ name: "Celtics", abbreviation: "BOS" });

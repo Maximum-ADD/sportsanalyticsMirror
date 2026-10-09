@@ -60,10 +60,9 @@ describe("StatsService", () => {
       getPlayerSeasonStatsAsOf: vi.fn(),
       getPlayerSeasonStatsBatch: vi.fn(),
       getSeasonStatTotalsBatch: vi.fn(),
+      // The ranking cache keys on parsePlayerFilters, a plain function the
+      // service imports directly, so the real one runs here, not a stub.
       getMatchingPlayers: vi.fn(),
-      // The real where-clause builder is pure, and the ranking cache keys on
-      // its output, so the spec uses it rather than a stub.
-      buildPlayerWhere: (query: Record<string, unknown>) => PlayersService.prototype.buildPlayerWhere(query),
     } as unknown as PlayersService;
     // StatsService resolves upcoming games through GamesService — only
     // getMatchupProjection touches it, so a bare mock is enough here.
@@ -440,6 +439,15 @@ describe("StatsService", () => {
       await cachedStatsService.getPlayersRanked({ sort: "ppg", seasonType: "PLAYOFFS" });
 
       expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(3);
+    });
+
+    // The key holds the folded search terms, so two spellings that find the
+    // same players are one entry rather than two identical ones.
+    it("treats a search typed with or without accents as the same cache entry", async () => {
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", search: "Mañón" });
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", search: "  manon " });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(1);
     });
   });
 

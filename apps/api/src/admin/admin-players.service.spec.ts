@@ -64,35 +64,38 @@ describe("AdminPlayersService", () => {
 
     expect(result).toEqual({ data: [{ ...LEBRON, team: LAKERS }], page: 1, pageSize: 25, total: 1 });
     expect(prisma.player.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { AND: [] }, include: { team: true }, skip: 0, take: 25 })
+      expect.objectContaining({ where: {}, include: { team: true }, skip: 0, take: 25 })
     );
+    // No search, so no extra read of everyone's names.
+    expect(prisma.player.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("narrows by teamId when given", async () => {
     await service.listPlayers({ teamId: "team-1" });
 
-    expect(prisma.player.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { teamId: "team-1", AND: [] } })
-    );
+    expect(prisma.player.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { teamId: "team-1" } }));
   });
 
-  it("builds an insensitive OR filter over first/last name per search term", async () => {
-    await service.listPlayers({ search: "leb" });
+  // The admin search matches names the same accent-blind way the public
+  // list does (see player-name-search.spec.ts for the folding itself): the
+  // first read fetches the candidates' names, the page read gets their ids.
+  it("finds a player whose name carries accents when the search has none", async () => {
+    prisma.player.findMany.mockResolvedValueOnce([
+      { id: "player-manon", firstName: "Juan", lastName: "Mañón" },
+      { id: "player-james", firstName: "LeBron", lastName: "James" },
+    ]);
 
-    expect(prisma.player.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          AND: [
-            {
-              OR: [
-                { firstName: { contains: "leb", mode: "insensitive" } },
-                { lastName: { contains: "leb", mode: "insensitive" } },
-              ],
-            },
-          ],
-        },
-      })
+    await service.listPlayers({ search: "manon", teamId: "team-1" });
+
+    expect(prisma.player.findMany).toHaveBeenNthCalledWith(1, {
+      where: { teamId: "team-1" },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    expect(prisma.player.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: { teamId: "team-1", id: { in: ["player-manon"] } } })
     );
+    expect(prisma.player.count).toHaveBeenCalledWith({ where: { teamId: "team-1", id: { in: ["player-manon"] } } });
   });
 
   it("getPlayerById reads a single player with its team", async () => {

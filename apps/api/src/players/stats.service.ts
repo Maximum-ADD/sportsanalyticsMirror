@@ -5,7 +5,7 @@ import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.ser
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { GamesService } from "../games/games.service.js";
-import { PlayersService, type PlayerWithTeam } from "./players.service.js";
+import { parsePlayerFilters, PlayersService, type PlayerWithTeam } from "./players.service.js";
 import {
   deriveSeasonAverages,
   round,
@@ -698,17 +698,20 @@ export class StatsService {
    * The players matching `query`'s filters plus their season totals in one
    * segment, cached as one unit (see RankingBase).
    *
-   * @param query - the raw list query. Only the filters PlayersService.
-   *   buildPlayerWhere reads affect the result, and the key is built from
-   *   that where clause, so sort/order/page/minGames never split the cache.
+   * @param query - the raw list query. Only the filters parsePlayerFilters
+   *   reads affect the result, and the key is built from those, so
+   *   sort/order/page/minGames never split the cache. Keyed on the filters
+   *   rather than the where clause they become, because a name search's
+   *   where clause takes a database read to build (see
+   *   player-name-search.ts) — a cache hit shouldn't pay for one.
    * @param seasonType - the segment the totals are summed over.
    * @returns the players (alphabetical) and a playerId -> totals map. Players
    *   with no games in the segment are absent from the map.
    */
   private readRankingBase(query: Record<string, unknown>, seasonType: SeasonType): Promise<RankingBase> {
-    const playerWhere = this.playersService.buildPlayerWhere(query);
+    const playerFilters = parsePlayerFilters(query);
     return this.cache.getOrLoad(
-      buildCacheKey("players:ranking-base", [playerWhere, seasonType]),
+      buildCacheKey("players:ranking-base", [playerFilters, seasonType]),
       DERIVED_DATA_TTL_MS,
       async () => {
         const players = await this.playersService.getMatchingPlayers(query);

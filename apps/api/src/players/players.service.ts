@@ -6,11 +6,41 @@ import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { parseNameSearchTerms, withNameSearch } from "./player-name-search.js";
 
 export type PlayerWithTeam = Player & { team: Team | null };
 
-function getSearchTerms(search: unknown): string[] {
-  return typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean) : [];
+/**
+ * The filters a players-list request narrows by, read out of the raw query
+ * once so every listing built on them (plain, ranked, exported, leaders)
+ * agrees. Also the ranking cache's key (see StatsService.readRankingBase):
+ * plain values in a fixed order, so the same filters always serialise the
+ * same way, and working them out never costs a database read.
+ */
+export interface PlayerFilters {
+  teamId?: string;
+  position?: string;
+  // Folded by parseNameSearchTerms, so "Mañón" and "manon" are one filter.
+  searchTerms: string[];
+  // Set only for `participated=true`: the segment a player must have
+  // appeared in to be listed.
+  participatedIn?: SeasonType;
+}
+
+/**
+ * Reads the list filters out of a raw request query. Unrecognised keys,
+ * empty strings and non-string values are ignored; an invalid `seasonType`
+ * still throws the 400 parseSeasonType documents, with or without
+ * `participated`.
+ */
+export function parsePlayerFilters(query: Record<string, unknown>): PlayerFilters {
+  const seasonType = parseSeasonType(query.seasonType) ?? DEFAULT_SEASON_TYPE;
+  return {
+    teamId: typeof query.teamId === "string" && query.teamId !== "" ? query.teamId : undefined,
+    position: typeof query.position === "string" && query.position !== "" ? query.position : undefined,
+    searchTerms: parseNameSearchTerms(query.search),
+    participatedIn: query.participated === "true" ? seasonType : undefined,
+  };
 }
 
 @Injectable()
@@ -24,24 +54,22 @@ export class PlayersService {
   // StatsService can apply exactly the same team/position/search/participation
   // narrowing before it sorts by a season stat — the two listings must never
   // drift into agreeing on what "the players matching these filters" means.
-  buildPlayerWhere(query: Record<string, unknown>): Prisma.PlayerWhereInput {
-    const teamId = typeof query.teamId === "string" ? query.teamId : undefined;
-    const position = typeof query.position === "string" ? query.position : undefined;
-    const searchTerms = getSearchTerms(query.search);
-    const seasonType = parseSeasonType(query.seasonType) ?? DEFAULT_SEASON_TYPE;
-    const participatedOnly = query.participated === "true";
+  //
+  // Async because a name search is matched in application code rather than
+  // SQL, so it can ignore accents ("manon" finds "Mañón") — see
+  // player-name-search.ts for why.
+  buildPlayerWhere(query: Record<string, unknown>): Promise<Prisma.PlayerWhereInput> {
+    const { teamId, position, searchTerms, participatedIn } = parsePlayerFilters(query);
 
-    return {
-      ...(teamId ? { teamId } : {}),
-      ...(position ? { position } : {}),
-      ...(participatedOnly ? { gameStats: { some: { game: { seasonType } } } } : {}),
-      AND: searchTerms.map((searchTerm) => ({
-        OR: [
-          { firstName: { contains: searchTerm, mode: "insensitive" } },
-          { lastName: { contains: searchTerm, mode: "insensitive" } },
-        ],
-      })),
-    };
+    return withNameSearch(
+      this.prisma,
+      {
+        ...(teamId ? { teamId } : {}),
+        ...(position ? { position } : {}),
+        ...(participatedIn ? { gameStats: { some: { game: { seasonType: participatedIn } } } } : {}),
+      },
+      searchTerms
+    );
   }
 
   // Every player matching the list endpoint's filters, with no pagination —
@@ -51,9 +79,9 @@ export class PlayersService {
   // genuinely needs every match to rank correctly) and set by the CSV
   // export route instead, which wants everything matching but still capped
   // — see PlayersController.MAX_EXPORT_ROWS.
-  getMatchingPlayers(query: Record<string, unknown>, limit?: number): Promise<PlayerWithTeam[]> {
+  async getMatchingPlayers(query: Record<string, unknown>, limit?: number): Promise<PlayerWithTeam[]> {
     return this.prisma.player.findMany({
-      where: this.buildPlayerWhere(query),
+      where: await this.buildPlayerWhere(query),
       include: { team: true },
       orderBy: { lastName: "asc" },
       ...(limit !== undefined ? { take: limit } : {}),
@@ -73,7 +101,7 @@ export class PlayersService {
   // a per-segment question, only which of them played is.
   async getPlayers(query: Record<string, unknown>): Promise<PagedResult<PlayerWithTeam>> {
     const { page, pageSize } = parsePageParams(query);
-    const where = this.buildPlayerWhere(query);
+    const where = await this.buildPlayerWhere(query);
 
     const [data, total] = await Promise.all([
       this.prisma.player.findMany({
