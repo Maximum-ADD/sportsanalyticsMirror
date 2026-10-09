@@ -18,6 +18,10 @@ export const SOUTH_AFRICA_TIME_ZONE_LABEL = "SAST";
 export const LIVE_REFRESH_INTERVAL_IN_MILLISECONDS = 15_000;
 export const IDLE_REFRESH_INTERVAL_IN_MILLISECONDS = 60_000;
 
+// Shared by every reader of the board (the Live tab, the landing page's
+// scoreboard), so they share one cached copy and one poll.
+export const LIVE_GAMES_QUERY_KEY = ["liveGames"];
+
 export const STARTING_SOON_LABEL = "Starting soon";
 
 // A clock stopped at zero means the period is over, and the NBA's own status
@@ -175,4 +179,13 @@ export function shouldRefreshOften(board: LiveGamesBoard | undefined, nowEpochMi
     (game) => game.statusNote === null && Date.parse(game.startsAt) <= nowEpochMilliseconds
   );
   return board.live.length > 0 || isGameDueToTipOff;
+}
+
+/**
+ * How long to wait before asking for the board again: quickly while it can
+ * change at any moment (see shouldRefreshOften), slowly otherwise. React
+ * Query also pauses polling in a background tab, so an idle tab costs nothing.
+ */
+export function selectBoardRefreshInterval(board: LiveGamesBoard | undefined): number {
+  return shouldRefreshOften(board, Date.now()) ? LIVE_REFRESH_INTERVAL_IN_MILLISECONDS : IDLE_REFRESH_INTERVAL_IN_MILLISECONDS;
 }

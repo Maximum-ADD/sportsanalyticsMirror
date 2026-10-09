@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import type { SeasonType } from "@prisma/client";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ExportRequestsService } from "../src/common/export-requests.service.js";
 import { createTestApp } from "./create-test-app.js";
 import { resetDatabase, testPrisma } from "./test-db.js";
 
@@ -319,6 +320,31 @@ describe("Players API", () => {
 
       expect(response.status).toBe(200);
       expect(response.text.trim().split("\r\n")).toHaveLength(1);
+    });
+
+    it("async=true queues the export instead of returning the CSV directly", async () => {
+      const lakers = await createTeam({ name: "Lakers", abbreviation: "LAL" });
+      await createPlayer({ teamId: lakers.id, firstName: "LeBron", lastName: "James" });
+
+      const queued = await request(app.getHttpServer()).get(`/v1/players/export?async=true&teamId=${lakers.id}`);
+
+      expect(queued.status).toBe(202);
+      expect(queued.body).toMatchObject({ status: "QUEUED", resource: "PLAYERS" });
+      expect(queued.body.id).toEqual(expect.any(String));
+
+      // The in-process worker ticks every 5 seconds (ExportRequestsService's
+      // own @Cron) — run it directly rather than waiting out a real
+      // interval in a test.
+      const exportRequestsService = app.get(ExportRequestsService);
+      await exportRequestsService.processNextQueued();
+
+      const status = await request(app.getHttpServer()).get(`/v1/exports/${queued.body.id}`);
+      expect(status.body).toMatchObject({ status: "SUCCEEDED", rowCount: 1 });
+
+      const download = await request(app.getHttpServer()).get(`/v1/exports/${queued.body.id}/download`);
+      expect(download.status).toBe(200);
+      expect(download.headers["content-disposition"]).toContain('attachment; filename="players.csv"');
+      expect(download.text).toContain("LeBron,James");
     });
   });
 

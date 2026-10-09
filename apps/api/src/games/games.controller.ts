@@ -12,11 +12,26 @@ import {
 import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
 import { parsePageParams } from "../common/pagination.js";
 import { toCsv, type ColumnSpec } from "../common/csv.js";
+import { ExportRequestsService } from "../common/export-requests.service.js";
 import type { Response } from "express";
 import { GameEventPageDto } from "./game-event.dto.js";
 import { GamePageDto } from "./game.dto.js";
 import { GameDetailService } from "./game-detail.service.js";
-import { GamesService } from "./games.service.js";
+import { GamesService, type GameWithTeamsAndPrediction } from "./games.service.js";
+
+const MAX_EXPORT_ROWS = 5_000;
+
+const GAME_EXPORT_COLUMNS: ColumnSpec<GameWithTeamsAndPrediction>[] = [
+  { header: "id", value: (game) => game.id },
+  { header: "nbaGameId", value: (game) => game.nbaGameId },
+  { header: "gameDate", value: (game) => game.gameDate.toISOString() },
+  { header: "season", value: (game) => game.season },
+  { header: "seasonType", value: (game) => game.seasonType },
+  { header: "homeTeam", value: (game) => game.homeTeam.name },
+  { header: "awayTeam", value: (game) => game.awayTeam.name },
+  { header: "homeScore", value: (game) => game.homeScore },
+  { header: "awayScore", value: (game) => game.awayScore },
+];
 
 // Public, like TeamsController/PlayersController — games/schedules/scores
 // are the same kind of read-only, non-personal data those already expose.
@@ -31,8 +46,14 @@ import { GamesService } from "./games.service.js";
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly gameDetailService: GameDetailService
-  ) {}
+    private readonly gameDetailService: GameDetailService,
+    private readonly exportRequests: ExportRequestsService
+  ) {
+    this.exportRequests.registerBuilder("GAMES", {
+      fetchRows: (query, maximumRows) => this.gamesService.getGamesForExport(query, maximumRows),
+      columns: GAME_EXPORT_COLUMNS,
+    });
+  }
 
   @Get()
   @ApiOperation({ summary: "List games (paginated: soonest upcoming first, then most recently completed)" })
@@ -43,27 +64,34 @@ export class GamesController {
     return this.gamesService.getGames(query);
   }
 
+  // async=true queues this export as a background job instead of blocking
+  // the response on it — see ExportRequestsService. Still synchronous by
+  // default: today's real row counts (243 games) never approach the
+  // 5,000-row cap, so nothing changes unless a caller opts in.
   @Get("export")
   @ApiOperation({ summary: "Export a filtered game slice as CSV (up to 5,000 games, newest first)" })
   @ApiGameFilters()
-  @ApiResponse({ status: 200, description: "CSV file" })
+  @ApiQuery({
+    name: "async",
+    required: false,
+    description: "true to queue this export as a background job instead of waiting for it (see GET /v1/exports/:id)",
+  })
+  @ApiResponse({ status: 200, description: "CSV file (synchronous)" })
+  @ApiResponse({ status: 202, description: "Export queued (async=true); poll GET /v1/exports/:id" })
   async exportGames(@Query() query: Record<string, unknown>, @Res() response: Response): Promise<void> {
-    const games = await this.gamesService.getGamesForExport(query, 5_000);
-    const columns: ColumnSpec<(typeof games)[number]>[] = [
-      { header: "id", value: (game) => game.id },
-      { header: "nbaGameId", value: (game) => game.nbaGameId },
-      { header: "gameDate", value: (game) => game.gameDate.toISOString() },
-      { header: "season", value: (game) => game.season },
-      { header: "seasonType", value: (game) => game.seasonType },
-      { header: "homeTeam", value: (game) => game.homeTeam.name },
-      { header: "awayTeam", value: (game) => game.awayTeam.name },
-      { header: "homeScore", value: (game) => game.homeScore },
-      { header: "awayScore", value: (game) => game.awayScore },
-    ];
+    if (query.async === "true") {
+      const exportQuery = { ...query };
+      delete exportQuery.async;
+      const request = await this.exportRequests.queueExport("GAMES", exportQuery);
+      response.status(HttpStatus.ACCEPTED).json(request);
+      return;
+    }
+
+    const games = await this.gamesService.getGamesForExport(query, MAX_EXPORT_ROWS);
     response.status(HttpStatus.OK).set({
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": 'attachment; filename="games.csv"',
-    }).send(toCsv(games, columns));
+    }).send(toCsv(games, GAME_EXPORT_COLUMNS));
   }
 
   // GET /v1/games/seasons — every season with at least one ingested game,
