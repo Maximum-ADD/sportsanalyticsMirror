@@ -345,7 +345,10 @@ envelope `{ error: { code, message } }`.
 | GET | `/v1/games/:id/prediction` | Public |
 | GET | `/v1/games/:id/prediction/history` | Public; every model version's prediction for this game |
 | GET | `/v1/games/:id/events` | Public; paginated, ordered by `sequence` — this game's raw play-by-play |
-| GET | `/v1/players/export` | CSV file. Same filters as `/v1/players` (`teamId`, `position`, `search`) |
+| GET | `/v1/players/export` | CSV file. Same filters as `/v1/players` (`teamId`, `position`, `search`). `?async=true` queues it instead (see below) |
+| GET | `/v1/games/export` | CSV file, up to 5,000 games. `?async=true` queues it instead (see below) |
+| GET | `/v1/exports/:id` | Status of a queued export (`QUEUED`/`RUNNING`/`SUCCEEDED`/`FAILED`) |
+| GET | `/v1/exports/:id/download` | The finished CSV, once `SUCCEEDED` |
 | GET | `/v1/optimizer/lineup` | Auth required; latest optimized lineup |
 | ALL | `*` | Catch-all → `404 NOT_FOUND` |
 
@@ -362,6 +365,19 @@ segments.
 
 Optimizer routes require a BetterAuth session. Player, team and game
 routes are public. No route currently requires a role above `USER`.
+
+**Large exports as a background job** (`src/common/export-requests.*`):
+`?async=true` on either export route queues an `ExportRequest` (mirrors
+`IngestionRequest`'s queued/polled shape) instead of blocking the response
+on it, for the two consumer-facing requests large enough to be worth not
+waiting on (both capped at `MAX_EXPORT_ROWS` = 5,000 rows). Picked up by
+an in-process worker (`ExportRequestsService.processNextQueued`, a 5-second
+`@Cron` tick) rather than a separate process the way `apps/ingestion`'s
+pull worker needs — nothing an export does requires an environment this
+server doesn't already have. The synchronous response is unchanged and
+still the default: at today's real scale (~530 players, 243 games) neither
+export ever approaches the cap, so this is additive capacity for growth,
+not a fix for an endpoint that is actually slow yet.
 
 ## Frontend architecture (`apps/web`)
 
