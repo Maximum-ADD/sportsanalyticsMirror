@@ -209,7 +209,7 @@ describe("DatasetsPage", () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease()]);
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "abc123" });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "abc123", source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
@@ -221,14 +221,12 @@ describe("DatasetsPage", () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease()]);
-      vi.mocked(downloadDatasetRelease).mockRejectedValue(
-        new ApiError("Release is stale after a correction", 409),
-      );
+      vi.mocked(downloadDatasetRelease).mockRejectedValue(new ApiError("Release not found", 404));
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
 
-      expect(await screen.findByText("Release is stale after a correction")).toBeInTheDocument();
+      expect(await screen.findByText("Release not found")).toBeInTheDocument();
     });
 
     it("confirms a download that matches the published checksum", async () => {
@@ -236,7 +234,7 @@ describe("DatasetsPage", () => {
       signInAs(null);
       mockReleases([makeRelease({ checksum: "abc123" })]);
       // Case differs on purpose: hex digests are case-insensitive.
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "ABC123" });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "ABC123", source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
@@ -245,25 +243,54 @@ describe("DatasetsPage", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
-    it("warns when the data has changed since the release was published", async () => {
+    it("warns when a stored file doesn't match the published checksum", async () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease({ checksum: "abc123" })]);
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456" });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456", source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
 
       const warning = await screen.findByRole("alert");
       expect(warning).toHaveTextContent(/doesn't match the published checksum/i);
-      expect(warning).toHaveTextContent(/since 2025-26\.1 was released/);
+      expect(warning).toHaveTextContent(/isn't exactly what was published as 2025-26\.1/);
+    });
+
+    // F26: an older release is rebuilt from current data. The user gets the
+    // file, and is told what it is and whether it is the published one.
+    it("says a rebuilt file differs from the release when the data has changed since", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease({ checksum: "abc123", isStale: true })]);
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456", source: "rebuilt" });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      const warning = await screen.findByRole("alert");
+      expect(warning).toHaveTextContent(/Rebuilt from current data/);
+      expect(warning).toHaveTextContent(/won't reproduce analysis made against the original/);
+    });
+
+    it("says a rebuilt file that matches is the release exactly as published", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease({ checksum: "abc123" })]);
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "abc123", source: "rebuilt" });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      expect(await screen.findByText(/this is 2025-26\.1 exactly as published/)).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
     it("claims neither a match nor a mismatch when no checksum came back", async () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease()]);
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: null });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: null, source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
@@ -273,14 +300,16 @@ describe("DatasetsPage", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
-    it("flags a stale release so its failed download is explicable up front", async () => {
+    it("flags a stale release, and still offers its download", async () => {
       signInAs(null);
       mockReleases([makeRelease({ isStale: true })]);
 
       renderWithProviders(<DatasetsPage />);
 
       expect(await screen.findByText("Stale")).toBeInTheDocument();
-      expect(screen.getByText(/no longer matches the source data/)).toBeInTheDocument();
+      expect(screen.getByText(/some of its figures may be out of date/)).toBeInTheDocument();
+      expect(screen.getByText(/This one still downloads/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
     });
   });
 
