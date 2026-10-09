@@ -1,17 +1,15 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import type { Player, PlayerPrediction, SavedLineup, SavedLineupSlot } from "@prisma/client";
 import { ApiException } from "../common/api-exception.js";
+import { LINEUP_SIZE, MINIMUM_FORWARDS, MINIMUM_GUARDS } from "../optimizer/lineup-rules.js";
 import type { PlayerWithTeam } from "../players/players.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
-// Mirror of the MILP constraints in apps/optimizer/optimize.py — keep these
-// equal to the solver's own constants. The API refuses to save exactly the
-// boards the solver would refuse to solve, and eligibility uses the same
-// substring test as the Python ("G" in position), so a combo guard like
-// "G-F" counts toward both the guard and the forward minimums.
-const LINEUP_SIZE = 5;
-const MINIMUM_GUARDS = 1;
-const MINIMUM_FORWARDS = 1;
+// The roster rules come from optimizer/lineup-rules.ts, the same constants
+// the on-demand solver uses, so the API refuses to save exactly the boards
+// the solver would refuse to solve. Eligibility uses the same substring test
+// as optimize.py ("G" in position), so a combo guard like "G-F" counts
+// toward both the guard and the forward minimums.
 
 export interface SaveLineupSlotInput {
   playerId: string;
