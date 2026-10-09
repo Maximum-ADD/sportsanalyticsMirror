@@ -48,6 +48,17 @@ const LEADER_CATEGORIES: {
   { key: "tsPct", label: "True shooting", selectValue: (leader) => leader.value, formatValue: (v) => `${v.toFixed(1)}%` },
 ];
 
+// How the leaders band's title names a position filter ("Leaders · Guards").
+// The filter bar offers the roster's raw codes; an unknown code is shown as
+// it is rather than dropped, so the title never hides a filter in force.
+const POSITION_GROUP_LABELS: Record<string, string> = {
+  G: "Guards",
+  F: "Forwards",
+  C: "Centers",
+  "G-F": "Guard-forwards",
+  "F-C": "Forward-centers",
+};
+
 // Ten columns do not fit a phone, and a horizontally scrolling stat table
 // hides the numbers behind a gesture. Instead each column declares the
 // width it earns its place at, and the table sheds the least important
@@ -190,14 +201,44 @@ export function PlayersListPage() {
     placeholderData: keepPreviousData,
   });
 
-  // The headline figures behind the "League leaders" band. The API applies
-  // a segment-appropriate participation floor (15 games in the regular
-  // season, 4 in postseason segments) and echoes it back for the
-  // "Minimum N games" label.
+  // The headline figures behind the leaders band. The band follows the
+  // list's filters — search, team, position, the postseason participation
+  // narrowing and the min-games floor — so it names the leaders among the
+  // players listed under it rather than contradicting a filtered list with
+  // the league's. With no min-games filter the API applies its own
+  // segment-appropriate floor (15 games in the regular season, 4 in
+  // postseason segments) and echoes it back for the "Minimum N games" label.
+  // The followed-only view is the one filter it can't follow: that roster
+  // lives in the profile, not in anything the endpoint can narrow by, so
+  // the band keeps ranking the filtered league there.
+  const leadersParams = {
+    seasonType,
+    teamId,
+    position,
+    search: debouncedSearchTerm || undefined,
+    ...(isPostseasonSegment ? { participated: true } : {}),
+    ...(minGames !== undefined ? { minGames } : {}),
+  };
   const leadersQuery = useQuery({
-    queryKey: ["playerLeaders", seasonType],
-    queryFn: () => fetchPlayerLeaders(seasonType),
+    queryKey: ["playerLeaders", leadersParams],
+    queryFn: () => fetchPlayerLeaders(leadersParams),
+    // Typing a search refetches the band; keep the last leaders up
+    // (blurred) meanwhile instead of dropping back to the spinner.
+    placeholderData: keepPreviousData,
   });
+
+  // The filters the band narrows by, as they read in its title. The
+  // min-games floor is left out: it has its own label on the right.
+  const leadersFilterLabels = [
+    teamId ? (teamsQuery.data?.data.find((team) => team.id === teamId)?.abbreviation ?? "One team") : undefined,
+    position ? (POSITION_GROUP_LABELS[position] ?? position) : undefined,
+    debouncedSearchTerm ? `“${debouncedSearchTerm}”` : undefined,
+  ].filter((label) => label !== undefined);
+  const isLeadersFiltered = leadersFilterLabels.length > 0;
+  const leadersTitle = isLeadersFiltered ? `Leaders · ${leadersFilterLabels.join(" · ")}` : "League leaders";
+  const leaders = leadersQuery.data?.leaders;
+  const hasNoQualifiedLeader =
+    leaders !== undefined && LEADER_CATEGORIES.every((category) => leaders[category.key] === null);
 
   // One batch request for the whole page's rate columns and sparklines,
   // narrowed to the selected segment so a playoffs table shows playoff
@@ -337,13 +378,16 @@ export function PlayersListPage() {
           </div>
         </Reveal>
 
-        {/* League leaders — one card per headline category, with the
-            participation floor the API applied stated on the right. */}
+        {/* Leaders — one card per headline category, with the participation
+            floor the API applied stated on the right. The title names the
+            filters the band follows ("Leaders · LAL · Guards"), so a
+            filtered band never passes for the league's; it may wrap on a
+            phone rather than push the floor label off the row. */}
         <Reveal delay={1}>
         <section className="mb-6">
           <div className="mb-3 flex items-center gap-3.5">
-            <h2 className="font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase">
-              League leaders
+            <h2 className="min-w-0 font-display text-sm tracking-[0.2em] break-words text-locker-ink-muted uppercase">
+              {leadersTitle}
             </h2>
             <span aria-hidden className="h-px flex-1 bg-landing-light" />
             {leadersQuery.data && (
@@ -377,9 +421,17 @@ export function PlayersListPage() {
               loading={hasLoadedLeadersOnce && leadersQuery.isFetching}
               label="Loading league leaders"
             >
+              {isLeadersFiltered && hasNoQualifiedLeader ? (
+                /* Filters that leave nobody qualified get one sentence
+                   instead of four "No qualified player" cards — the cause
+                   is the filters (or the floor), not each category. */
+                <p className="border border-landing-light bg-locker-surface px-4 py-8 text-center text-[12.5px] text-locker-ink-muted">
+                  No player matching these filters has played the minimum {leadersQuery.data?.minGames} games.
+                </p>
+              ) : (
               <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
             {LEADER_CATEGORIES.map((category) => {
-              const leader = leadersQuery.data?.leaders[category.key] ?? null;
+              const leader = leaders?.[category.key] ?? null;
               return (
                 <div key={category.key} className="border border-landing-light bg-locker-surface p-4">
                   <p className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">
@@ -414,6 +466,7 @@ export function PlayersListPage() {
               );
             })}
               </div>
+              )}
             </SectionLoading>
           )}
         </section>

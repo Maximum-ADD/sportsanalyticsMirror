@@ -331,7 +331,91 @@ describe("PlayersListPage", () => {
 
       renderWithProviders(<PlayersListPage />, ["/players?segment=playoffs"]);
 
-      await waitFor(() => expect(fetchPlayerLeaders).toHaveBeenCalledWith("PLAYOFFS"));
+      // Postseason leaders come from the same participated-only pool the
+      // list shows in that segment.
+      await waitFor(() =>
+        expect(fetchPlayerLeaders).toHaveBeenCalledWith(
+          expect.objectContaining({ seasonType: "PLAYOFFS", participated: true })
+        )
+      );
+    });
+
+    it("asks for league-wide leaders while no filter is set", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      await waitFor(() => expect(fetchPlayerLeaders).toHaveBeenCalled());
+      expect(vi.mocked(fetchPlayerLeaders).mock.calls[0][0]).toEqual({
+        seasonType: "REGULAR",
+        teamId: undefined,
+        position: undefined,
+        search: undefined,
+      });
+      expect(screen.getByRole("heading", { name: "League leaders" })).toBeInTheDocument();
+    });
+
+    it("follows the list's search, team and position filters and names them in its title", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+      const user = userEvent.setup();
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByText("LeBron James");
+
+      await user.selectOptions(screen.getByDisplayValue("All teams"), LAKERS.id);
+      await user.selectOptions(screen.getByDisplayValue("All positions"), "G");
+      await user.type(screen.getByRole("searchbox", { name: "Search players" }), "manon");
+
+      await waitFor(() =>
+        expect(fetchPlayerLeaders).toHaveBeenLastCalledWith(
+          expect.objectContaining({ seasonType: "REGULAR", teamId: LAKERS.id, position: "G", search: "manon" })
+        )
+      );
+      expect(await screen.findByRole("heading", { name: "Leaders · LAL · Guards · “manon”" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "League leaders" })).not.toBeInTheDocument();
+    });
+
+    it("follows the min-games filter too, so the band ranks the same players the list does", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+      const user = userEvent.setup();
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByText("LeBron James");
+
+      await user.selectOptions(screen.getByDisplayValue("Min. games: Any"), "20");
+
+      await waitFor(() =>
+        expect(fetchPlayerLeaders).toHaveBeenLastCalledWith(expect.objectContaining({ minGames: 20 }))
+      );
+    });
+
+    it("says so in one line when nobody matching the filters qualifies", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+      const user = userEvent.setup();
+
+      renderWithProviders(<PlayersListPage />);
+      await screen.findByText("LeBron James");
+
+      await user.selectOptions(screen.getByDisplayValue("All positions"), "C");
+
+      expect(
+        await screen.findByText("No player matching these filters has played the minimum 15 games.")
+      ).toBeInTheDocument();
+      expect(screen.queryByText("No qualified player")).not.toBeInTheDocument();
+    });
+
+    it("keeps the per-card empty face for a league-wide band with no qualified player", async () => {
+      vi.mocked(fetchTeams).mockResolvedValue({ data: [LAKERS], page: 1, pageSize: 100, total: 1 });
+      vi.mocked(fetchPlayers).mockResolvedValue(pagedPlayers([makePlayer()]));
+
+      renderWithProviders(<PlayersListPage />);
+
+      expect(await screen.findAllByText("No qualified player")).toHaveLength(4);
+      expect(screen.queryByText(/No player matching these filters/)).not.toBeInTheDocument();
     });
 
     it("shows a loading panel while leaders are pending instead of the cards' empty face", async () => {

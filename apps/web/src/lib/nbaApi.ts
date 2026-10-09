@@ -69,12 +69,19 @@ export function fetchPlayers(params: FetchPlayersParams = {}): Promise<PagedResu
   return fetchJson<PagedResult<Player>>(`/v1/players${toQueryString(params)}`);
 }
 
+// The leaders endpoint takes the players list's own filters, so the band can
+// rank the same players the list shows. None of them means league-wide.
+export type FetchPlayerLeadersParams = Pick<
+  FetchPlayersParams,
+  "seasonType" | "minGames" | "teamId" | "position" | "search" | "participated"
+>;
+
 // The leader in each headline category for one segment — the figures behind
-// the players page's "League leaders" band. The API applies a
-// segment-appropriate participation floor (15 games in the regular season, 4
-// in postseason segments) unless one is passed explicitly.
-export function fetchPlayerLeaders(seasonType?: SeasonType, minGames?: number): Promise<PlayerLeadersResponse> {
-  return fetchJson<PlayerLeadersResponse>(`/v1/players/leaders${toQueryString({ seasonType, minGames })}`);
+// the players page's leaders band. The API applies a segment-appropriate
+// participation floor (15 games in the regular season, 4 in postseason
+// segments) unless one is passed explicitly.
+export function fetchPlayerLeaders(params: FetchPlayerLeadersParams = {}): Promise<PlayerLeadersResponse> {
+  return fetchJson<PlayerLeadersResponse>(`/v1/players/leaders${toQueryString(params)}`);
 }
 
 export function fetchPlayer(playerId: string): Promise<Player> {
