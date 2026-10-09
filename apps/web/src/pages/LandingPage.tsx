@@ -46,43 +46,47 @@ const TECH_STACK: MarqueeItem[] = [
   { name: "Gitea Actions", logo: "/logos/gitea.webp" },
 ];
 
-const WHAT_WE_DO_ITEMS = [
-  "Browse player and team profiles built from game-level data.",
-  "Compare performances and see the numbers behind each result.",
-  "Follow predictions and use lineup recommendations to plan your next move.",
+// What a visitor can do without signing in: these routes sit outside
+// ProtectedRoute in App.tsx. Keep each item to one thing the site really
+// does, so the list stays true when a page changes.
+const WHAT_YOU_CAN_DO_ITEMS = [
+  "Look up any player's averages and career, or any team's record and roster.",
+  "Compare up to four players side by side.",
+  "Download a season of player stats as a CSV file.",
 ];
 
 // Stagger steps for the three items below, as Reveal delay indices.
-const WHAT_WE_DO_ITEM_DELAYS: RevealDelay[] = [1, 2, 3];
+const WHAT_YOU_CAN_DO_ITEM_DELAYS: RevealDelay[] = [1, 2, 3];
 
-interface StandOutPoint {
+interface AccountFeature {
   name: string;
   detail: string;
 }
 
-// The four account features that define the signed-in workflow — the
-// model-transparency points stay covered by the section's intro paragraph.
-const STAND_OUT_POINTS: StandOutPoint[] = [
+// The four features that need a sign-in: Predictions, Beat the Model (on the
+// home page), the Optimizer and API keys (on the profile page) all sit behind
+// ProtectedRoute in App.tsx.
+const ACCOUNT_FEATURES: AccountFeature[] = [
   {
-    name: "Personal dashboard",
-    detail: "Your home page gathers the games, predictions, and lineups you care about.",
+    name: "Game predictions",
+    detail: "Who should win each game, and how often the model gets it right.",
   },
   {
-    name: "Player watchlist",
-    detail: "Follow players and jump back to their latest performances in one tap.",
+    name: "Beat the Model",
+    detail: "Pick who won a past game without seeing the score, and compare your record with the model's.",
   },
   {
-    name: "Saved comparisons",
-    detail: "Keep the matchups you want to revisit close at hand.",
+    name: "Fantasy lineups",
+    detail: "Get the five players with the most projected fantasy points under a salary cap.",
   },
   {
-    name: "Lineup planning",
-    detail: "Balance salaries and positions while the optimizer builds your edge.",
+    name: "API keys",
+    detail: "Fetch our stats from your own code.",
   },
 ];
 
 // Two columns of two: the stagger steps across each row, then repeats.
-const STAND_OUT_POINT_DELAYS: RevealDelay[] = [1, 2, 2, 3];
+const ACCOUNT_FEATURE_DELAYS: RevealDelay[] = [1, 2, 2, 3];
 
 interface GetStartedProps {
   signInCallbackURL: string;
@@ -126,7 +130,7 @@ export function LandingPage() {
           <div aria-hidden className="absolute inset-0 bg-linear-to-r from-black/80 via-black/40 to-black/10" />
           {/* Half-court geometry drawn faintly over the photo's right side,
               with a slow brand-accent comet lapping the boundary — the
-              hero's echo of the What We Do scan line. Portrait phones show
+              hero's echo of the What You Can Do scan line. Portrait phones show
               no court: the narrow photo fills that width on its own. */}
           <HeroCourtLines />
           <div className="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1500px] items-center px-4 py-20 sm:px-6 lg:px-14">
@@ -149,7 +153,7 @@ export function LandingPage() {
                 </Reveal>
               </h1>
               <Reveal as="p" delay={2} className="mt-8 max-w-xl text-lg leading-relaxed text-white/90">
-                Turn NBA game data into clearer decisions. Explore player and team profiles, compare performance, follow predictions, and build smarter fantasy lineups from the numbers behind every game.
+                NBA stats, added up from each game&apos;s play-by-play. See who our model picks to win each game, and how often it&apos;s been right.
               </Reveal>
               <Reveal delay={3}>
                 <GetStarted signInCallbackURL={appHomeURL} />
@@ -158,7 +162,7 @@ export function LandingPage() {
           </div>
         </section>
         <Marquee items={DEVELOPERS} label="Development team" variant="symbiote" />
-        {/* What We Do: the dunk is the impact, so content hugs the bottom
+        {/* What You Can Do: the dunk is the impact, so content hugs the bottom
             edge under a rising scrim instead of a floating panel — the
             dunker stays unobstructed in the upper half. */}
         <section className="relative overflow-hidden bg-landing-dark">
@@ -177,17 +181,17 @@ export function LandingPage() {
                 as="h2"
                 className="font-display text-[clamp(3.5rem,7vw,8rem)] leading-none tracking-[-0.01em] text-white uppercase"
               >
-                What We Do
+                What You Can Do
               </Reveal>
               <Reveal as="p" delay={1} className="mt-8 text-xl leading-relaxed text-white/90 lg:text-2xl">
-                Court Vision brings player research, team context, prediction tracking, and fantasy lineup planning into one place. Instead of stopping at a box score, it traces statistics back to the game events that produced them.
+                You don&apos;t need an account for any of this, or for live scores.
               </Reveal>
               <ul className="mt-12 grid gap-8 pb-2 md:grid-cols-3 lg:gap-10">
-                {WHAT_WE_DO_ITEMS.map((item, index) => (
+                {WHAT_YOU_CAN_DO_ITEMS.map((item, index) => (
                   <Reveal
                     as="li"
                     key={item}
-                    delay={WHAT_WE_DO_ITEM_DELAYS[index]}
+                    delay={WHAT_YOU_CAN_DO_ITEM_DELAYS[index]}
                     className="border-t border-white/25 pt-5 text-lg leading-relaxed text-white/80 lg:text-xl"
                   >
                     <span className="font-mono text-sm tracking-[0.2em] text-brand-accent">
@@ -209,10 +213,10 @@ export function LandingPage() {
             to it. */}
         <ModelExplainer />
         <Marquee items={TECH_STACK} label="Our tech stack" variant="crystal" />
-        {/* How We Stand Out: back to a full-bleed photo — a dark Staples
+        {/* With an Account: back to a full-bleed photo — a dark Staples
             Center aerial (Marius Christensen / Unsplash) under a left-to-right
-            scrim, with the four key account points set in the same
-            numbered-list treatment as What We Do, as a 2x2 grid. */}
+            scrim, with the four signed-in features set in the same
+            numbered-list treatment as What You Can Do, as a 2x2 grid. */}
         <section className="relative overflow-hidden bg-landing-dark">
           <SectionPhoto name="clippers-arena" narrowName="clippers-arena-narrow" />
           <div aria-hidden className="absolute inset-0 bg-linear-to-r from-black/85 via-black/50 to-black/10" />
@@ -222,18 +226,18 @@ export function LandingPage() {
                 as="h2"
                 className="font-display text-[clamp(2.5rem,5.6vw,6rem)] leading-[1.05] tracking-[-0.01em] text-landing-accent uppercase"
               >
-                <span className="block">How We</span>
-                <span className="block">Stand Out</span>
+                <span className="block">With an</span>
+                <span className="block">Account</span>
               </Reveal>
               <Reveal as="p" delay={1} className="mt-6 text-xl leading-relaxed text-white/90">
-                Every prediction is paired with the statistics that shaped it and measured against games already played. That gives you context instead of a black-box answer, whether you are checking a player, weighing a matchup, or planning a lineup.
+                Sign in with Google to follow players and your team from your own home page. You also get:
               </Reveal>
               <ul className="mt-12 grid gap-x-8 gap-y-10 sm:grid-cols-2">
-                {STAND_OUT_POINTS.map((point, index) => (
+                {ACCOUNT_FEATURES.map((point, index) => (
                   <Reveal
                     as="li"
                     key={point.name}
-                    delay={STAND_OUT_POINT_DELAYS[index]}
+                    delay={ACCOUNT_FEATURE_DELAYS[index]}
                     className="border-t border-white/25 pt-5"
                   >
                     <span className="font-mono text-sm tracking-[0.2em] text-brand-accent">
