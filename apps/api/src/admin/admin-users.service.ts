@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Role, type User } from "@prisma/client";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
+import { deleteUserAvatars } from "../me/avatar-cleanup.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 export type AdminUserSummary = Pick<
@@ -63,6 +64,8 @@ export class AdminUsersService {
   // authClient.deleteUser() relies on for self-service deletion.
   async deleteUser(userId: string): Promise<void> {
     await this.prisma.user.delete({ where: { id: userId } });
+    // The row cascades to everything in Postgres; the photo is in Storage.
+    await deleteUserAvatars(userId);
   }
 
   updateRole(userId: string, role: Role): Promise<AdminUserSummary> {

@@ -337,6 +337,18 @@ describe("ProfilePage", () => {
     expect(authClient.signOut).toHaveBeenCalledTimes(1);
   });
 
+  it("offers a download of the user's data and links the privacy notice", async () => {
+    setUp();
+
+    renderWithProviders(<ProfilePage />);
+    await screen.findByText("playerone");
+
+    const downloadLink = screen.getByRole("link", { name: "Download my data" });
+    expect(downloadLink).toHaveAttribute("href", "/api/v1/me/export");
+    expect(downloadLink).toHaveAttribute("download");
+    expect(screen.getByRole("link", { name: "privacy notice" })).toHaveAttribute("href", "/privacy");
+  });
+
   it("arms a delete confirmation before actually deleting", async () => {
     setUp();
     const user = userEvent.setup();

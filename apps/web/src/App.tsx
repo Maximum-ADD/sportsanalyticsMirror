@@ -1,6 +1,7 @@
 import { lazy, type ComponentType } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
+import { PrivacyPage } from "./pages/PrivacyPage";
 import { LandingPage } from "./pages/LandingPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProfileGate } from "./components/ProfileGate";
@@ -78,6 +79,8 @@ function App() {
               account, and the API serves it without a session or key. */}
           <Route path="/live" element={<LiveGamesPage />} />
           <Route path="/live/:gameId" element={<LiveGamePage />} />
+          {/* Public, so it can be read before signing in (POPIA s18). */}
+          <Route path="/privacy" element={<PrivacyPage />} />
           {/* The user's own Become Pro page. Private to them — there is no
               public Become Pro route, because the feature compares a user
               with real NBA players and never with each other. */}

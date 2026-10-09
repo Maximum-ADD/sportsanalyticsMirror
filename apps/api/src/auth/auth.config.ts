@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { allowedOrigins } from "../common/allowed-origins.js";
+import { deleteUserAvatars } from "../me/avatar-cleanup.js";
 
 // A dedicated Prisma client for BetterAuth's own use. This module is a
 // plain singleton instantiated at import time (by main.ts and by
@@ -114,6 +115,25 @@ export const auth = betterAuth({
     // (see session.freshAge below) as its confirmation step.
     deleteUser: {
       enabled: true,
+      // The User row cascades to everything else a user owns in Postgres,
+      // but their photo lives in Supabase Storage. Run after the delete
+      // succeeds, so a failed deletion never leaves an account without its
+      // photo. (Admin deletions do the same in AdminUsersService.)
+      afterDelete: async (user) => {
+        await deleteUserAvatars(user.id);
+      },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        // BetterAuth records every session's IP address and user agent, and
+        // nothing in this app reads either. Data minimisation (POPIA s10)
+        // says not to keep what isn't needed, so they're dropped before the
+        // row is written. This doesn't touch BetterAuth's per-IP rate
+        // limiting, which reads the request's IP rather than this column.
+        before: async (session) => ({ data: { ...session, ipAddress: null, userAgent: null } }),
+      },
     },
   },
   session: {

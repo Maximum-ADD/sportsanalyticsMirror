@@ -17,10 +17,9 @@ import { summarizeModelRecord } from "./model-accuracy.service.js";
 // it.
 const MODEL_DISPLAY_NAME = "Elo model";
 
-// Shown instead of a blank cell when a User row has no name — BetterAuth
-// populates it from the Google profile, so it is present in practice, but the
-// column is not guaranteed non-empty and a nameless row would sort oddly
-// against localeCompare.
+// Shown instead of a blank cell for a user who has no username yet (one who
+// hasn't finished onboarding); a blank row would also sort oddly against
+// localeCompare.
 const UNNAMED_USER_DISPLAY_NAME = "Anonymous";
 
 // Namespace for the cached user half of the board. Exported so PicksService
@@ -148,20 +147,22 @@ export class LeaderboardService {
    * @param userIds - the qualifying users only.
    * @returns userId -> display name.
    *
-   * `select: { id, name }` is deliberate and load-bearing: this endpoint is
-   * public, so anything selected here is readable by a signed-out visitor.
-   * Selecting the whole User row would publish email addresses to the
-   * internet. Do not widen it.
+   * `select: { id, username }` is deliberate and load-bearing: this endpoint
+   * is public, so anything selected here is readable by a signed-out visitor.
+   * The username is the handle a user chose at onboarding to be shown by.
+   * `name` is their real name from Google, and publishing it to anyone on the
+   * internet is not something they agreed to (POPIA s11); the whole row
+   * would publish email addresses too. Do not widen it.
    */
   private async readDisplayNames(userIds: string[]): Promise<Map<string, string>> {
     if (userIds.length === 0) return new Map();
 
     const users = await this.prisma.user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, name: true },
+      select: { id: true, username: true },
     });
 
-    return new Map(users.map((user) => [user.id, user.name || UNNAMED_USER_DISPLAY_NAME]));
+    return new Map(users.map((user) => [user.id, user.username || UNNAMED_USER_DISPLAY_NAME]));
   }
 }
 
