@@ -933,8 +933,10 @@ export function PredictionsPage() {
         <div className="mb-5 flex flex-wrap items-center gap-2.5">
           {/* Full width on phones — a fixed field plus its chrome leaves
               nothing beside it at 360px, so it would take its own row
-              regardless. */}
-          <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 sm:min-h-0 sm:w-auto">
+              regardless. The leather ring follows focus to the whole field
+              (F28): the input's own outline is suppressed, and the reviewer
+              could not tell when either control was focused. */}
+          <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-locker-leather sm:min-h-0 sm:w-auto">
             <Search aria-hidden className="size-3.5 shrink-0 text-locker-ink-muted" />
             <input
               type="search"
@@ -945,9 +947,11 @@ export function PredictionsPage() {
               }}
               placeholder="Search a team"
               aria-label="Search games by team"
-              className="w-full min-w-0 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-40"
+              className="w-full min-w-0 bg-transparent text-[13px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-44"
             />
           </div>
+          {/* Sentence case at a readable size, not the 10px mono uppercase
+              chip this was — the reviewer could not read the options (F28). */}
           <select
             value={seasonFilter}
             onChange={(event) => {
@@ -955,7 +959,7 @@ export function PredictionsPage() {
               setShowAllCards(false);
             }}
             aria-label="Filter games by season"
-            className="min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none sm:min-h-0"
+            className="min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 text-[13px] text-landing-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather sm:min-h-0"
           >
             <option value="all">Upcoming games</option>
             {(seasonsQuery.data ?? []).map((season) => (

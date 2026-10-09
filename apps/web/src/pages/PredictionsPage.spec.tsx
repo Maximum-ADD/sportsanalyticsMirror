@@ -126,6 +126,26 @@ describe("PredictionsPage", () => {
     await expectNoAccessibilityViolations(container);
   });
 
+  // F28: the reviewer could not read the filter controls — a 12.5px search
+  // and a 10px uppercase mono season picker — and neither showed focus.
+  it("keeps the search box and season picker readable, with a visible focus ring", async () => {
+    mockGamesByStatus([makeGame({ homeScore: null, awayScore: null, prediction: PREDICTION })]);
+
+    renderWithProviders(<PredictionsPage />);
+
+    const searchBox = await screen.findByRole("searchbox", { name: /search games by team/i });
+    expect(searchBox).toHaveClass("text-[13px]");
+    // The focus ring is on the whole field, since the input's own outline is
+    // suppressed.
+    expect(searchBox.closest("div")).toHaveClass("focus-within:outline-2");
+
+    const seasonPicker = screen.getByRole("combobox", { name: /filter games by season/i });
+    expect(seasonPicker).toHaveClass("text-[13px]", "focus-visible:outline-2");
+    // Sentence case ("Upcoming games"), not the mono-uppercase chip it was.
+    expect(seasonPicker).not.toHaveClass("uppercase");
+    expect(within(seasonPicker).getByRole("option", { name: "Upcoming games" })).toBeInTheDocument();
+  });
+
   it("renders each game's win probability and margin from the joined prediction", async () => {
     // homeWinProbability 0.62 means this same upcoming game can legitimately
     // appear both as a main-grid card AND as a Model highlights pick (it's
