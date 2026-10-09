@@ -21,8 +21,14 @@ const SIZE_CLASSES = {
   // Between the two: large enough to recognise a face in a grid tile,
   // small enough that five of them across a panel still read as a row of
   // tiles rather than as a gallery.
-  md: "size-14 text-lg",
-  lg: "size-20 text-2xl",
+  md: "size-14 text-lg md:size-16 md:text-xl",
+  // The page's main photos — the profile hero, Compare, the top-scorer
+  // cards. The reviewer found these small on a desktop, where there is room
+  // to spare, so each size steps up at the wider breakpoints. The base size
+  // (a phone width) is unchanged — that is the one the reviewer found fine.
+  // The CDN image is 1040x760 (see lib/nbaMedia.ts), far beyond every size
+  // here, so the step-up costs no sharpness.
+  lg: "size-20 text-2xl md:size-24 md:text-3xl lg:size-28 lg:text-4xl",
 };
 
 // Not every player has a real headshot at this id (two-way/G-League call-ups,

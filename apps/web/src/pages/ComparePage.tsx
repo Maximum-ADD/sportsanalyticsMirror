@@ -358,10 +358,12 @@ const PLAYER_COLUMNS_SPAN = { gridColumn: "2 / -1" };
 // the light background rather than an inviting "pick someone" prompt. A
 // dashed outline in the same leather accent as "Add another player" reads
 // as part of the empty-slot's own dashed border instead of a stray dark blob.
+// Matches PlayerHeadshot's lg size at every breakpoint (F21), so a filled
+// tile's photo and an empty slot's dashed circle stay the same size.
 function PlaceholderHeadshot() {
   return (
-    <div className="flex size-20 items-center justify-center rounded-full border-2 border-dashed border-locker-leather/40 text-locker-leather/60">
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-9" fill="currentColor">
+    <div className="flex size-20 items-center justify-center rounded-full border-2 border-dashed border-locker-leather/40 text-locker-leather/60 md:size-24 lg:size-28">
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="size-9 md:size-11 lg:size-12" fill="currentColor">
         <circle cx="12" cy="8" r="4" />
         <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8z" />
       </svg>

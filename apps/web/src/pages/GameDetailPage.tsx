@@ -65,7 +65,7 @@ function PlayerDetailPanel({ scorer, onClose, isEditing, onToggleEditing, onPoin
   return (
     <div className="border border-landing-light bg-locker-surface p-5">
       <div className="mb-4 flex items-start justify-between gap-2">
-        <PlayerHeadshot player={scorer.player} size="lg" className="size-20" />
+        <PlayerHeadshot player={scorer.player} size="lg" />
         <button
           type="button"
           onClick={onClose}

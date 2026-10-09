@@ -93,7 +93,7 @@ function PlayerTradingCard({ kind, entry }: PlayerTradingCardProps) {
         {label}
       </div>
       <div className="flex flex-col items-center p-4 text-center">
-        <PlayerHeadshot player={scorer.player} size="lg" className="size-20" />
+        <PlayerHeadshot player={scorer.player} size="lg" />
         <p className="mt-3 font-display text-base tracking-[0.01em] text-landing-ink uppercase">
           {scorer.player.firstName} {scorer.player.lastName}
         </p>
