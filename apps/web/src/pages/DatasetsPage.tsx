@@ -341,9 +341,15 @@ export function DatasetsPage() {
       <div className="mx-auto max-w-[1500px] px-6 py-6 lg:px-8">
         <div className="mb-6 border border-landing-light bg-locker-surface p-6">
           <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Datasets</h1>
-          <p className="mt-2 text-[12.5px] text-locker-ink-muted">
-            Versioned data releases with checksums and field schemas. Download a release CSV to
-            reproduce analysis against a known snapshot of the data.
+          <p className="mt-2 max-w-3xl text-[12.5px] leading-relaxed text-locker-ink-muted">
+            Each release is a fixed snapshot of one season's player stats — one row per player, with
+            their averages for that season — for analysing in a spreadsheet or your own code. Because
+            a release never changes, analysis run against it can be repeated later on the same
+            numbers.
+          </p>
+          <p className="mt-2 max-w-3xl text-[12.5px] leading-relaxed text-locker-ink-muted">
+            To download, press Download on a release to save it as a CSV file. Open a release with
+            its arrow to see what each column means and the checksum the file is checked against.
           </p>
         </div>
 
@@ -380,6 +386,10 @@ export function DatasetsPage() {
               </option>
             ))}
           </select>
+          <p className="text-[11px] text-locker-ink-muted">
+            Newest published first unless you change it. Season orders by the season the data covers,
+            which differs from publish date when an older season is released late.
+          </p>
         </div>
 
         {isPending ? (

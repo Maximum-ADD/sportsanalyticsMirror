@@ -75,6 +75,16 @@ describe("DatasetsPage", () => {
     expect(await screen.findByText("No dataset releases published yet.")).toBeInTheDocument();
   });
 
+  it("explains what a release is, how the list is sorted and how to download", async () => {
+    signInAs(null);
+    mockReleases([makeRelease()]);
+    renderWithProviders(<DatasetsPage />);
+
+    expect(await screen.findByText(/fixed snapshot of one season's player stats/)).toBeInTheDocument();
+    expect(screen.getByText(/Newest published first unless you change it/)).toBeInTheDocument();
+    expect(screen.getByText(/press Download on a release to save it as a CSV file/)).toBeInTheDocument();
+  });
+
   it("lists releases and expands one to show checksum and schema", async () => {
     const user = userEvent.setup();
     signInAs(null);
