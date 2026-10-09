@@ -169,6 +169,7 @@ const GAME_DETAIL_TUTORIAL_STEPS: TutorialStep[] = [
     points: [
       "Man of the match is the highest predicted scorer. Consistency pick is the player whose prediction reliability is highest.",
       "A card is left out when there isn't enough data to back it.",
+      "Each card's View profile link opens that player's page.",
     ],
   },
   {

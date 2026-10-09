@@ -137,7 +137,7 @@ const HOME_TUTORIAL_STEPS: TutorialStep[] = [
       // player (WatchlistService), earlier seasons and the postseason included.
       "PPG, RPG and APG are points, rebounds and assists per game, across every game we hold for that player — earlier seasons and playoffs included.",
       "The small line tracks points in recent games, oldest to newest — the dot is the latest game.",
-      "Click a card to open that player's page. Remove unfollows them everywhere, and Add players takes you to the full list of players.",
+      "Click a card to open that player's page — the View profile cue at its foot is the tell. Remove unfollows them everywhere, and Add players takes you to the full list of players.",
     ],
   },
   {
