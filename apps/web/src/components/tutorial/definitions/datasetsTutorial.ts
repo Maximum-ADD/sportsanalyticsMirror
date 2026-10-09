@@ -116,10 +116,12 @@ const DATASETS_TUTORIAL_STEPS: TutorialStep[] = [
       "Each row is one release: a snapshot of one season, with one line per player who played in it and their averages for that season.",
     points: [
       "A row shows the release's version name, its season, a short description, how many players and games it covers, and when it was published.",
-      // DatasetReleasesService.downloadRelease: a release with a stored file
-      // still serves it once stale; only an old release with no stored file
-      // is refused.
-      "Stale means a data correction landed after the release was made, so it no longer matches our current figures. Use a newer release of that season for the corrected numbers.",
+      // DatasetReleasesService.downloadRelease: every release downloads — a
+      // stored file is served exactly as published even when stale, and a
+      // release published before files were stored is rebuilt from current
+      // data. The checksum sent with the file is what tells whether it
+      // matches what was published.
+      "Stale means a data correction landed after the release was made, so it no longer matches our current figures. It still downloads, and the check after downloading says whether the file matches the release's published checksum. Use a newer release of that season for the corrected numbers.",
     ],
   },
   {
