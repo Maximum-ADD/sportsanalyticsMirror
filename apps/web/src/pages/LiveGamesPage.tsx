@@ -6,24 +6,12 @@ import { LiveGameCard } from "@/components/live/LiveGameCard";
 import { LiveRefreshNote } from "@/components/live/LiveRefreshNote";
 import { UpcomingGameCard } from "@/components/live/UpcomingGameCard";
 import { PageLoading } from "@/components/ui/loading-overlay";
-import {
-  IDLE_REFRESH_INTERVAL_IN_MILLISECONDS,
-  LIVE_REFRESH_INTERVAL_IN_MILLISECONDS,
-  shouldRefreshOften,
-  SOUTH_AFRICA_TIME_ZONE_LABEL,
-} from "@/lib/liveGameDisplay";
+import { LIVE_GAMES_QUERY_KEY, selectBoardRefreshInterval, SOUTH_AFRICA_TIME_ZONE_LABEL } from "@/lib/liveGameDisplay";
 import { fetchLiveGames, type LiveGamesBoard } from "@/lib/liveGamesApi";
 import { useCurrentTime } from "@/lib/useCurrentTime";
 
-const LIVE_GAMES_QUERY_KEY = ["liveGames"];
 // Countdowns show whole minutes, so half a minute is fresh enough.
 const COUNTDOWN_TICK_INTERVAL_IN_MILLISECONDS = 30_000;
-
-// Polls quickly only while something is live or about to tip off. React
-// Query also pauses polling in a background tab, so an idle tab costs nothing.
-function selectRefreshInterval(board: LiveGamesBoard | undefined): number {
-  return shouldRefreshOften(board, Date.now()) ? LIVE_REFRESH_INTERVAL_IN_MILLISECONDS : IDLE_REFRESH_INTERVAL_IN_MILLISECONDS;
-}
 
 interface LiveGamesSectionProps {
   title: string;
@@ -91,7 +79,7 @@ export function LiveGamesPage() {
   const liveGamesQuery = useQuery({
     queryKey: LIVE_GAMES_QUERY_KEY,
     queryFn: fetchLiveGames,
-    refetchInterval: (query) => selectRefreshInterval(query.state.data),
+    refetchInterval: (query) => selectBoardRefreshInterval(query.state.data),
   });
 
   if (!liveGamesQuery.data && liveGamesQuery.isError) {
@@ -119,7 +107,7 @@ export function LiveGamesPage() {
                 <LiveRefreshNote
                   updatedAtEpochMilliseconds={liveGamesQuery.dataUpdatedAt}
                   hasRefreshFailed={liveGamesQuery.isRefetchError}
-                  refreshIntervalInMilliseconds={selectRefreshInterval(liveGamesQuery.data)}
+                  refreshIntervalInMilliseconds={selectBoardRefreshInterval(liveGamesQuery.data)}
                 />
               </div>
             )}
