@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { fetchLatestLineup, fetchPlayerPrediction, fetchPlayerPredictions, solveLineup } from "@/lib/nbaApi";
@@ -45,6 +45,10 @@ const MAX_LINEUP_NAME_LENGTH = 50;
 // How many times a solve that failed on the server's side (a 5xx or a
 // network error) is retried before the page says so and offers Try again.
 const SOLVE_RETRIES_ON_SERVER_ERROR = 1;
+
+// Runner-up lineups listed under the best one. The API allows up to 4; three
+// is enough to compare without turning the page into a list of lineups.
+const ALTERNATIVE_LINEUP_COUNT = 3;
 
 const MODULE_HEADING_CLASS =
   "font-display text-sm tracking-[0.2em] whitespace-nowrap text-locker-ink-muted uppercase";
@@ -93,6 +97,21 @@ function toBoardSlots(lineup: SolvedLineup): LineupSlot[] {
 // failure — a server or network error, which trying again may fix.
 function describeSolveFailure(error: unknown): string | null {
   return error instanceof ApiError && error.status === 400 ? error.message : null;
+}
+
+// The same five players in any order give the same key, so a solved lineup
+// can be matched against the one on the board.
+function playerSetKey(playerIds: string[]): string {
+  return [...playerIds].sort().join(",");
+}
+
+// How an alternative's projection compares with the best lineup's, in words.
+// Within a rounding step counts as level, since both show to one decimal.
+function describePointsGap(gap: number): string {
+  if (Math.abs(gap) < 0.05) return "level with the best";
+  return gap < 0
+    ? `${formatPoints(-gap)} fewer than the best`
+    : `${formatPoints(gap)} more than the best`;
 }
 
 function formatTimeAgo(isoDate: string): string {
@@ -433,6 +452,108 @@ function SolveFailureNotice({ error, onRetry }: { error: unknown; onRetry: () =>
   );
 }
 
+// One alternative's swap list: who leaves the best lineup and who comes in.
+function SwapLine({ label, players }: { label: string; players: Player[] }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="w-7 shrink-0 font-mono text-[9.5px] leading-[18px] tracking-[0.1em] text-locker-ink-muted uppercase">
+        {label}
+      </dt>
+      <dd className="text-[12px] leading-[18px] text-landing-ink">{players.map(playerName).join(", ")}</dd>
+    </div>
+  );
+}
+
+// "Alternative lineups": the next best lineups under the same rules as the
+// best one, each summed up by its projection, its salary and the players it
+// swaps. Compared with the best lineup as solved, not with any edits made to
+// the board since.
+function AlternativeLineups({
+  alternatives,
+  bestSlots,
+  bestTotalPoints,
+  isUpdating,
+  isError,
+  onRetry,
+}: {
+  alternatives: SolvedLineup[] | undefined;
+  bestSlots: LineupSlot[];
+  bestTotalPoints: number;
+  isUpdating: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  const bestIds = new Set(bestSlots.map((slot) => slot.player.id));
+
+  let body: ReactNode;
+  if (alternatives === undefined && isError && !isUpdating) {
+    body = (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-[12.5px] text-locker-ink-muted">Couldn't load the alternative lineups.</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="border border-landing-light bg-locker-surface px-4 py-2 font-mono text-[10.5px] tracking-[0.14em] text-landing-ink uppercase transition-colors hover:border-locker-leather"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  } else if (alternatives === undefined) {
+    body = <p className="text-[12.5px] text-locker-ink-muted">Finding the next best lineups…</p>;
+  } else if (alternatives.length === 0) {
+    body = <p className="text-[12.5px] text-locker-ink-muted">No other lineup fits the same rules.</p>;
+  } else {
+    body = (
+      <ol className={`grid grid-cols-1 gap-2 transition-opacity md:grid-cols-3 ${isUpdating ? "opacity-60" : ""}`}>
+        {alternatives.map((lineup, index) => {
+          const ids = new Set(lineup.slots.map((slot) => slot.playerId));
+          const playersOut = bestSlots.filter((slot) => !ids.has(slot.player.id)).map((slot) => slot.player);
+          const playersIn = lineup.slots.filter((slot) => !bestIds.has(slot.playerId)).map((slot) => slot.player);
+          return (
+            <li key={playerSetKey([...ids])} className="border border-landing-light bg-landing-hero p-3">
+              <h3 className="font-mono text-[10px] tracking-[0.14em] text-locker-leather uppercase">
+                Alternative {index + 1}
+              </h3>
+              <p className="mt-1 text-[12.5px] text-landing-ink tabular-nums">
+                {formatPoints(lineup.totalPredictedPoints)} projected pts · {formatSalary(lineup.totalSalary)}
+              </p>
+              <p className="text-[12px] text-locker-ink-muted">
+                {describePointsGap(lineup.totalPredictedPoints - bestTotalPoints)}
+              </p>
+              <dl className="mt-2 space-y-0.5">
+                <SwapLine label="Out" players={playersOut} />
+                <SwapLine label="In" players={playersIn} />
+              </dl>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
+
+  return (
+    <section
+      aria-labelledby="alternative-lineups-heading"
+      aria-busy={isUpdating}
+      className="mt-6 border border-landing-light bg-locker-surface p-4 sm:p-6"
+    >
+      <div className="mb-3 flex items-center gap-3.5">
+        <span className="font-mono text-[10px] tracking-[0.2em] text-locker-leather">06</span>
+        <h2 id="alternative-lineups-heading" className={MODULE_HEADING_CLASS}>
+          Alternative lineups
+        </h2>
+        <span aria-hidden className={MODULE_RULE_CLASS} />
+      </div>
+      <p className="mb-3 max-w-2xl text-[12.5px] text-locker-ink-muted">
+        The next best lineups under the same rules, each a different set of players, with the players it swaps
+        compared with the best lineup above.
+      </p>
+      {body}
+    </section>
+  );
+}
+
 function PageHeader({
   solvedAt,
   budget,
@@ -496,25 +617,44 @@ export function OptimizerPage() {
   const excludedIds = excludedPlayers.map((player) => player.id);
   const hasRules = lockedIds.length > 0 || excludedIds.length > 0;
 
-  // With no rules the page shows the precomputed lineup above; any rule
-  // solves one on demand instead. The previous answer stays on screen while
-  // the next one loads, so the board doesn't blank out on every click. An
-  // infeasible rule set (a 4xx) says the same thing however often it's
-  // retried, so only server and network errors are, and only once: the
-  // user can always retry by hand from the error.
+  // The solver, run on demand under the user's rules, which may be none:
+  // it always answers with runners-up for the Alternative lineups section.
+  // With no rules the board keeps the precomputed lineup above; any rule
+  // puts the solved best lineup on the board instead. The previous answer
+  // stays on screen while the next one loads, so the board doesn't blank out
+  // on every click. An infeasible rule set (a 4xx) says the same thing
+  // however often it's retried, so only server and network errors are, and
+  // only once: the user can always retry by hand from the error.
   const solveQuery = useQuery({
-    queryKey: ["optimizerSolve", data?.budget, [...lockedIds].sort(), [...excludedIds].sort()],
-    queryFn: () => solveLineup({ budget: data!.budget, lockedPlayerIds: lockedIds, excludedPlayerIds: excludedIds }),
-    enabled: data !== undefined && hasRules,
+    queryKey: ["optimizerSolve", data?.budget, [...lockedIds].sort(), [...excludedIds].sort(), ALTERNATIVE_LINEUP_COUNT],
+    queryFn: () =>
+      solveLineup({
+        budget: data!.budget,
+        lockedPlayerIds: lockedIds,
+        excludedPlayerIds: excludedIds,
+        alternatives: ALTERNATIVE_LINEUP_COUNT,
+      }),
+    enabled: data !== undefined,
     placeholderData: keepPreviousData,
     retry: (failureCount, solveError) =>
       !(solveError instanceof ApiError && solveError.status < 500) && failureCount < SOLVE_RETRIES_ON_SERVER_ERROR,
   });
-  const solvedBest = hasRules ? solveQuery.data?.lineups[0] : undefined;
+  const solved = solveQuery.data;
+  // Only an answer solved under some rule may stand in for the precomputed
+  // lineup. While the first rule's solve loads, the answer on hand is the
+  // no-rules one, which isn't "solved with your rules".
+  const solvedUnderRules = solved !== undefined && solved.lockedPlayerIds.length + solved.excludedPlayerIds.length > 0;
+  const solvedBest = hasRules && solvedUnderRules ? solved.lineups[0] : undefined;
   // What the board starts from before any local edit: the lineup solved
   // under the rules once there is one, else the precomputed lineup.
   const baseSlots = solvedBest ? toBoardSlots(solvedBest) : (data?.slots ?? []);
   const boardKey = solvedBest ? `solved:${baseSlots.map((slot) => slot.playerId).join(",")}` : data?.id;
+  // The runners-up: every solved lineup except the best one on the board.
+  // With no rules, that drops the solver's own copy of the precomputed lineup.
+  const bestPlayerSetKey = playerSetKey(baseSlots.map((slot) => slot.player.id));
+  const alternativeLineups = solved?.lineups
+    .filter((lineup) => playerSetKey(lineup.slots.map((slot) => slot.playerId)) !== bestPlayerSetKey)
+    .slice(0, ALTERNATIVE_LINEUP_COUNT);
 
   useEffect(() => {
     setIsEditingLineup(false);
@@ -1143,6 +1283,17 @@ export function OptimizerPage() {
               </div>
             </div>
           </section>
+        </Reveal>
+
+        <Reveal replay={false} delay={3}>
+          <AlternativeLineups
+            alternatives={alternativeLineups}
+            bestSlots={baseSlots}
+            bestTotalPoints={solvedBest?.totalPredictedPoints ?? data.totalPredictedPoints}
+            isUpdating={solveQuery.isFetching}
+            isError={solveQuery.isError}
+            onRetry={() => void solveQuery.refetch()}
+          />
         </Reveal>
 
         {isNamePromptOpen && (

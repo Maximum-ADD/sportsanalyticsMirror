@@ -2,6 +2,7 @@ import { HttpStatus } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiException } from "../common/api-exception.js";
 import { SALARY_CAP_IN_DOLLARS } from "./lineup-rules.js";
+import { MAX_ALTERNATIVE_LINEUPS } from "./lineup-solve.dto.js";
 import { OptimizerController } from "./optimizer.controller.js";
 import type { OptimizerService } from "./optimizer.service.js";
 
@@ -30,7 +31,7 @@ describe("OptimizerController.solveLineups", () => {
     controller = new OptimizerController(optimizerService as unknown as OptimizerService);
   });
 
-  it("solves the default board for an empty body: the full cap, no locks, no exclusions", async () => {
+  it("solves the default board for an empty body: the full cap, no locks, no exclusions, no alternatives", async () => {
     await controller.solveLineups({});
 
     expect(optimizerService.solveLineups).toHaveBeenCalledWith({
@@ -70,7 +71,25 @@ describe("OptimizerController.solveLineups", () => {
     expect(optimizerService.solveLineups).toHaveBeenCalledWith(expect.objectContaining({ lockedPlayerIds }));
   });
 
+  it("asks the solver for one lineup per alternative on top of the best one", async () => {
+    await controller.solveLineups({ alternatives: 3 });
+
+    expect(optimizerService.solveLineups).toHaveBeenCalledWith(expect.objectContaining({ lineupCount: 4 }));
+  });
+
+  it(`accepts up to ${MAX_ALTERNATIVE_LINEUPS} alternatives`, async () => {
+    await controller.solveLineups({ alternatives: MAX_ALTERNATIVE_LINEUPS });
+
+    expect(optimizerService.solveLineups).toHaveBeenCalledWith(
+      expect.objectContaining({ lineupCount: MAX_ALTERNATIVE_LINEUPS + 1 })
+    );
+  });
+
   it.each([
+    ["more alternatives than the cap", { alternatives: MAX_ALTERNATIVE_LINEUPS + 1 }],
+    ["a negative alternatives count", { alternatives: -1 }],
+    ["a fractional alternatives count", { alternatives: 1.5 }],
+    ["an alternatives count sent as a string", { alternatives: "2" }],
     ["a fractional budget", { budget: 50_000.5 }],
     ["a zero budget", { budget: 0 }],
     ["a budget above the request bound", { budget: 1_000_001 }],

@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OptimizerPage } from "./OptimizerPage";
-import { fetchLatestLineup, fetchPlayerPredictions, fetchPlayers, solveLineup } from "@/lib/nbaApi";
+import { fetchLatestLineup, fetchPlayerPredictions, fetchPlayers, solveLineup, type SolveLineupParams } from "@/lib/nbaApi";
 import { saveLineup } from "@/lib/meApi";
 import { useMe } from "@/lib/useMe";
 import { ApiError } from "@/lib/apiClient";
@@ -139,7 +139,15 @@ function makeSolvedSlot(player: Player, predictedFantasyPoints: number, salary: 
   return { playerId: player.id, player, predictedFantasyPoints, salary, isLocked: false };
 }
 
-// What POST /v1/optimizer/solve answers in these tests, whatever the rules:
+// LINEUP's own five as the solver returns them.
+const SOLVED_PRECOMPUTED_FIVE = {
+  rank: 1,
+  totalPredictedPoints: 207.08,
+  totalSalary: 47_400,
+  slots: LINEUP.slots.map((slot) => makeSolvedSlot(slot.player, slot.predictedFantasyPoints!, slot.salary!)),
+};
+
+// What POST /v1/optimizer/solve answers under any rule in these tests:
 // LINEUP with Green in Doncic's place. 192.98 pts (shown as 193.0) and
 // $45,400, so a solved board is easy to tell from the precomputed one.
 const SOLVED: SolveLineupResponse = {
@@ -164,6 +172,23 @@ const SOLVED: SolveLineupResponse = {
   ],
 };
 
+// With no rules: the precomputed five again, and no other lineup.
+const SOLVED_WITHOUT_RULES: SolveLineupResponse = { ...SOLVED, lineups: [SOLVED_PRECOMPUTED_FIVE] };
+
+function hasRules(params: SolveLineupParams): boolean {
+  return (params.lockedPlayerIds?.length ?? 0) + (params.excludedPlayerIds?.length ?? 0) > 0;
+}
+
+// The API echoes the rules back, and the page only lets an answer solved
+// under some rule replace the precomputed lineup, so the mock echoes too.
+function answer(response: SolveLineupResponse, params: SolveLineupParams): SolveLineupResponse {
+  return { ...response, lockedPlayerIds: params.lockedPlayerIds ?? [], excludedPlayerIds: params.excludedPlayerIds ?? [] };
+}
+
+function solveCallsWithRules(): SolveLineupParams[] {
+  return vi.mocked(solveLineup).mock.calls.map(([params]) => params).filter(hasRules);
+}
+
 const SAVED_LINEUP = {
   id: "saved-1",
   budget: 50_000,
@@ -181,7 +206,9 @@ describe("OptimizerPage", () => {
     vi.mocked(useMe).mockReturnValue({ session: { user: {} } } as never);
     // No suggestions unless a test opts in by mocking its own list.
     vi.mocked(fetchPlayerPredictions).mockResolvedValue([]);
-    vi.mocked(solveLineup).mockResolvedValue(SOLVED);
+    vi.mocked(solveLineup).mockImplementation(async (params) =>
+      answer(hasRules(params) ? SOLVED : SOLVED_WITHOUT_RULES, params)
+    );
   });
 
   afterEach(() => {
@@ -468,8 +495,8 @@ describe("OptimizerPage", () => {
 
       renderWithProviders(<OptimizerPage />);
       await screen.findByText("Stephen Curry");
-      // No rules yet, so the precomputed lineup needs no solve.
-      expect(solveLineup).not.toHaveBeenCalled();
+      // No rules yet, so the board is the precomputed lineup.
+      expect(solveCallsWithRules()).toHaveLength(0);
       expect(screen.getByText("No rules set, so the lineup below is the solver's own pick.")).toBeInTheDocument();
 
       const lockButton = screen.getByRole("button", { name: "Must include Stephen Curry" });
@@ -477,7 +504,12 @@ describe("OptimizerPage", () => {
       await user.click(lockButton);
 
       expect(await screen.findByText("Jalen Green")).toBeInTheDocument();
-      expect(solveLineup).toHaveBeenCalledWith({ budget: 50_000, lockedPlayerIds: ["player-1"], excludedPlayerIds: [] });
+      expect(solveLineup).toHaveBeenCalledWith({
+        budget: 50_000,
+        lockedPlayerIds: ["player-1"],
+        excludedPlayerIds: [],
+        alternatives: 3,
+      });
       expect(screen.queryByText("Luka Doncic")).not.toBeInTheDocument();
       expect(screen.getByText("193.0")).toBeInTheDocument();
       expect(screen.getByText("$45,400")).toBeInTheDocument();
@@ -500,7 +532,12 @@ describe("OptimizerPage", () => {
       // can't stay on the button.
       expect(screen.getByRole("heading", { name: "The lineup" })).toHaveFocus();
       expect(await screen.findByText("Jalen Green")).toBeInTheDocument();
-      expect(solveLineup).toHaveBeenCalledWith({ budget: 50_000, lockedPlayerIds: [], excludedPlayerIds: ["player-5"] });
+      expect(solveLineup).toHaveBeenCalledWith({
+        budget: 50_000,
+        lockedPlayerIds: [],
+        excludedPlayerIds: ["player-5"],
+        alternatives: 3,
+      });
       expect(screen.getByRole("button", { name: "Allow Luka Doncic again" })).toBeInTheDocument();
     });
 
@@ -516,7 +553,12 @@ describe("OptimizerPage", () => {
       await user.click(await screen.findByRole("option", { name: /Jalen Green/ }));
 
       expect(await screen.findByText("193.0")).toBeInTheDocument();
-      expect(solveLineup).toHaveBeenCalledWith({ budget: 50_000, lockedPlayerIds: ["player-6"], excludedPlayerIds: [] });
+      expect(solveLineup).toHaveBeenCalledWith({
+        budget: 50_000,
+        lockedPlayerIds: ["player-6"],
+        excludedPlayerIds: [],
+        alternatives: 3,
+      });
 
       await user.click(screen.getByRole("button", { name: "Clear all rules" }));
 
@@ -526,14 +568,17 @@ describe("OptimizerPage", () => {
       expect(screen.queryByRole("button", { name: "Clear all rules" })).not.toBeInTheDocument();
       // Focus stays in the panel rather than falling to the page body.
       expect(screen.getByRole("combobox", { name: "Search for a player the lineup must include" })).toHaveFocus();
-      expect(solveLineup).toHaveBeenCalledTimes(1);
+      expect(solveCallsWithRules()).toHaveLength(1);
     });
 
     it("explains in plain words when no lineup fits the rules, in place of the lineup", async () => {
       const user = userEvent.setup();
       vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
       const reason = "Stephen Curry costs $8,800, which leaves too little of the $50,000 budget for the rest.";
-      vi.mocked(solveLineup).mockRejectedValue(new ApiError(reason, 400));
+      vi.mocked(solveLineup).mockImplementation(async (params) => {
+        if (hasRules(params)) throw new ApiError(reason, 400);
+        return answer(SOLVED_WITHOUT_RULES, params);
+      });
 
       const { container } = renderWithProviders(<main><OptimizerPage /></main>);
       await screen.findByText("Stephen Curry");
@@ -542,7 +587,7 @@ describe("OptimizerPage", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent(reason);
       expect(screen.getByRole("heading", { name: "No lineup fits your rules" })).toBeInTheDocument();
       // A 400 is the rules' fault, so it isn't retried and there's nothing to retry.
-      expect(solveLineup).toHaveBeenCalledTimes(1);
+      expect(solveCallsWithRules()).toHaveLength(1);
       expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
       // Showing the precomputed lineup here would quietly ignore the rules.
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -557,7 +602,10 @@ describe("OptimizerPage", () => {
     it("offers Try again when the solve fails on the server's side", async () => {
       const user = userEvent.setup();
       vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
-      vi.mocked(solveLineup).mockRejectedValue(new ApiError("Internal server error", 500));
+      vi.mocked(solveLineup).mockImplementation(async (params) => {
+        if (hasRules(params)) throw new ApiError("Internal server error", 500);
+        return answer(SOLVED_WITHOUT_RULES, params);
+      });
 
       renderWithProviders(<OptimizerPage />);
       await screen.findByText("Stephen Curry");
@@ -565,10 +613,10 @@ describe("OptimizerPage", () => {
 
       // A server error is retried once, about a second later, before the page gives up.
       const tryAgain = await screen.findByRole("button", { name: "Try again" }, { timeout: 3_000 });
-      expect(solveLineup).toHaveBeenCalledTimes(2);
+      expect(solveCallsWithRules()).toHaveLength(2);
       expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong on our side while solving.");
 
-      vi.mocked(solveLineup).mockResolvedValue(SOLVED);
+      vi.mocked(solveLineup).mockImplementation(async (params) => answer(SOLVED, params));
       await user.click(tryAgain);
 
       expect(await screen.findByText("Jalen Green")).toBeInTheDocument();
@@ -586,6 +634,113 @@ describe("OptimizerPage", () => {
       await screen.findByRole("button", { name: "Allow LeBron James again" });
 
       await expectNoAccessibilityViolations(container);
+    });
+  });
+
+  describe("alternative lineups", () => {
+    // Under the cap with no rules: LINEUP's five, then Green for Doncic
+    // (192.98 pts, $45,400), then Sengun for Embiid (201.88 pts, $44,700).
+    const GREEN_FOR_DONCIC = { ...SOLVED.lineups[0], rank: 2 };
+    const SENGUN_FOR_EMBIID = {
+      rank: 3,
+      totalPredictedPoints: 201.88,
+      totalSalary: 44_700,
+      slots: [
+        makeSolvedSlot(CURRY, 38.5, 8_800),
+        makeSolvedSlot(DAVIS, 43.28, 9_400),
+        makeSolvedSlot(JAMES, 41.0, 9_500),
+        makeSolvedSlot(SENGUN, 35, 7_000),
+        makeSolvedSlot(DONCIC, 44.1, 10_000),
+      ],
+    };
+
+    function alternativesSection() {
+      return screen.getByRole("region", { name: "Alternative lineups" });
+    }
+
+    it("lists the next best lineups under the precomputed one, with the players each swaps", async () => {
+      vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
+      vi.mocked(solveLineup).mockImplementation(async (params) =>
+        answer({ ...SOLVED, lineups: [SOLVED_PRECOMPUTED_FIVE, GREEN_FOR_DONCIC, SENGUN_FOR_EMBIID] }, params)
+      );
+
+      const { container } = renderWithProviders(<main><OptimizerPage /></main>);
+      await screen.findByText("Stephen Curry");
+
+      expect(solveLineup).toHaveBeenCalledWith({
+        budget: 50_000,
+        lockedPlayerIds: [],
+        excludedPlayerIds: [],
+        alternatives: 3,
+      });
+      // The solver's copy of the precomputed lineup isn't an alternative to itself.
+      const items = await within(alternativesSection()).findAllByRole("listitem");
+      expect(items).toHaveLength(2);
+
+      expect(within(items[0]).getByRole("heading", { name: "Alternative 1" })).toBeInTheDocument();
+      expect(items[0]).toHaveTextContent("193.0 projected pts · $45,400");
+      expect(items[0]).toHaveTextContent("14.1 fewer than the best");
+      const [firstOut, firstIn] = within(items[0]).getAllByRole("definition");
+      expect(firstOut).toHaveTextContent("Luka Doncic");
+      expect(firstIn).toHaveTextContent("Jalen Green");
+
+      expect(items[1]).toHaveTextContent("201.9 projected pts · $44,700");
+      expect(items[1]).toHaveTextContent("5.2 fewer than the best");
+      const [secondOut, secondIn] = within(items[1]).getAllByRole("definition");
+      expect(secondOut).toHaveTextContent("Joel Embiid");
+      expect(secondIn).toHaveTextContent("Alperen Sengun");
+
+      await expectNoAccessibilityViolations(container);
+    });
+
+    it("compares the alternatives with the lineup solved under the rules", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
+      vi.mocked(solveLineup).mockImplementation(async (params) =>
+        answer(
+          hasRules(params)
+            ? { ...SOLVED, lineups: [SOLVED.lineups[0], { ...SOLVED_PRECOMPUTED_FIVE, rank: 2 }] }
+            : SOLVED_WITHOUT_RULES,
+          params
+        )
+      );
+
+      renderWithProviders(<OptimizerPage />);
+      await screen.findByText("Stephen Curry");
+      await user.click(screen.getByRole("button", { name: "Must include Stephen Curry" }));
+
+      const item = await within(alternativesSection()).findByRole("listitem");
+      expect(item).toHaveTextContent("207.1 projected pts · $47,400");
+      expect(item).toHaveTextContent("14.1 more than the best");
+      const [playersOut, playersIn] = within(item).getAllByRole("definition");
+      expect(playersOut).toHaveTextContent("Jalen Green");
+      expect(playersIn).toHaveTextContent("Luka Doncic");
+    });
+
+    it("says so when no other lineup fits the same rules", async () => {
+      vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
+
+      renderWithProviders(<OptimizerPage />);
+
+      expect(await screen.findByText("No other lineup fits the same rules.")).toBeInTheDocument();
+    });
+
+    it("keeps the lineup and offers Try again when the alternatives can't load", async () => {
+      const user = userEvent.setup();
+      vi.mocked(fetchLatestLineup).mockResolvedValue(LINEUP);
+      vi.mocked(solveLineup).mockRejectedValue(new ApiError("Internal server error", 500));
+
+      renderWithProviders(<OptimizerPage />);
+
+      // Retried once, about a second later, before the section gives up.
+      expect(await screen.findByText("Couldn't load the alternative lineups.", {}, { timeout: 3_000 })).toBeInTheDocument();
+      // Only the alternatives depend on this solve; the precomputed lineup stays.
+      expect(screen.getByText("Luka Doncic")).toBeInTheDocument();
+
+      vi.mocked(solveLineup).mockImplementation(async (params) => answer(SOLVED_WITHOUT_RULES, params));
+      await user.click(within(alternativesSection()).getByRole("button", { name: "Try again" }));
+
+      expect(await screen.findByText("No other lineup fits the same rules.")).toBeInTheDocument();
     });
   });
 

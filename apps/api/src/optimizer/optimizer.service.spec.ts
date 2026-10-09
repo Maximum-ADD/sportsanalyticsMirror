@@ -92,6 +92,26 @@ describe("OptimizerService.solveLineups", () => {
     }
   });
 
+  it("returns the runners-up after the best lineup, ranked, each a different set of players", async () => {
+    const result = await createService().solveLineups(makeRequest({ lockedPlayerIds: ["green"], lineupCount: 3 }));
+
+    expect(result.lineups.map((lineup) => lineup.rank)).toEqual([1, 2, 3]);
+    const totals = result.lineups.map((lineup) => lineup.totalPredictedPoints);
+    expect(totals).toEqual([...totals].sort((a, b) => b - a));
+    const playerSets = result.lineups.map((lineup) =>
+      lineup.slots
+        .map((slot) => slot.playerId)
+        .sort()
+        .join(",")
+    );
+    expect(new Set(playerSets).size).toBe(3);
+    // Every runner-up follows the same rules as the best lineup.
+    for (const lineup of result.lineups) {
+      expect(lineup.slots.map((slot) => slot.playerId)).toContain("green");
+      expect(lineup.totalSalary).toBeLessThanOrEqual(50_000);
+    }
+  });
+
   it("answers 404 NOT_FOUND when no projections exist yet", async () => {
     prisma.playerPrediction.findMany.mockResolvedValue([]);
 
@@ -152,8 +172,11 @@ describe("OptimizerService.solveLineups", () => {
     const first = await service.solveLineups(makeRequest({ lockedPlayerIds: ["green", "booker"] }));
     const second = await service.solveLineups(makeRequest({ lockedPlayerIds: ["booker", "green", "booker"] }));
     const different = await service.solveLineups(makeRequest({ lockedPlayerIds: ["green"] }));
+    const moreLineups = await service.solveLineups(makeRequest({ lockedPlayerIds: ["green", "booker"], lineupCount: 3 }));
 
     expect(second).toBe(first);
     expect(different).not.toBe(first);
+    expect(moreLineups).not.toBe(first);
+    expect(moreLineups.lineups).toHaveLength(3);
   });
 });

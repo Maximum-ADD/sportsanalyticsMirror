@@ -6,6 +6,13 @@ import { LINEUP_SIZE, SALARY_CAP_IN_DOLLARS } from "./lineup-rules.js";
 // is validated by the zod schema in optimizer.controller.ts, the same way
 // every other request body in this API is (see common/parse-body.ts).
 
+/**
+ * The most runner-up lineups one solve request may ask for. Kept small: the
+ * solver's work grows with every extra lineup it keeps, and a page only has
+ * room to compare a few.
+ */
+export const MAX_ALTERNATIVE_LINEUPS = 4;
+
 /** The rules a solve request may set. Every field is optional; an empty body solves with no locks. */
 export class SolveLineupRequestDto {
   @ApiPropertyOptional({
@@ -29,6 +36,18 @@ export class SolveLineupRequestDto {
     description: "Players no returned lineup may include.",
   })
   excludedPlayerIds?: string[];
+
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: 0,
+    maximum: MAX_ALTERNATIVE_LINEUPS,
+    default: 0,
+    example: 3,
+    description:
+      "How many runner-up lineups to return after the best one, each a different set of players that follows " +
+      `the same rules. Whole number from 0 to ${MAX_ALTERNATIVE_LINEUPS}; defaults to 0, the best lineup only.`,
+  })
+  alternatives?: number;
 }
 
 /** The roster rules every lineup follows (see lineup-rules.ts). */
@@ -63,7 +82,7 @@ export class SolvedLineupSlotDto {
 
 /** One lineup that meets every rule in the request. */
 export class SolvedLineupDto {
-  @ApiProperty({ example: 1, description: "1 for the best lineup" })
+  @ApiProperty({ example: 1, description: "1 for the best lineup, 2 for the next best, and so on" })
   rank!: number;
 
   @ApiProperty({ example: 277.75, description: "Sum of the players' projected fantasy points" })
@@ -93,6 +112,11 @@ export class SolveLineupResponseDto {
   @ApiProperty({ type: String, format: "date-time", description: "When the newest projection in the pool was written" })
   projectionsAsOf!: string;
 
-  @ApiProperty({ type: [SolvedLineupDto] })
+  @ApiProperty({
+    type: [SolvedLineupDto],
+    description:
+      "The best lineup first, then up to `alternatives` runners-up in rank order. Fewer come back only when " +
+      "fewer lineups meet the rules.",
+  })
   lineups!: SolvedLineupDto[];
 }

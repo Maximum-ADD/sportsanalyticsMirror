@@ -7,7 +7,7 @@ import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
 import { parseBody } from "../common/parse-body.js";
 import { SessionAuthGuard } from "../common/session-auth.guard.js";
 import { SALARY_CAP_IN_DOLLARS } from "./lineup-rules.js";
-import { SolveLineupRequestDto, SolveLineupResponseDto } from "./lineup-solve.dto.js";
+import { MAX_ALTERNATIVE_LINEUPS, SolveLineupRequestDto, SolveLineupResponseDto } from "./lineup-solve.dto.js";
 import { OptimizerService } from "./optimizer.service.js";
 
 // Bounds the request, not the rules: more than 5 locks is still accepted
@@ -22,6 +22,7 @@ const solveLineupSchema = z.object({
   budget: z.number().int().positive().max(MAX_BUDGET_IN_DOLLARS).default(SALARY_CAP_IN_DOLLARS),
   lockedPlayerIds: z.array(z.string().min(1)).max(MAX_LISTED_PLAYERS).default([]),
   excludedPlayerIds: z.array(z.string().min(1)).max(MAX_LISTED_PLAYERS).default([]),
+  alternatives: z.number().int().min(0).max(MAX_ALTERNATIVE_LINEUPS).default(0),
 });
 
 @ApiTags("optimizer")
@@ -55,10 +56,15 @@ export class OptimizerController {
     description:
       "Runs the solver on demand over every player's latest projection. Locked players are in every lineup, " +
       "excluded players in none. The answer is the highest total projected fantasy points that fits the budget " +
-      "and roster rules; projections are estimates, not guarantees.",
+      "and roster rules; projections are estimates, not guarantees. Ask for `alternatives` to also get the next " +
+      "best lineups under the same rules, each a different set of players.",
   })
   @ApiBody({ type: SolveLineupRequestDto, required: false })
-  @ApiResponse({ status: 200, description: "The solved lineup", type: SolveLineupResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: "The best lineup, then any alternatives asked for",
+    type: SolveLineupResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description:
@@ -67,8 +73,8 @@ export class OptimizerController {
   })
   @ApiNotFoundError("No projections generated yet")
   async solveLineups(@Body() body: unknown) {
-    const rules = parseBody(solveLineupSchema, body ?? {});
-    return this.optimizerService.solveLineups({ ...rules, lineupCount: 1 });
+    const { alternatives, ...rules } = parseBody(solveLineupSchema, body ?? {});
+    return this.optimizerService.solveLineups({ ...rules, lineupCount: alternatives + 1 });
   }
 
   @Get("predictions")

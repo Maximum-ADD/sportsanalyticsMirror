@@ -258,6 +258,9 @@ export interface SolveLineupParams {
   lockedPlayerIds?: string[];
   // Players no returned lineup may include.
   excludedPlayerIds?: string[];
+  // Runner-up lineups to return after the best one, each a different set of
+  // players under the same rules. The API caps it (0 to 4) and defaults to 0.
+  alternatives?: number;
 }
 
 // Solves for the best lineup under the user's own rules. A POST because the

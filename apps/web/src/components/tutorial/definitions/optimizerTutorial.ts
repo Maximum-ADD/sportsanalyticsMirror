@@ -2,8 +2,9 @@ import type { PageTutorialDefinition, TutorialMapRegion, TutorialStep } from "@/
 
 // The Optimizer page tutorial: what the page is for, then one step per
 // section in the order a reader meets them — the intro, the rules panel,
-// the lineup totals, the edit controls, the lineup itself and the solver
-// checks with the save button — and last, where to find the tutorial again.
+// the lineup totals, the edit controls, the lineup itself, the solver
+// checks with the save button and the alternative lineups — and last, where
+// to find the tutorial again.
 //
 // The map mirrors OptimizerPage's own layout at desktop width: a single
 // column of full-width modules. "Edit lineup" stands for The lineup's
@@ -28,7 +29,7 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     x: 36,
     y: 18,
     width: 148,
-    height: 13,
+    height: 12,
     sketch: "page-header",
     calloutSide: "left",
   },
@@ -36,9 +37,9 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     id: "lineup-rules",
     label: "Your rules",
     x: 36,
-    y: 34,
+    y: 33,
     width: 148,
-    height: 12,
+    height: 10,
     sketch: "filters",
     calloutSide: "right",
   },
@@ -46,9 +47,9 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     id: "lineup-totals",
     label: "Lineup totals",
     x: 36,
-    y: 49,
+    y: 46,
     width: 148,
-    height: 10,
+    height: 9,
     sketch: "stat-blocks",
     calloutSide: "left",
   },
@@ -56,9 +57,9 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     id: "edit-lineup",
     label: "Edit lineup",
     x: 36,
-    y: 62,
+    y: 58,
     width: 148,
-    height: 10,
+    height: 8,
     sketch: "filters",
     calloutSide: "right",
   },
@@ -66,9 +67,9 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     id: "lineup-table",
     label: "The lineup",
     x: 36,
-    y: 75,
+    y: 69,
     width: 148,
-    height: 24,
+    height: 18,
     sketch: "table",
     calloutSide: "left",
   },
@@ -76,14 +77,24 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     id: "solver-checks",
     label: "Solver checks",
     x: 36,
-    y: 102,
+    y: 90,
     width: 148,
-    height: 18,
+    height: 14,
     sketch: "rows",
     calloutSide: "right",
   },
-  // Last, so it is drawn over the solver checks' corner the way the real
-  // button floats over the bottom of the page.
+  {
+    id: "alternatives",
+    label: "Alternative lineups",
+    x: 36,
+    y: 107,
+    width: 148,
+    height: 13,
+    sketch: "card-grid",
+    calloutSide: "left",
+  },
+  // Last, so it is drawn over the alternative lineups' corner the way the
+  // real button floats over the bottom of the page.
   {
     id: "help-button",
     label: "Tutorial button",
@@ -169,6 +180,15 @@ const OPTIMIZER_TUTORIAL_STEPS: TutorialStep[] = [
       "Every lineup needs exactly five different players, at least one guard and at least one forward, and has to fit under the cap.",
       "Save lineup only works once every check is met. The note beside it says what is still missing.",
       "Save lineup asks you to name the lineup, then saves it to your account. You'll find it on your profile and on your home page's saved shelf.",
+    ],
+  },
+  {
+    regionId: "alternatives",
+    title: "Alternative lineups",
+    summary: "The next best lineups the solver found under the same rules, each a different set of players.",
+    points: [
+      "Each one shows its projected points and salary, how far its points are from the best lineup's, and which players it swaps out and in.",
+      "They follow your rules too, so they change whenever you add or drop a rule.",
     ],
   },
   {
