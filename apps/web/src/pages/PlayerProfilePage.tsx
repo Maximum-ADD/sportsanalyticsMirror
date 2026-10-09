@@ -7,6 +7,7 @@ import { PlayerTraitsRadar } from "@/components/PlayerTraitsRadar";
 import { PointsTrendChart, type GamePointsDatum } from "@/components/PointsTrendChart";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowPlayerButton } from "@/components/FollowPlayerButton";
+import { PlayerInjuryBadge } from "@/components/injuries/PlayerInjuryBadge";
 import { MatchupAnalysis } from "@/components/MatchupAnalysis";
 import { PlayerArchetypeCard } from "@/components/PlayerArchetypeCard";
 import { InfoTooltip } from "@/components/InfoTooltip";
@@ -389,6 +390,7 @@ export function PlayerProfilePage() {
                   {player.team && <TeamBadge team={player.team} size="sm" />}
                   {player.team?.city} {player.team?.name} · {player.position} · #{player.jerseyNumber}
                 </p>
+                <PlayerInjuryBadge playerId={player.id} />
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 {/* Renders nothing for a signed-out visitor (its own
