@@ -105,8 +105,10 @@ function BecomeProView({ data, onSelectSeason }: { data: MyBecomePro; onSelectSe
       <div className="border border-landing-light bg-locker-surface p-4 sm:p-6">
         <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Become Pro</h1>
         <p className="mt-2 max-w-2xl text-[12.5px] text-locker-ink-muted">
-          Log your own games and see what your season projects to against the NBA rookie salary scale — and
-          which real NBA rookies your game looks most like. Only you can see this page.
+          This page turns the games you actually play into a projection on the NBA rookie salary scale: your
+          season line, the draft pick it points to, and the real NBA rookies your game looks most like. It is
+          not fantasy basketball — there are no rosters, trades or lineups to manage — and only you can see
+          this page.
         </p>
 
         {active && mode === "view" && (
@@ -155,12 +157,21 @@ function BecomeProView({ data, onSelectSeason }: { data: MyBecomePro; onSelectSe
     </Reveal>
   );
 
-  // No season yet, or starting another: the setup form is the page.
+  // No season yet, or starting another: the setup form is the page. On a
+  // first visit the how-it-works steps come first — that is the visit where
+  // the page otherwise never says what it is for.
   if (!active || mode === "new") {
     return (
       <PageFrame>
         {header}
-        <Reveal delay={1}>
+        {!active && (
+          <Reveal delay={1}>
+            <LockerSection title="How it works">
+              <HowItWorksSteps />
+            </LockerSection>
+          </Reveal>
+        )}
+        <Reveal delay={active ? 1 : 2}>
           <LockerSection title={active ? "Add a season" : "Start your first season"}>
             <SeasonSetupForm
               takenSeasons={data.seasons.map((season) => season.season)}
@@ -172,7 +183,7 @@ function BecomeProView({ data, onSelectSeason }: { data: MyBecomePro; onSelectSe
             />
           </LockerSection>
         </Reveal>
-        <Reveal delay={2}>
+        <Reveal delay={active ? 2 : 3}>
           <HowItWorks />
         </Reveal>
       </PageFrame>
@@ -425,6 +436,49 @@ function ComparablesPanel({ valuation, averages }: { valuation: ProspectValuatio
         </div>
       )}
     </div>
+  );
+}
+
+// What the page is, in the order a new user meets it — shown on a first visit
+// only, where the empty page would otherwise never say what it is for. No
+// figure the server decides (the games floor) appears here: it changes
+// without this file knowing.
+const HOW_IT_WORKS_STEPS = [
+  {
+    title: "Log your games",
+    body: "One box score per game: the date, the opponent and your stats. No rosters, trades or lineups to manage.",
+  },
+  {
+    title: "Your season line builds itself",
+    body: "Your per-game averages are worked out from the games you log, never typed in.",
+  },
+  {
+    title: "See what it projects to",
+    body: "Once enough games are logged, a model projects the draft pick your season points to and the rookie-scale salary for that pick — and shows the real NBA rookies your game looks most like.",
+  },
+];
+
+// An <ol> because the order is the point — each step feeds the next. The
+// number chips repeat the list position, so they are hidden from screen
+// readers; the <ol> announces "1 of 3" itself.
+function HowItWorksSteps() {
+  return (
+    <ol className="space-y-3">
+      {HOW_IT_WORKS_STEPS.map((step, index) => (
+        <li key={step.title} className="flex gap-3">
+          <span
+            aria-hidden
+            className="mt-0.5 flex size-5 shrink-0 items-center justify-center border border-landing-light bg-locker-surface font-mono text-[10px] text-locker-ink-muted"
+          >
+            {index + 1}
+          </span>
+          <div>
+            <p className="text-[12.5px] font-medium text-landing-ink">{step.title}</p>
+            <p className="mt-0.5 text-[11.5px] text-locker-ink-muted">{step.body}</p>
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }
 

@@ -114,6 +114,8 @@ describe("MyProspectCard", () => {
     renderWithProviders(<MyProspectCard />);
 
     expect(await screen.findByRole("link", { name: /start a season/i })).toHaveAttribute("href", "/become-pro");
+    // Says what the page is for, in the same words the page's own header uses.
+    expect(screen.getByText(/games you actually play/i)).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
 
