@@ -21,13 +21,20 @@ function createMockPrisma() {
   } as any;
 }
 
+function createMockApiKeyLookup() {
+  return { evictKey: vi.fn(), evictConsumer: vi.fn() };
+}
+
 describe("MeApiKeysService", () => {
   let service: MeApiKeysService;
   let prisma: ReturnType<typeof createMockPrisma>;
+  let apiKeyLookup: ReturnType<typeof createMockApiKeyLookup>;
 
   beforeEach(() => {
     prisma = createMockPrisma();
-    service = new MeApiKeysService(prisma);
+    apiKeyLookup = createMockApiKeyLookup();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
+    service = new MeApiKeysService(prisma, apiKeyLookup as any);
   });
 
   describe("listMyApiKeys", () => {
@@ -147,6 +154,7 @@ describe("MeApiKeysService", () => {
 
       expect(result).toBe(false);
       expect(prisma.apiKey.update).not.toHaveBeenCalled();
+      expect(apiKeyLookup.evictKey).not.toHaveBeenCalled();
     });
 
     it("scopes the lookup through the consumer ownership chain", async () => {
@@ -169,6 +177,9 @@ describe("MeApiKeysService", () => {
         where: { id: "k1" },
         data: { isActive: false },
       });
+      // Evicted from the guard's key cache, so it stops working on its very
+      // next request instead of when the cache entry would have expired.
+      expect(apiKeyLookup.evictKey).toHaveBeenCalledWith("k1");
     });
   });
 
@@ -189,6 +200,7 @@ describe("MeApiKeysService", () => {
 
       expect(result).toBe(true);
       expect(prisma.apiKey.delete).toHaveBeenCalledWith({ where: { id: "k1" } });
+      expect(apiKeyLookup.evictKey).toHaveBeenCalledWith("k1");
     });
   });
 });

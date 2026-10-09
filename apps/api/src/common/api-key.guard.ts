@@ -4,9 +4,10 @@ import {
   HttpStatus,
   Injectable,
 } from "@nestjs/common";
-import { createHash } from "node:crypto";
 import { ApiException } from "./api-exception.js";
-import { PrismaService } from "../prisma/prisma.service.js";
+import { ApiKeyLookupService } from "./api-key-lookup.service.js";
+import { ApiUsageRecorder } from "./api-usage-recorder.service.js";
+import { ConsumerRateLimiter } from "./consumer-rate-limiter.service.js";
 
 // The request shape after a successful API key check — downstream guards
 // and controllers can read the consumer identity without a second lookup.
@@ -35,14 +36,26 @@ export interface ApiKeyAuthenticatedRequest {
 // The guard never rejects a request that already has a session user
 // (set by OptionalSessionGuard or SessionAuthGuard), so a dual-auth
 // endpoint lets either mechanism succeed.
+//
+// None of the three steps waits on the database for a key it has seen in
+// the last minute: the lookup is cached, the limits are counted in memory
+// and the usage row is batched (see each service). Every signed-out page
+// view comes through here with the site proxy's key, so this sits in front
+// of every public read, cached or not.
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly apiKeyLookup: ApiKeyLookupService,
+    private readonly rateLimiter: ConsumerRateLimiter,
+    private readonly usageRecorder: ApiUsageRecorder,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<{
       headers: Record<string, string | string[] | undefined>;
       user?: { id: string };
+      method: string;
+      route?: { path?: string };
     }>();
 
     // If SessionAuthGuard already authenticated the request, skip the
@@ -61,15 +74,8 @@ export class ApiKeyGuard implements CanActivate {
       );
     }
 
-    // Hash the raw key and look up the matching row.
-    const keyHash = createHash("sha256").update(rawKey).digest("hex");
-
-    const apiKey = await this.prisma.apiKey.findUnique({
-      where: { keyHash },
-      include: { consumer: true },
-    });
-
-    if (!apiKey || !apiKey.isActive || !apiKey.consumer.isActive) {
+    const resolvedKey = await this.apiKeyLookup.findActiveKey(rawKey);
+    if (!resolvedKey) {
       throw new ApiException(
         HttpStatus.UNAUTHORIZED,
         "UNAUTHORIZED",
@@ -77,36 +83,16 @@ export class ApiKeyGuard implements CanActivate {
       );
     }
 
-    const consumer = apiKey.consumer;
-
-    // Rate limit: count requests in the last 60 seconds.
-    const oneMinuteAgo = new Date(Date.now() - 60_000);
-    const recentCount = await this.prisma.apiUsageLog.count({
-      where: {
-        consumerId: consumer.id,
-        calledAt: { gte: oneMinuteAgo },
-      },
-    });
-
-    if (recentCount >= consumer.rateLimit) {
+    const { consumer } = resolvedKey;
+    const decision = await this.rateLimiter.admitRequest(consumer);
+    if (decision === "RATE_LIMIT_EXCEEDED") {
       throw new ApiException(
         HttpStatus.TOO_MANY_REQUESTS,
         "RATE_LIMIT_EXCEEDED",
         `Rate limit of ${consumer.rateLimit} requests per minute exceeded`,
       );
     }
-
-    // Daily quota: count requests today.
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const dailyCount = await this.prisma.apiUsageLog.count({
-      where: {
-        consumerId: consumer.id,
-        calledAt: { gte: startOfDay },
-      },
-    });
-
-    if (dailyCount >= consumer.dailyQuota) {
+    if (decision === "DAILY_QUOTA_EXCEEDED") {
       throw new ApiException(
         HttpStatus.TOO_MANY_REQUESTS,
         "DAILY_QUOTA_EXCEEDED",
@@ -115,30 +101,13 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     // Stamp the request as API-key-authenticated for downstream use.
-    (request as unknown as ApiKeyAuthenticatedRequest).apiConsumer = {
-      id: consumer.id,
-      name: consumer.name,
-      rateLimit: consumer.rateLimit,
-      dailyQuota: consumer.dailyQuota,
-    };
+    (request as unknown as ApiKeyAuthenticatedRequest).apiConsumer = { ...consumer };
 
-    // Update the key's last-used timestamp and log the usage.
-    // Fire-and-forget: don't block the response on the write.
-    const endpoint = `${context.switchToHttp().getRequest().method} ${context.switchToHttp().getRequest().route?.path ?? "unknown"}`;
-
-    this.prisma.$transaction([
-      this.prisma.apiKey.update({
-        where: { id: apiKey.id },
-        data: { lastUsedAt: new Date() },
-      }),
-      this.prisma.apiUsageLog.create({
-        data: {
-          consumerId: consumer.id,
-          endpoint,
-          statusCode: 200,
-        },
-      }),
-    ]).catch(() => {/* usage logging must never break a request */});
+    this.usageRecorder.recordUsage({
+      consumerId: consumer.id,
+      keyId: resolvedKey.keyId,
+      endpoint: `${request.method} ${request.route?.path ?? "unknown"}`,
+    });
 
     return true;
   }

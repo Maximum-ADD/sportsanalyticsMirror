@@ -21,13 +21,20 @@ function createMockPrisma() {
   } as any;
 }
 
+function createMockApiKeyLookup() {
+  return { evictKey: vi.fn(), evictConsumer: vi.fn() };
+}
+
 describe("AdminConsumersService", () => {
   let service: AdminConsumersService;
   let prisma: ReturnType<typeof createMockPrisma>;
+  let apiKeyLookup: ReturnType<typeof createMockApiKeyLookup>;
 
   beforeEach(() => {
     prisma = createMockPrisma();
-    service = new AdminConsumersService(prisma);
+    apiKeyLookup = createMockApiKeyLookup();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
+    service = new AdminConsumersService(prisma, apiKeyLookup as any);
   });
 
   describe("listConsumers", () => {
@@ -108,6 +115,18 @@ describe("AdminConsumersService", () => {
       );
     });
 
+    it("evicts the consumer's cached keys so new limits apply on the next request", async () => {
+      prisma.apiConsumer.findUnique.mockResolvedValue({ id: "c1" });
+      await service.updateConsumer("c1", { rateLimit: 5 });
+      expect(apiKeyLookup.evictConsumer).toHaveBeenCalledWith("c1");
+    });
+
+    it("evicts nothing when the consumer does not exist", async () => {
+      prisma.apiConsumer.findUnique.mockResolvedValue(null);
+      await service.updateConsumer("nonexistent", { rateLimit: 5 });
+      expect(apiKeyLookup.evictConsumer).not.toHaveBeenCalled();
+    });
+
     it("applies contactEmail null to clear it", async () => {
       prisma.apiConsumer.findUnique.mockResolvedValue({ id: "c1" });
       await service.updateConsumer("c1", { contactEmail: null });
@@ -168,6 +187,12 @@ describe("AdminConsumersService", () => {
         })
       );
     });
+
+    it("evicts the revoked key so it stops working on its next request", async () => {
+      prisma.apiKey.findFirst.mockResolvedValue({ id: "k1" });
+      await service.revokeApiKey("c1", "k1");
+      expect(apiKeyLookup.evictKey).toHaveBeenCalledWith("k1");
+    });
   });
 
   describe("deleteApiKey", () => {
@@ -183,6 +208,7 @@ describe("AdminConsumersService", () => {
       const result = await service.deleteApiKey("c1", "k1");
       expect(result).toBe(true);
       expect(prisma.apiKey.delete).toHaveBeenCalledWith({ where: { id: "k1" } });
+      expect(apiKeyLookup.evictKey).toHaveBeenCalledWith("k1");
     });
   });
 
@@ -199,6 +225,7 @@ describe("AdminConsumersService", () => {
       const result = await service.deleteConsumer("c1");
       expect(result).toBe(true);
       expect(prisma.apiConsumer.delete).toHaveBeenCalledWith({ where: { id: "c1" } });
+      expect(apiKeyLookup.evictConsumer).toHaveBeenCalledWith("c1");
     });
   });
 });

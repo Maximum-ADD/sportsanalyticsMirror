@@ -4,6 +4,7 @@ import { DeprecationInterceptor } from "./common/deprecation.interceptor.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
+import { ApiKeyAccessModule } from "./common/api-key-access.module.js";
 import { ApiVersionGuard } from "./common/api-version.guard.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
 import { DatasetsModule } from "./datasets/datasets.module.js";
@@ -27,6 +28,7 @@ import { BecomeProModule } from "./become-pro/become-pro.module.js";
   imports: [
     PrismaModule,
     ResponseCacheModule,
+    ApiKeyAccessModule,
     PlayersModule,
     TeamsModule,
     GamesModule,

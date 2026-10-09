@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { generateApiKeyMaterial, type CreatedApiKey } from "../common/api-keys.js";
+import { ApiKeyLookupService } from "../common/api-key-lookup.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { ApiConsumer, ApiKey } from "@prisma/client";
 
@@ -92,7 +93,13 @@ function parseUpdateConsumerBody(body: unknown): {
 
 @Injectable()
 export class AdminConsumersService {
-  constructor(private readonly prisma: PrismaService) {}
+  // apiKeyLookup caches resolved keys for ApiKeyGuard; every write below
+  // that changes whether a key works, or under which limits, evicts it so
+  // the change applies on the very next request.
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly apiKeyLookup: ApiKeyLookupService,
+  ) {}
 
   // Paginated list of all API consumers with their keys and usage counts.
   async listConsumers(query: Record<string, unknown>): Promise<PagedResult<ConsumerWithStats>> {
@@ -131,7 +138,9 @@ export class AdminConsumersService {
     const patch = parseUpdateConsumerBody(body);
     const existing = await this.prisma.apiConsumer.findUnique({ where: { id: consumerId } });
     if (!existing) return null;
-    return this.prisma.apiConsumer.update({ where: { id: consumerId }, data: patch });
+    const updatedConsumer = await this.prisma.apiConsumer.update({ where: { id: consumerId }, data: patch });
+    this.apiKeyLookup.evictConsumer(consumerId);
+    return updatedConsumer;
   }
 
   // Generate a new API key for a consumer. Returns the raw key ONCE —
@@ -169,6 +178,7 @@ export class AdminConsumersService {
       where: { id: keyId },
       data: { isActive: false },
     });
+    this.apiKeyLookup.evictKey(keyId);
     return true;
   }
 
@@ -183,6 +193,7 @@ export class AdminConsumersService {
     if (!key) return false;
 
     await this.prisma.apiKey.delete({ where: { id: keyId } });
+    this.apiKeyLookup.evictKey(keyId);
     return true;
   }
 
@@ -197,6 +208,7 @@ export class AdminConsumersService {
     if (!existing) return false;
 
     await this.prisma.apiConsumer.delete({ where: { id: consumerId } });
+    this.apiKeyLookup.evictConsumer(consumerId);
     return true;
   }
 }
