@@ -81,16 +81,16 @@ function EloCard({ isInView }: ModelCardProps) {
     <div className="border border-white/15 bg-landing-ink/70 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-2.5">
         <span aria-hidden className="size-2.5 rounded-full bg-locker-model" />
-        <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Win probability — Elo</h3>
+        <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Win chance (Elo)</h3>
       </div>
       <p className="mt-4 text-base leading-relaxed text-white/75">
-        Every team carries a rating, built the way chess ratings are. Win and it climbs; lose and it falls — more
-        when the result was a surprise. The gap between two ratings is the prediction.
+        Each team has a rating, like in chess. It rises after a win and falls after a loss, by more after an upset.
+        The rating gap sets the win chance.
       </p>
       <svg
         viewBox="0 0 280 110"
         role="img"
-        aria-label="An illustrative team rating climbing after wins and dipping after losses across a season"
+        aria-label="Example: one team's rating going up after wins and down after losses over a season"
         className="mt-7 h-40 w-full"
       >
         {ELO_CHART_GRID_LINES.map((y) => (
@@ -127,10 +127,10 @@ function EloCard({ isInView }: ModelCardProps) {
         </p>
         <div className="flex items-center gap-4 font-mono text-[10px] tracking-[0.1em] text-white/60 uppercase">
           <span className="flex items-center gap-1.5">
-            <span aria-hidden className="size-2 rounded-full bg-locker-good" /> Win — rating rises
+            <span aria-hidden className="size-2 rounded-full bg-locker-good" /> Win
           </span>
           <span className="flex items-center gap-1.5">
-            <span aria-hidden className="size-2 rounded-full bg-locker-bad" /> Loss — rating falls
+            <span aria-hidden className="size-2 rounded-full bg-locker-bad" /> Loss
           </span>
         </div>
       </div>
@@ -143,12 +143,11 @@ function FourFactorsCard({ isInView }: ModelCardProps) {
     <div className="border border-white/15 bg-landing-ink/70 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-2.5">
         <span aria-hidden className="size-2.5 rounded-full bg-locker-leather" />
-        <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Predicted margin — Four Factors</h3>
+        <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Winning margin (Four Factors)</h3>
       </div>
       <p className="mt-4 text-base leading-relaxed text-white/75">
-        Analyst Dean Oliver showed that most of what separates winners from losers comes down to a few habits:
-        shooting efficiently, protecting the ball, and getting to the line. Compare two teams&apos; running averages
-        on those habits and you have a margin.
+        The margin uses Dean Oliver&apos;s Four Factors: shooting, turnovers, offensive rebounds and free throws. We
+        compare the two teams&apos; averages from their earlier games.
       </p>
       <div className="mt-8 space-y-6">
         {FOUR_FACTOR_ROWS.map((row, rowIndex) => (
@@ -195,9 +194,9 @@ function WorkedExampleCard({ isInView }: ModelCardProps) {
   return (
     <div className="border border-white/15 bg-landing-ink/70 p-4 sm:p-6 lg:p-10">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">See it work</h3>
+        <h3 className="font-display text-xl tracking-[0.01em] text-white uppercase">Example</h3>
         <p className="font-mono text-[10px] tracking-[0.14em] text-white/60 uppercase">
-          A side rated {EXAMPLE_RATING_GAP} Elo points better, playing at home
+          Home team rated {EXAMPLE_RATING_GAP} Elo points higher
         </p>
       </div>
 
@@ -208,7 +207,7 @@ function WorkedExampleCard({ isInView }: ModelCardProps) {
         </p>
         <div
           role="img"
-          aria-label={`Win probability split: the higher-rated home side ${EXAMPLE_HOME_WIN_PERCENTAGE} percent, the lower-rated side ${EXAMPLE_AWAY_WIN_PERCENTAGE} percent`}
+          aria-label={`Win chance: home team ${EXAMPLE_HOME_WIN_PERCENTAGE} percent, away team ${EXAMPLE_AWAY_WIN_PERCENTAGE} percent`}
           className="flex h-3 flex-1 bg-white/15"
         >
           <span
@@ -222,13 +221,13 @@ function WorkedExampleCard({ isInView }: ModelCardProps) {
         </p>
       </div>
       <div className="mt-2.5 flex justify-between font-mono text-[9px] tracking-[0.12em] text-white/55 uppercase">
-        <span>Higher-rated side, at home</span>
-        <span>Lower-rated side</span>
+        <span>Home team</span>
+        <span>Away team</span>
       </div>
 
       <p className="mt-6 max-w-3xl text-base leading-relaxed text-white/75">
-        Roughly seven wins in ten — and not a guess. That number is the Elo formula with this app&apos;s own tuned
-        home-court constant, the same one running against every live game on the site.
+        That&apos;s about seven wins in ten. Our win chance for every game comes from this formula, with the same
+        home-court bonus.
       </p>
     </div>
   );
@@ -257,7 +256,7 @@ export function ModelExplainer() {
       <div aria-hidden className="absolute inset-0 bg-linear-to-b from-landing-ink via-landing-ink/85 to-landing-ink" />
       <div className="mx-auto w-full max-w-[1500px] px-4 py-20 sm:px-6 lg:px-14 lg:py-28">
         <div className={buildRiseClasses(isInView)}>
-          <p className="font-mono text-xs tracking-[0.3em] text-white/60 uppercase">Inside the model</p>
+          <p className="font-mono text-xs tracking-[0.3em] text-white/60 uppercase">Game predictions</p>
           <h2
             id={headingId}
             className="mt-4 font-display text-[clamp(2.5rem,5.6vw,6rem)] leading-[1.05] tracking-[-0.01em] text-white uppercase"
@@ -265,8 +264,8 @@ export function ModelExplainer() {
             How We Predict
           </h2>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/75">
-            Two simple ideas produce every prediction on Court Vision. No black box, no secret weights — a rating
-            that learns from every result, and the few habits that actually decide basketball games.
+            Each game prediction comes from two models. Elo gives the win chance, and the Four Factors give the
+            expected margin.
           </p>
         </div>
 
@@ -289,7 +288,7 @@ export function ModelExplainer() {
             buildRiseClasses(isInView)
           )}
         >
-          Every constant tuned and backtested game-by-game against ~3,780 real NBA games across three seasons
+          Tuned on about 3,780 NBA games from three seasons
         </p>
       </div>
     </section>

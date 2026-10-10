@@ -3,7 +3,7 @@ import { useInView } from "@/lib/useInView";
 
 // The hero's quiet second layer: a half-court diagram drawn faintly over
 // the right side of the photo, with a brand-accent comet lapping the
-// boundary — the hero's echo of the orange scan line on What We Do.
+// boundary — the hero's echo of the orange scan line on What You Can Do.
 // Decorative throughout (aria-hidden); the copy never depends on it.
 
 // All geometry below is a real NBA half-court at 10 SVG units per foot,

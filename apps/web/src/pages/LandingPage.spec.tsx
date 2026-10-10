@@ -59,8 +59,8 @@ describe("LandingPage", () => {
   it("renders both section headings", () => {
     renderLanding();
 
-    expect(screen.getByRole("heading", { level: 2, name: "What We Do" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: /How We\s*Stand Out/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "What You Can Do" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: /With an\s*Account/ })).toBeInTheDocument();
   });
 
   it("explains the model in its own section", () => {
@@ -69,26 +69,37 @@ describe("LandingPage", () => {
     expect(screen.getByRole("heading", { level: 2, name: "How We Predict" })).toBeInTheDocument();
   });
 
-  it("separates What We Do from How We Predict with a thin rule", () => {
+  it("separates What You Can Do from How We Predict with a thin rule", () => {
     renderLanding();
 
-    const whatWeDo = screen.getByRole("heading", { name: "What We Do" }).closest("section");
+    const whatYouCanDo = screen.getByRole("heading", { name: "What You Can Do" }).closest("section");
     const howWePredict = screen.getByRole("heading", { name: "How We Predict" }).closest("section");
-    const divider = whatWeDo?.nextElementSibling;
+    const divider = whatYouCanDo?.nextElementSibling;
 
     expect(divider).toBe(howWePredict?.previousElementSibling);
     expect(divider).toHaveClass("border-t");
     expect(divider).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("lists the four key account points in a What-We-Do-style grid", () => {
+  it("lists the three things a visitor can do without an account", () => {
+    renderLanding();
+
+    const section = screen.getByRole("heading", { name: "What You Can Do" }).closest("section");
+    const items = Array.from(section?.querySelectorAll("li") ?? []);
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent(/look up any player/i);
+    expect(items[1]).toHaveTextContent(/compare up to four players/i);
+    expect(items[2]).toHaveTextContent(/download a season of player stats as a CSV file/i);
+  });
+
+  it("lists the four signed-in features in a What-You-Can-Do-style grid", () => {
     const { container } = renderLanding();
 
-    const section = screen.getByRole("heading", { name: /How We\s*Stand Out/ }).closest("section");
+    const section = screen.getByRole("heading", { name: /With an\s*Account/ }).closest("section");
     const items = Array.from(section?.querySelectorAll("li") ?? []);
     expect(items).toHaveLength(4);
 
-    const pointNames = ["Personal dashboard", "Player watchlist", "Saved comparisons", "Lineup planning"];
+    const pointNames = ["Game predictions", "Beat the Model", "Fantasy lineups", "API keys"];
     pointNames.forEach((name, index) => {
       expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
       expect(items[index]).toHaveTextContent(`0${index + 1}`);
@@ -100,7 +111,7 @@ describe("LandingPage", () => {
     expect(container.querySelectorAll("section.bg-landing-light")).toHaveLength(0);
   });
 
-  it("returns the stand-out copy to a full-bleed photo with a protective scrim", () => {
+  it("returns the account copy to a full-bleed photo with a protective scrim", () => {
     const { container } = renderLanding();
 
     const photo = container.querySelector<HTMLImageElement>('img[src*="clippers-arena"]');

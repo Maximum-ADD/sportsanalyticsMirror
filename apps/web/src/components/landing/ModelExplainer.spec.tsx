@@ -8,8 +8,8 @@ describe("ModelExplainer", () => {
     renderWithProviders(<ModelExplainer />);
 
     expect(screen.getByRole("heading", { level: 2, name: "How We Predict" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Win probability — Elo/ })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Predicted margin — Four Factors/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Win chance (Elo)" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Winning margin (Four Factors)" })).toBeInTheDocument();
     expect(screen.getByText("Effective shooting")).toBeInTheDocument();
     expect(screen.getByText("Turnover rate")).toBeInTheDocument();
     expect(screen.getByText("Free-throw rate")).toBeInTheDocument();
@@ -26,7 +26,7 @@ describe("ModelExplainer", () => {
   it("labels both charts for screen readers", () => {
     renderWithProviders(<ModelExplainer />);
 
-    expect(screen.getByRole("img", { name: /rating climbing after wins/i })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /win probability split/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /rating going up after wins/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /^win chance: home team/i })).toBeInTheDocument();
   });
 });
