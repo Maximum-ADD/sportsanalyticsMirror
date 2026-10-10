@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
-import type { Player, Prisma, Team } from "@prisma/client";
+import type { Player, Team } from "@prisma/client";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
+import { parseNameSearchTerms, withNameSearch } from "../players/player-name-search.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 export type PlayerWithTeam = Player & { team: Team | null };
@@ -29,27 +30,17 @@ export interface UpdatePlayerDto {
   draftNumber?: number | null;
 }
 
-function getSearchTerms(search: unknown): string[] {
-  return typeof search === "string" ? search.trim().split(/\s+/).filter(Boolean) : [];
-}
-
 @Injectable()
 export class AdminPlayersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // The admin table's name search shares the public list's accent-blind
+  // matching (player-name-search.ts), so an admin looking for "Mañón" to
+  // correct a record finds him by typing "manon", just as a visitor does.
   async listPlayers(query: Record<string, unknown>): Promise<PagedResult<PlayerWithTeam>> {
     const { page, pageSize } = parsePageParams(query);
-    const searchTerms = getSearchTerms(query.search);
     const teamId = typeof query.teamId === "string" ? query.teamId : undefined;
-    const where: Prisma.PlayerWhereInput = {
-      ...(teamId ? { teamId } : {}),
-      AND: searchTerms.map((searchTerm) => ({
-        OR: [
-          { firstName: { contains: searchTerm, mode: "insensitive" } },
-          { lastName: { contains: searchTerm, mode: "insensitive" } },
-        ],
-      })),
-    };
+    const where = await withNameSearch(this.prisma, teamId ? { teamId } : {}, parseNameSearchTerms(query.search));
 
     const [data, total] = await Promise.all([
       this.prisma.player.findMany({

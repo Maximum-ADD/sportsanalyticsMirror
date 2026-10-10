@@ -269,29 +269,38 @@ export class PlayersController {
     return { players };
   }
 
-  // GET /v1/players/leaders?seasonType=&minGames= — the leader in each
-  // headline category (PPG/RPG/APG/TS%) for one segment, after a
-  // participation floor. Declared before ":id" so "leaders" is never
-  // swallowed as a player id. The floor defaults to a near-full regular
-  // season (DEFAULT_LEADERS_MIN_GAMES) and drops to a postseason-sized
-  // sample (POSTSEASON_LEADERS_MIN_GAMES) for the short playoff segments,
-  // where the regular-season floor would leave every category leaderless.
+  // GET /v1/players/leaders?seasonType=&minGames=&teamId=&position=&search=&participated=
+  // — the leader in each headline category (PPG/RPG/APG/TS%) for one
+  // segment, after a participation floor. Declared before ":id" so
+  // "leaders" is never swallowed as a player id. The floor defaults to a
+  // near-full regular season (DEFAULT_LEADERS_MIN_GAMES) and drops to a
+  // postseason-sized sample (POSTSEASON_LEADERS_MIN_GAMES) for the short
+  // playoff segments, where the regular-season floor would leave every
+  // category leaderless.
+  //
+  // Accepts the list endpoint's filters too, read by the same
+  // parsePlayerFilters, so the players page can ask "who leads among the
+  // players I've filtered to" and get an answer that matches the list.
+  // Without them the leaders are league-wide.
   @Get("leaders")
   @ApiOperation({ summary: "Season leaders by headline category" })
   @ApiQuery({ name: "seasonType", required: false, description: "Season segment (e.g. REGULAR, PLAYOFFS, FINALS). Defaults to REGULAR." })
   @ApiQuery({ name: "asOf", required: false, description: "ISO-8601 instant; only games completed by this time contribute to the response" })
   @ApiQuery({ name: "minGames", required: false, type: Number, description: "Participation floor; defaults to 15 in the regular season, 4 in postseason segments" })
-  @ApiResponse({ status: 200, description: "Season leaders by category" })
+  @ApiQuery({ name: "teamId", required: false, description: "Only rank this team's players (same filter as the player list)" })
+  @ApiQuery({ name: "position", required: false, description: "Only rank players at this position (same filter as the player list)" })
+  @ApiQuery({ name: "search", required: false, description: "Only rank players whose name matches (same accent-insensitive search as the player list)" })
+  @ApiQuery({ name: "participated", required: false, description: "\"true\" to only rank players who appeared in the segment (same filter as the player list)" })
+  @ApiResponse({ status: 200, description: "Season leaders by category; a category nobody qualifies for is null" })
   async getSeasonLeaders(
-    @Query("seasonType") rawSeasonType: unknown,
-    @Query("minGames") rawMinGames: unknown
+    @Query() query: Record<string, unknown>
   ): Promise<{ seasonType: SeasonType; minGames: number; leaders: SeasonLeaders }> {
-    const seasonType = parseSeasonType(rawSeasonType) ?? DEFAULT_SEASON_TYPE;
+    const seasonType = parseSeasonType(query.seasonType) ?? DEFAULT_SEASON_TYPE;
     const defaultMinGames =
       seasonType === SeasonType.REGULAR ? DEFAULT_LEADERS_MIN_GAMES : POSTSEASON_LEADERS_MIN_GAMES;
-    const minGames = parseMinGames(rawMinGames) ?? defaultMinGames;
+    const minGames = parseMinGames(query.minGames) ?? defaultMinGames;
 
-    const leaders = await this.statsService.getSeasonLeaders(seasonType, minGames);
+    const leaders = await this.statsService.getSeasonLeaders(seasonType, minGames, query);
     return { seasonType, minGames, leaders };
   }
 

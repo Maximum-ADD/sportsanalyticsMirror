@@ -102,10 +102,13 @@ const PLAYERS_TUTORIAL_STEPS: TutorialStep[] = [
   {
     regionId: "league-leaders",
     title: "League leaders",
-    summary: "The top player in four categories for the segment you picked.",
+    summary: "The top player in four categories for the segment you picked, among the players your filters match.",
     points: [
       "The categories are points, rebounds and assists per game, and true shooting — a scoring-efficiency figure that counts threes and free throws.",
-      "Only players with enough games qualify. The minimum is shown at the right of the band.",
+      // The band follows search, team, position and min games (see
+      // leadersParams in PlayersListPage), but not Following.
+      "Search, team and position narrow the leaders the same way they narrow the table, and the band's title names the filters it's following. With none set, they're the league's leaders. Following only narrows the table.",
+      "Only players with enough games qualify. The minimum is shown at the right of the band, and matches the minimum games filter when you set one.",
       "Click a leader's name to open their page.",
     ],
   },

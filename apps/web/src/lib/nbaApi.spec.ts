@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchPlayer,
   fetchPlayerComparison,
+  fetchPlayerLeaders,
   fetchPlayerStatsBatchInChunks,
   fetchPlayers,
   fetchPlayerStats,
@@ -52,6 +53,36 @@ describe("nbaApi", () => {
     const [url] = vi.mocked(fetch).mock.calls[0];
     expect(String(url)).not.toContain("teamId");
     expect(String(url)).toContain("position=C");
+  });
+
+  it("fetchPlayerLeaders hits /v1/players/leaders with no query string when no params are given", async () => {
+    await fetchPlayerLeaders();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/players/leaders", { credentials: "include" });
+  });
+
+  it("fetchPlayerLeaders sends the players list's filters along with the segment", async () => {
+    await fetchPlayerLeaders({
+      seasonType: "PLAYOFFS",
+      teamId: "team-1",
+      position: "G",
+      search: "Mañón",
+      participated: true,
+      minGames: 4,
+    });
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    const search = new URL(String(url), "http://localhost").searchParams;
+    expect(new URL(String(url), "http://localhost").pathname).toBe("/api/v1/players/leaders");
+    expect(search.get("seasonType")).toBe("PLAYOFFS");
+    expect(search.get("teamId")).toBe("team-1");
+    expect(search.get("position")).toBe("G");
+    expect(search.get("search")).toBe("Mañón");
+    expect(search.get("participated")).toBe("true");
+    expect(search.get("minGames")).toBe("4");
+  });
+
+  it("fetchPlayerLeaders omits filters whose value is undefined", async () => {
+    await fetchPlayerLeaders({ seasonType: "REGULAR", teamId: undefined, search: undefined });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/players/leaders?seasonType=REGULAR", { credentials: "include" });
   });
 
   it("fetchPlayer requests the single-player endpoint", async () => {

@@ -5,7 +5,7 @@ import { buildCacheKey, ResponseCacheService } from "../cache/response-cache.ser
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { DEFAULT_SEASON_TYPE, parseSeasonType } from "../common/season-type.js";
 import { GamesService } from "../games/games.service.js";
-import { PlayersService, type PlayerWithTeam } from "./players.service.js";
+import { parsePlayerFilters, PlayersService, type PlayerWithTeam } from "./players.service.js";
 import {
   deriveSeasonAverages,
   round,
@@ -555,18 +555,29 @@ export class StatsService {
   }
 
   // The leader in each headline category for one segment — the four figures
-  // behind the /players page's "League leaders" band. Every figure is
-  // derived from the player's season totals with the same formulas and
-  // rounding as the per-player season line (see perGameRate and
-  // trueShootingPercentageFromTotals), ranked league-wide after the
-  // participation floor; a category with no qualified player comes back
-  // null rather than padded with a zero.
-  async getSeasonLeaders(seasonType: SeasonType, minGames: number): Promise<SeasonLeaders> {
-    // League-wide by definition — no team/position/search narrowing. That
-    // makes this the same cached base as an unfiltered ranked listing in the
-    // same segment, so the players page's leaders band and its default
-    // leaderboard share one pair of queries.
-    const { players, totalsByPlayerId } = await this.readRankingBase({}, seasonType);
+  // behind the /players page's leaders band. Every figure is derived from
+  // the player's season totals with the same formulas and rounding as the
+  // per-player season line (see perGameRate and
+  // trueShootingPercentageFromTotals), ranked after the participation
+  // floor; a category with no qualified player comes back null rather than
+  // padded with a zero.
+  //
+  // `filters` takes the players list's own filters (teamId, position,
+  // search, participated) and narrows the pool the same way, through the
+  // same parsePlayerFilters — so with the list filtered to one team the
+  // band shows that team's leaders instead of contradicting the list under
+  // it with the league's. No filters means league-wide, as before.
+  async getSeasonLeaders(
+    seasonType: SeasonType,
+    minGames: number,
+    filters: Record<string, unknown> = {}
+  ): Promise<SeasonLeaders> {
+    // The same cached base as a ranked listing with the same filters in the
+    // same segment, so the players page's leaders band and its leaderboard
+    // share one pair of queries. The segment is pinned to the one being
+    // ranked, so a `participated` filter always means "appeared in this
+    // segment" whatever seasonType the filters carried.
+    const { players, totalsByPlayerId } = await this.readRankingBase({ ...filters, seasonType }, seasonType);
 
     const pickLeader = (selectValue: (totals: SeasonStatTotals) => number): SeasonLeader | null => {
       let leader: SeasonLeader | null = null;
@@ -698,17 +709,20 @@ export class StatsService {
    * The players matching `query`'s filters plus their season totals in one
    * segment, cached as one unit (see RankingBase).
    *
-   * @param query - the raw list query. Only the filters PlayersService.
-   *   buildPlayerWhere reads affect the result, and the key is built from
-   *   that where clause, so sort/order/page/minGames never split the cache.
+   * @param query - the raw list query. Only the filters parsePlayerFilters
+   *   reads affect the result, and the key is built from those, so
+   *   sort/order/page/minGames never split the cache. Keyed on the filters
+   *   rather than the where clause they become, because a name search's
+   *   where clause takes a database read to build (see
+   *   player-name-search.ts) — a cache hit shouldn't pay for one.
    * @param seasonType - the segment the totals are summed over.
    * @returns the players (alphabetical) and a playerId -> totals map. Players
    *   with no games in the segment are absent from the map.
    */
   private readRankingBase(query: Record<string, unknown>, seasonType: SeasonType): Promise<RankingBase> {
-    const playerWhere = this.playersService.buildPlayerWhere(query);
+    const playerFilters = parsePlayerFilters(query);
     return this.cache.getOrLoad(
-      buildCacheKey("players:ranking-base", [playerWhere, seasonType]),
+      buildCacheKey("players:ranking-base", [playerFilters, seasonType]),
       DERIVED_DATA_TTL_MS,
       async () => {
         const players = await this.playersService.getMatchingPlayers(query);

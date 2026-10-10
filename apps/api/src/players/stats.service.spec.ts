@@ -60,10 +60,9 @@ describe("StatsService", () => {
       getPlayerSeasonStatsAsOf: vi.fn(),
       getPlayerSeasonStatsBatch: vi.fn(),
       getSeasonStatTotalsBatch: vi.fn(),
+      // The ranking cache keys on parsePlayerFilters, a plain function the
+      // service imports directly, so the real one runs here, not a stub.
       getMatchingPlayers: vi.fn(),
-      // The real where-clause builder is pure, and the ranking cache keys on
-      // its output, so the spec uses it rather than a stub.
-      buildPlayerWhere: (query: Record<string, unknown>) => PlayersService.prototype.buildPlayerWhere(query),
     } as unknown as PlayersService;
     // StatsService resolves upcoming games through GamesService — only
     // getMatchupProjection touches it, so a bare mock is enough here.
@@ -403,6 +402,53 @@ describe("StatsService", () => {
       expect(leaders.ppg).toBeNull();
       expect(leaders.tsPct).toBeNull();
     });
+
+    it("ranks league-wide when no filters are given", async () => {
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue([] as never);
+
+      await statsService.getSeasonLeaders("REGULAR", 15);
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledWith({ seasonType: "REGULAR" });
+    });
+
+    // The band on the players page follows the list's filters, so the pool
+    // the leaders are picked from has to be the list's filtered players.
+    it("picks the leaders from the players the list's filters match", async () => {
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue([makePlayerWithTeam("player-lal", "Laker")] as never);
+      vi.mocked(playersService.getSeasonStatTotalsBatch).mockResolvedValue([
+        { playerId: "player-lal", _count: { _all: 20 }, _sum: { points: 400, rebounds: 100, assists: 60, fieldGoalsAttempted: 300, freeThrowsAttempted: 50 } },
+      ] as never);
+
+      const leaders = await statsService.getSeasonLeaders("REGULAR", 15, { teamId: "team-lal", position: "G", search: "lak" });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledWith({
+        teamId: "team-lal",
+        position: "G",
+        search: "lak",
+        seasonType: "REGULAR",
+      });
+      expect(playersService.getSeasonStatTotalsBatch).toHaveBeenCalledWith(["player-lal"], "REGULAR");
+      expect(leaders.ppg?.player.id).toBe("player-lal");
+    });
+
+    it("comes back with every category null when the filters match nobody", async () => {
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue([] as never);
+
+      const leaders = await statsService.getSeasonLeaders("REGULAR", 15, { search: "nobody" });
+
+      expect(leaders).toEqual({ ppg: null, rpg: null, apg: null, tsPct: null });
+      expect(playersService.getSeasonStatTotalsBatch).not.toHaveBeenCalled();
+    });
+
+    // `participated` means "appeared in the segment being ranked" — a stray
+    // seasonType in the filters must not point it at a different segment.
+    it("pins the filters' segment to the one being ranked", async () => {
+      vi.mocked(playersService.getMatchingPlayers).mockResolvedValue([] as never);
+
+      await statsService.getSeasonLeaders("PLAYOFFS", 4, { participated: "true", seasonType: "REGULAR" });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledWith({ participated: "true", seasonType: "PLAYOFFS" });
+    });
   });
 
   describe("ranking base caching", () => {
@@ -434,12 +480,37 @@ describe("StatsService", () => {
       expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(1);
     });
 
+    it("shares a filtered ranking's base with the season leaders under the same filters", async () => {
+      const filters = { teamId: "team-lal", search: "Mañón", participated: "true", seasonType: "PLAYOFFS" };
+      await cachedStatsService.getPlayersRanked({ ...filters, sort: "ppg", page: "2" });
+      await cachedStatsService.getSeasonLeaders("PLAYOFFS", 4, filters);
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the season leaders under different filters in their own cache entries", async () => {
+      await cachedStatsService.getSeasonLeaders("REGULAR", 15);
+      await cachedStatsService.getSeasonLeaders("REGULAR", 15, { teamId: "team-lal" });
+      await cachedStatsService.getSeasonLeaders("REGULAR", 15, { teamId: "team-lal", position: "C" });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(3);
+    });
+
     it("keeps a filtered ranking and a different segment in their own cache entries", async () => {
       await cachedStatsService.getPlayersRanked({ sort: "ppg" });
       await cachedStatsService.getPlayersRanked({ sort: "ppg", teamId: "team-lal" });
       await cachedStatsService.getPlayersRanked({ sort: "ppg", seasonType: "PLAYOFFS" });
 
       expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(3);
+    });
+
+    // The key holds the folded search terms, so two spellings that find the
+    // same players are one entry rather than two identical ones.
+    it("treats a search typed with or without accents as the same cache entry", async () => {
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", search: "Mañón" });
+      await cachedStatsService.getPlayersRanked({ sort: "ppg", search: "  manon " });
+
+      expect(playersService.getMatchingPlayers).toHaveBeenCalledTimes(1);
     });
   });
 
