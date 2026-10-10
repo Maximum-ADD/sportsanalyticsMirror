@@ -92,6 +92,7 @@ export function ApiKeysSection() {
         <code className="font-mono text-[11px]">X-API-Key</code> request header, the same way external
         integrations authenticate.
       </p>
+      <p className="text-[12.5px] text-locker-ink-muted">Limits, errors and examples: <a href="https://sdp.ms.wits.ac.za/innovation/sportsanalytics/src/branch/main/docs/PUBLIC_API.md" target="_blank" rel="noreferrer" className="underline hover:text-landing-ink">Using the public API</a>.</p>
 
       <div className="border border-landing-light bg-locker-surface p-4">
         <div className="flex flex-wrap gap-3">

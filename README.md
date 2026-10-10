@@ -15,6 +15,8 @@ back to underlying event records.
 - API reference (Swagger UI): <https://sportsanalytics-api.onrender.com/api/docs>.
   The public read endpoints need an `X-API-Key` header (create one on your
   profile page) or a signed-in session; "Authorize" in Swagger UI takes the key.
+  [Using the public API](docs/PUBLIC_API.md) covers what works without an
+  account, getting a key, limits, errors and curl examples.
 - Documentation site: <https://sports-analytics-innovation-platform.github.io/Innovation-Documentation-Website/>
 
 ## Documentation
