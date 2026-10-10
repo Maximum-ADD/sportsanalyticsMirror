@@ -365,6 +365,12 @@ export function PlayersListPage() {
             a precomputed league total. Pick a season segment, filter the field, and open any player for the full
             picture.
           </p>
+          <Link
+            to="/all-time"
+            className="mt-2 inline-block font-mono text-[10px] tracking-[0.12em] text-locker-leather uppercase hover:underline"
+          >
+            See the all-time career leaders →
+          </Link>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <LockerSegmentControl value={seasonType} onChange={selectSeasonType} options={SEASON_TYPES_IN_ORDER} />
             <span className="font-mono text-[9px] tracking-[0.1em] text-locker-ink-muted uppercase">

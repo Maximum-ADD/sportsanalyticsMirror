@@ -17,6 +17,7 @@ const APP_LINKS = [
   // the Admin link documents below.
   { label: "Become Pro", to: "/become-pro" },
   { label: "Live", to: "/live" },
+  { label: "All-Time", to: "/all-time" },
 ];
 
 const LINK_CLASS =
@@ -66,6 +67,12 @@ export function LandingHeader({ signInCallbackURL, beforeAuthStatus }: LandingHe
   // "Live" made nine. Re-measured in headless Chrome at 1280px: the last link
   // ends 201px short of the signed-out AuthStatus block, and 127px short with
   // an Admin link added, with no sideways scroll either way.
+  //
+  // "All-Time" made ten. Re-measured the same way on 2026-10-09: it ends 59px
+  // short of the signed-out "Sign in with Google" button. For the widest
+  // case, an Admin link plus a signed-in name at its max-w-32 limit, Admin
+  // ends 32px short of the avatar. No sideways scroll in either. An eleventh
+  // link would need the row re-measured, or the cutover moved past xl.
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuId = useId();
   const { pathname } = useLocation();

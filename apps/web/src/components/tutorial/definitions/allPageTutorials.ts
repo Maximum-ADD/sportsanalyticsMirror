@@ -1,5 +1,6 @@
 import type { PageTutorialDefinition } from "@/lib/pageTutorial";
 import { ADMIN_TUTORIAL } from "./adminTutorial";
+import { ALL_TIME_LEADERS_TUTORIAL } from "./allTimeLeadersTutorial";
 import { BECOME_PRO_TUTORIAL } from "./becomeProTutorial";
 import { COMPARE_TUTORIAL } from "./compareTutorial";
 import { DATASETS_TUTORIAL } from "./datasetsTutorial";
@@ -29,6 +30,7 @@ export const ALL_PAGE_TUTORIALS: PageTutorialDefinition[] = [
   TEAMS_TUTORIAL,
   TEAM_PROFILE_TUTORIAL,
   DATASETS_TUTORIAL,
+  ALL_TIME_LEADERS_TUTORIAL,
   OPTIMIZER_TUTORIAL,
   PREDICTIONS_TUTORIAL,
   GAME_DETAIL_TUTORIAL,

@@ -44,6 +44,7 @@ const DatasetsPage = lazyPage(() => import("./pages/DatasetsPage"), "DatasetsPag
 const BecomeProPage = lazyPage(() => import("./pages/BecomeProPage"), "BecomeProPage");
 const LiveGamesPage = lazyPage(() => import("./pages/LiveGamesPage"), "LiveGamesPage");
 const LiveGamePage = lazyPage(() => import("./pages/LiveGamePage"), "LiveGamePage");
+const AllTimeLeadersPage = lazyPage(() => import("./pages/AllTimeLeadersPage"), "AllTimeLeadersPage");
 
 function App() {
   return (
@@ -75,6 +76,8 @@ function App() {
           <Route path="/teams" element={<TeamsListPage />} />
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route path="/datasets" element={<DatasetsPage />} />
+          {/* Public like Players: NBA-provided career totals that need no account. */}
+          <Route path="/all-time" element={<AllTimeLeadersPage />} />
           {/* Public like Players and Teams: NBA-provided data that needs no
               account, and the API serves it without a session or key. */}
           <Route path="/live" element={<LiveGamesPage />} />

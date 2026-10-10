@@ -314,6 +314,29 @@ cd ../predictor && python predict_games.py
 cd ../optimizer && python predict.py && python optimize.py
 ```
 
+## All-time leaders
+
+```bash
+python all_time_leaders.py
+```
+
+Stores the NBA's top 20 career totals in 11 categories (points, assists,
+rebounds, steals, blocks, 3-pointers made and so on), for the regular season
+and the playoffs, as `AllTimeLeader` rows, plus a bio for each player on them
+as `AllTimeLeaderPlayer`. The `/all-time` page reads these. The NBA keeps the
+totals across its whole history, so they don't depend on which seasons this
+database holds.
+
+The leaderboards cost two `AllTimeLeadersGrids` calls. Bios cost one
+`CommonPlayerInfo` call each: about 125 on the first run (roughly two and a
+half minutes), then only new and active players (about 35) after that. Each
+run replaces the whole snapshot, so re-running it is how the figures are
+refreshed; once a week during the season is plenty. Like everything that
+calls stats.nba.com, run it from your own machine.
+
+It prints the database it's writing to before writing anything; check that
+against where `.env` should point.
+
 ## Market odds (second external API)
 
 ```bash
