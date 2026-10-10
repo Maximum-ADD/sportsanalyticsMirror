@@ -1519,3 +1519,86 @@ model ProspectValuationModel {
 
   @@index([fittedAt])
 }
+
+// The all-time stat categories the leaders page offers, each one a career
+// total the NBA itself keeps (AllTimeLeadersGrids on stats.nba.com). The
+// shooting percentages that endpoint also returns are left out on purpose:
+// the NBA applies a minimum-attempts cut-off to them, which fills those
+// lists with today's centres rather than all-time greats.
+enum AllTimeLeaderCategory {
+  GAMES_PLAYED
+  POINTS
+  ASSISTS
+  STEALS
+  OFFENSIVE_REBOUNDS
+  DEFENSIVE_REBOUNDS
+  REBOUNDS
+  BLOCKS
+  FIELD_GOALS_MADE
+  THREES_MADE
+  FREE_THROWS_MADE
+}
+
+// A player who appears on at least one all-time leaderboard, with their bio
+// — apps/ingestion/all_time_leaders.py writes both tables.
+//
+// Kept apart from Player on purpose. Most all-time leaders retired long
+// before the seasons this app holds, and a Player row is what the players
+// list, search and Compare read, so adding them there would put Kareem in
+// this season's player list. A leader who IS also a Player is matched on
+// nbaPlayerId at read time (see AllTimeLeadersService), not by a relation,
+// because most have no Player row to point at.
+model AllTimeLeaderPlayer {
+  nbaPlayerId Int    @id
+  firstName   String
+  lastName    String
+
+  // Bio fields, from CommonPlayerInfo. All nullable: until bioFetchedAt is
+  // set only the name (split from the leaderboard's PLAYER_NAME) is known,
+  // and the NBA leaves some of them blank for early-era players.
+  position     String?
+  heightInches Int?
+  weightLbs    Int?
+  birthDate    DateTime?
+  school       String?
+  country      String?
+  // First and last season played, as the calendar year the season started
+  // in (Kareem: 1969 to 1988).
+  fromYear     Int?
+  toYear       Int?
+  seasonExp    Int?
+  draftYear    Int?
+  draftRound   Int?
+  draftNumber  Int?
+  // Named to the NBA's 75th Anniversary Team (GREATEST_75_FLAG).
+  isGreatest75 Boolean   @default(false)
+
+  // From the leaderboard's IS_ACTIVE_FLAG, refreshed on every run.
+  isActive     Boolean
+  bioFetchedAt DateTime?
+
+  leaderEntries AllTimeLeader[]
+}
+
+// One player's place on one all-time leaderboard: a category, for either
+// the regular season or the playoffs. Each ingestion run replaces every
+// row, so the table always holds a single snapshot taken at fetchedAt.
+model AllTimeLeader {
+  id         String                @id @default(uuid())
+  category   AllTimeLeaderCategory
+  // REGULAR or PLAYOFFS only. The NBA's playoff career totals already
+  // include the Finals, so FINALS and PLAY_IN are never written here.
+  seasonType SeasonType
+  // The NBA's own rank, so tied totals share a rank as they do on nba.com.
+  rank       Int
+  // A career total — every category is a count, so it is always whole.
+  value      Int
+
+  nbaPlayerId Int
+  player      AllTimeLeaderPlayer @relation(fields: [nbaPlayerId], references: [nbaPlayerId], onDelete: Cascade)
+
+  fetchedAt DateTime @default(now())
+
+  @@unique([category, seasonType, nbaPlayerId])
+  @@index([category, seasonType, rank])
+}

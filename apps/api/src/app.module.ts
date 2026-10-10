@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { DeprecationInterceptor } from "./common/deprecation.interceptor.js";
 import { AdminModule } from "./admin/admin.module.js";
+import { AllTimeLeadersModule } from "./all-time-leaders/all-time-leaders.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { ResponseCacheModule } from "./cache/response-cache.module.js";
 import { ApiKeyAccessModule } from "./common/api-key-access.module.js";
@@ -50,6 +51,7 @@ import { PrivacyModule } from "./privacy/privacy.module.js";
     LiveGamesModule,
     PrivacyModule,
     InjuriesModule,
+    AllTimeLeadersModule,
     // Registers a catch-all {/*splat, ALL} route (see NotFoundController) —
     // must stay last, or it would intercept every request meant for a
     // module imported after it before that module's own routes ever match.
