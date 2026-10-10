@@ -48,6 +48,15 @@ describe("BecomeProPage", () => {
     expect(screen.getByText(/only you can see this page/i)).toBeInTheDocument();
   });
 
+  // The reviewer could not tell what the page was and guessed fantasy
+  // basketball, so the header answers both halves out loud.
+  it("says what the page is, and what it is not", async () => {
+    renderWithProviders(<BecomeProPage />);
+
+    expect(await screen.findByText(/turns the games you actually play/i)).toBeInTheDocument();
+    expect(screen.getByText(/not fantasy basketball/i)).toBeInTheDocument();
+  });
+
   it("shows a loading state first", () => {
     vi.mocked(fetchMyBecomePro).mockReturnValue(new Promise(() => {}));
 
@@ -86,6 +95,21 @@ describe("BecomeProPage", () => {
 
       await screen.findByRole("form", { name: "Start a season" });
       expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
+    });
+
+    // The three steps are the empty page's whole job: what you give, what
+    // comes back, and where it is heading — and they come before the form
+    // asks for anything.
+    it("explains the three steps above the form", async () => {
+      renderWithProviders(<BecomeProPage />);
+
+      const stepsHeading = await screen.findByRole("heading", { name: "How it works" });
+      expect(screen.getByText("Log your games")).toBeInTheDocument();
+      expect(screen.getByText("Your season line builds itself")).toBeInTheDocument();
+      expect(screen.getByText("See what it projects to")).toBeInTheDocument();
+
+      const form = screen.getByRole("form", { name: "Start a season" });
+      expect(stepsHeading.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("explains how the valuation works", async () => {
@@ -145,6 +169,15 @@ describe("BecomeProPage", () => {
       renderWithProviders(<BecomeProPage />);
 
       expect(await screen.findByText(/only 2 games/i)).toBeInTheDocument();
+    });
+
+    // The steps teach the page once; with a season under way the page shows
+    // the thing itself.
+    it("drops the first-visit explainer", async () => {
+      renderWithProviders(<BecomeProPage />);
+
+      await screen.findByText("Season line");
+      expect(screen.queryByRole("heading", { name: "How it works" })).not.toBeInTheDocument();
     });
   });
 

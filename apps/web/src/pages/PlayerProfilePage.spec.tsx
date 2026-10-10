@@ -603,6 +603,69 @@ describe("PlayerProfilePage matchup analysis", () => {
   });
 });
 
+describe("PlayerProfilePage stat explanations", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderLoadedProfile() {
+    vi.mocked(fetchPlayer).mockResolvedValue(makePlayer({ birthDate: "1984-12-30" }));
+    vi.mocked(fetchPlayerStats).mockResolvedValue(STATS);
+    vi.mocked(fetchPlayerStatsSplits).mockResolvedValue({ playerId: "player-1", splits: makeSplits() });
+    vi.mocked(fetchPlayerCareerStats).mockResolvedValue({
+      playerId: "player-1",
+      career: {
+        seasonType: "REGULAR",
+        careerTotals: STATS.seasonAverages,
+        careerAverages: STATS.seasonAverages,
+        seasonBreakdown: [{ season: "2023-24", averages: STATS.seasonAverages }],
+      },
+    });
+    return renderWithProviders(<main><PlayerProfilePage /></main>);
+  }
+
+  it("spells out every abbreviated tile on the page itself, not only in the tutorial", async () => {
+    renderLoadedProfile();
+    await screen.findByRole("heading", { name: "LeBron James" });
+
+    // On both the season line and the career tiles.
+    expect(screen.getAllByText("Rebounds per game").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Usage rate")).toBeInTheDocument();
+    expect(screen.getByText("Offensive rating")).toBeInTheDocument();
+    expect(screen.getByText("Effective field goal %")).toBeInTheDocument();
+  });
+
+  it("explains the advanced figures and the shooting efficiency measures behind an i button", async () => {
+    const user = userEvent.setup();
+    renderLoadedProfile();
+    await screen.findByRole("heading", { name: "LeBron James" });
+
+    await user.click(screen.getByRole("button", { name: "What USG%, +/-, ORTG and DRTG mean" }));
+    expect(screen.getByText(/points allowed per 100 possessions/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "What TS%, eFG% and FTA/G mean" }));
+    expect(screen.getByText(/weigh a three-pointer as worth more than a two/i)).toBeInTheDocument();
+  });
+
+  it("gives the career table's abbreviated columns their full names", async () => {
+    renderLoadedProfile();
+    await screen.findByRole("heading", { name: "LeBron James" });
+
+    expect(await screen.findByRole("columnheader", { name: "Games played" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "True shooting %" })).toHaveAttribute("title", "True shooting %");
+    expect(screen.getByRole("columnheader", { name: "Season" })).toBeInTheDocument();
+  });
+
+  it("has no detectable accessibility violations with a glossary open", async () => {
+    const user = userEvent.setup();
+    const { container } = renderLoadedProfile();
+    await screen.findByRole("columnheader", { name: "Games played" });
+
+    await user.click(screen.getByRole("button", { name: "What USG%, +/-, ORTG and DRTG mean" }));
+    await expectNoAccessibilityViolations(container);
+  });
+});
+
 describe("PlayerProfilePage tutorial", () => {
   afterEach(() => {
     vi.clearAllMocks();

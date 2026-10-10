@@ -7,6 +7,7 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
 } from "recharts";
+import { requireStat } from "@/lib/statGlossary";
 import type { SeasonAverages } from "@/types/nba";
 
 interface PlayerTraitsRadarProps {
@@ -44,7 +45,8 @@ export interface TraitStatLine {
   format: (value: number) => string;
   // Plain-terms gloss under the figure: what the abbreviation measures
   // and why it matters. The labels are stat-headline jargon; this is the
-  // sentence a casual fan reads them for.
+  // sentence a casual fan reads them for. Taken from the shared glossary,
+  // so the radar and the stat tiles never word the same stat two ways.
   explain: string;
 }
 
@@ -53,9 +55,6 @@ export interface TraitStatLine {
 // the "%" suffix.
 const formatPerGameRate: TraitStatLine["format"] = (value) => value.toFixed(1);
 const formatPercentageFigure: TraitStatLine["format"] = (value) => `${value.toFixed(1)}%`;
-
-const TS_EXPLAIN =
-  "True shooting percentage. Scoring efficiency that counts threes and free throws, so volume chuckers and efficient scorers are not lumped together.";
 
 // What the panel shows per trait: the exact inputs the radar normalises,
 // plus the context figures that make those inputs meaningful. Declared as
@@ -66,34 +65,34 @@ export const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
       label: "PTS/G",
       selectValue: (averages) => averages.pointsPerGame,
       format: formatPerGameRate,
-      explain: "Points per game. The headline scoring output — simply how many points they average a night.",
+      explain: requireStat("PTS/G").explain,
     },
     {
       label: "FGA/G",
       selectValue: (averages) => averages.fieldGoalsAttemptedPerGame,
       format: formatPerGameRate,
-      explain: "Field goal attempts per game — how many shots they take. Volume is half of what fills the scoring column.",
+      explain: requireStat("FGA/G").explain,
     },
     {
       label: "FTA/G",
       selectValue: (averages) => averages.freeThrowsAttemptedPerGame,
       format: formatPerGameRate,
-      explain: "Free throw attempts per game — how often they get to the line, a sign of how hard they attack the defence.",
+      explain: requireStat("FTA/G").explain,
     },
-    { label: "TS%", selectValue: (averages) => averages.trueShootingPercentage, format: formatPercentageFigure, explain: TS_EXPLAIN },
+    { label: "TS%", selectValue: (averages) => averages.trueShootingPercentage, format: formatPercentageFigure, explain: requireStat("TS%").explain },
   ],
   rebounding: [
     {
       label: "REB/G",
       selectValue: (averages) => averages.reboundsPerGame,
       format: formatPerGameRate,
-      explain: "Rebounds per game — missed shots they collect. Offensive boards keep a possession alive; defensive ones end the other team's.",
+      explain: requireStat("REB/G").explain,
     },
     {
       label: "MIN/G",
       selectValue: (averages) => averages.minutesPerGame,
       format: formatPerGameRate,
-      explain: "Minutes per game — how long the coach keeps them on the floor. More court time means more chances at every counting stat.",
+      explain: requireStat("MIN/G").explain,
     },
   ],
   playmaking: [
@@ -101,19 +100,19 @@ export const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
       label: "AST/G",
       selectValue: (averages) => averages.assistsPerGame,
       format: formatPerGameRate,
-      explain: "Assists per game — baskets they directly set up for teammates. The raw measure of a player's passing output.",
+      explain: requireStat("AST/G").explain,
     },
     {
       label: "AST:TO",
       selectValue: (averages) => averages.assistToTurnoverRatio,
       format: (value) => value.toFixed(2),
-      explain: "Assist-to-turnover ratio. Playmaking weighed against mistakes — above 2.0 means they create twice as often as they cough it up.",
+      explain: requireStat("AST:TO").explain,
     },
     {
       label: "TOV/G",
       selectValue: (averages) => averages.turnoversPerGame,
       format: formatPerGameRate,
-      explain: "Turnovers per game — possessions handed to the other team. Lower is better, especially for primary ball-handlers.",
+      explain: requireStat("TOV/G").explain,
     },
   ],
   defense: [
@@ -121,19 +120,19 @@ export const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
       label: "STL/G",
       selectValue: (averages) => averages.stealsPerGame,
       format: formatPerGameRate,
-      explain: "Steals per game — how often they take the ball off the opponent. One of the two headline defensive plays.",
+      explain: requireStat("STL/G").explain,
     },
     {
       label: "BLK/G",
       selectValue: (averages) => averages.blocksPerGame,
       format: formatPerGameRate,
-      explain: "Blocks per game — shots they swat away. The rim-protection number that makes drivers think twice.",
+      explain: requireStat("BLK/G").explain,
     },
     {
       label: "STL+BLK/G",
       selectValue: (averages) => averages.stealsPerGame + averages.blocksPerGame,
       format: formatPerGameRate,
-      explain: "Steals plus blocks per game — 'stocks'. The all-in-one tally of how much a player disrupts the other team.",
+      explain: requireStat("STL+BLK/G").explain,
     },
   ],
   efficiency: [
@@ -141,21 +140,21 @@ export const TRAIT_STAT_LINES: Record<TraitKey, TraitStatLine[]> = {
       label: "FG%",
       selectValue: (averages) => averages.fieldGoalPercentage,
       format: formatPercentageFigure,
-      explain: "Field goal percentage — how many of their shots go in, wherever they are taken from. Raw accuracy.",
+      explain: requireStat("FG%").explain,
     },
     {
       label: "3P%",
       selectValue: (averages) => averages.threePointPercentage,
       format: formatPercentageFigure,
-      explain: "Three-point percentage — accuracy from beyond the arc. A high number forces defences to stretch out and guard them tightly.",
+      explain: requireStat("3P%").explain,
     },
     {
       label: "FT%",
       selectValue: (averages) => averages.freeThrowPercentage,
       format: formatPercentageFigure,
-      explain: "Free throw percentage — accuracy at the line, the one shot nobody defends. Late-game fouling targets the shaky ones.",
+      explain: requireStat("FT%").explain,
     },
-    { label: "TS%", selectValue: (averages) => averages.trueShootingPercentage, format: formatPercentageFigure, explain: TS_EXPLAIN },
+    { label: "TS%", selectValue: (averages) => averages.trueShootingPercentage, format: formatPercentageFigure, explain: requireStat("TS%").explain },
   ],
 };
 

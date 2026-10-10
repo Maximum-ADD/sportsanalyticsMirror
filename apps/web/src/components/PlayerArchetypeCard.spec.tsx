@@ -94,6 +94,8 @@ describe("PlayerArchetypeCard", () => {
 
       const link = screen.getByRole("link", { name: /Giannis Antetokounmpo/ });
       expect(link).toHaveAttribute("href", "/players/player-2");
+      // The whole tile is the link, so it has to say what it opens.
+      expect(link).toHaveTextContent("View profile");
     });
 
     it("names the closest match rather than numbering it", () => {

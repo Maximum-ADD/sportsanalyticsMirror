@@ -1,5 +1,6 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Award, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { fetchGames, fetchGameDetail, fetchPlayerStatsBatch } from "@/lib/nbaApi";
 import { computeReliability } from "@/lib/reliability";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -93,7 +94,7 @@ function PlayerTradingCard({ kind, entry }: PlayerTradingCardProps) {
         {label}
       </div>
       <div className="flex flex-col items-center p-4 text-center">
-        <PlayerHeadshot player={scorer.player} size="lg" className="size-20" />
+        <PlayerHeadshot player={scorer.player} size="lg" />
         <p className="mt-3 font-display text-base tracking-[0.01em] text-landing-ink uppercase">
           {scorer.player.firstName} {scorer.player.lastName}
         </p>
@@ -117,6 +118,17 @@ function PlayerTradingCard({ kind, entry }: PlayerTradingCardProps) {
             </div>
           </div>
         </div>
+
+        {/* The card had no way into the player's page at all — the reviewer
+            could not tell profiles existed. A named footer link, in the
+            same block-link style as GameDetailPage's "Full player
+            profile", makes the destination explicit. */}
+        <Link
+          to={`/players/${scorer.player.id}`}
+          className="mt-3 block w-full border border-landing-light px-3 py-2 font-mono text-[10px] tracking-[0.12em] text-locker-ink-muted uppercase transition-colors hover:border-locker-leather hover:text-landing-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
+        >
+          View profile <span aria-hidden>→</span>
+        </Link>
       </div>
     </div>
   );

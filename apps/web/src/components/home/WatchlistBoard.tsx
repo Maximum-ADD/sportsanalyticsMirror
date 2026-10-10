@@ -5,6 +5,7 @@ import { fetchWatchlist } from "@/lib/nbaApi";
 import { unfollowPlayer } from "@/lib/meApi";
 import { ME_QUERY_KEY } from "@/lib/useMe";
 import { signInWithGoogle } from "@/lib/authClient";
+import { requireStat } from "@/lib/statGlossary";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { TeamBadge } from "@/components/TeamBadge";
 import { LockerSection } from "./LockerSection";
@@ -21,11 +22,16 @@ const BOARD_PAGE_SIZE = 100;
 /** The query key the unfollow mutation invalidates, alongside the profile. */
 export const WATCHLIST_QUERY_KEY = ["watchlist"];
 
+// The card is too narrow to spell each label out under its figure the way a
+// stat tile does, so the board carries one visible key line under the grid
+// instead, and each label is read out in full to a screen reader rather than
+// spelled "P-P-G".
 function StatPair({ label, value }: { label: string; value: number }) {
   return (
     <div>
       <span className="block font-mono text-[9px] tracking-[0.14em] text-locker-ink-muted uppercase">
-        {label}
+        <span aria-hidden>{label}</span>
+        <span className="sr-only normal-case">{requireStat(label).name}</span>
       </span>
       <span className="block font-display text-lg text-landing-ink tabular-nums">{value.toFixed(1)}</span>
     </div>
@@ -132,13 +138,21 @@ export function WatchlistBoard() {
           and follow them — this board fills out from the boxscores we already hold.
         </p>
       ) : (
-        <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
-          {entries.map((entry) => (
-            <li key={entry.player.id}>
-              <WatchlistCard entry={entry} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+            {entries.map((entry) => (
+              <li key={entry.player.id}>
+                <WatchlistCard entry={entry} />
+              </li>
+            ))}
+          </ul>
+          {/* Says what the averages span as well as what they are: they take
+              in every game we hold for the player, so "this season" would be
+              wrong for anyone with earlier seasons or playoffs on record. */}
+          <p className="mt-2.5 text-[11.5px] text-locker-ink-muted">
+            PPG, RPG and APG are points, rebounds and assists per game, across every game we hold for the player.
+          </p>
+        </>
       )}
     </LockerSection>
   );
@@ -154,6 +168,10 @@ export function WatchlistBoard() {
  * screen reader users hit first. The Remove button sits in normal flow
  * above the stretched link (z-10) so it stays independently clickable and
  * focusable in its own right, in document order before the stretched link.
+ *
+ * The card also carries a visible "View profile →" cue in its footer,
+ * because the hover border tint alone was not read as a link — and a hover
+ * state is invisible to keyboard users however it is styled.
  */
 function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
   const queryClient = useQueryClient();
@@ -176,7 +194,7 @@ function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
   const pointsOldestFirst = [...entry.recentPoints].reverse().map((game) => game.points);
 
   return (
-    <div className="relative flex h-full flex-col border border-landing-light bg-locker-surface p-3 transition-colors hover:border-locker-leather">
+    <div className="group relative flex h-full flex-col border border-landing-light bg-locker-surface p-3 transition-colors hover:border-locker-leather">
       <div className="mb-2.5 flex items-center gap-2.5">
         <PlayerHeadshot
           player={entry.player}
@@ -214,13 +232,23 @@ function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
         </p>
       )}
 
-      <div className="mt-auto flex pt-2.5">
+      <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+        {/* The card opens the profile — say so. Hidden from screen readers:
+            the stretched link's own label carries the same words, and this
+            span would otherwise be read as dead text between the numbers
+            and Remove. */}
+        <span
+          aria-hidden
+          className="font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase transition-colors group-hover:text-locker-leather"
+        >
+          View profile →
+        </span>
         <button
           type="button"
           disabled={removeMutation.isPending}
           onClick={() => removeMutation.mutate()}
           aria-label={`Remove ${fullName} from your watchlist`}
-          className="relative z-10 ml-auto font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase hover:text-locker-bad disabled:opacity-50"
+          className="relative z-10 font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase hover:text-locker-bad disabled:opacity-50"
         >
           {removeMutation.isPending ? "Removing…" : "Remove"}
         </button>
@@ -228,7 +256,7 @@ function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
 
       <Link
         to={`/players/${entry.player.id}`}
-        aria-label={fullName}
+        aria-label={`View ${fullName}'s profile`}
         className="absolute inset-0 z-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-locker-leather"
       />
     </div>

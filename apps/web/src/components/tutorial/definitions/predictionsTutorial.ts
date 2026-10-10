@@ -145,7 +145,7 @@ const PREDICTIONS_TUTORIAL_STEPS: TutorialStep[] = [
     summary: "Upcoming games that matter to you: your team's next game, and the next games of players you follow.",
     points: [
       "Your team's card shows who the model favours and, once there are enough games, how often it has called your team's recent games right.",
-      "Each followed player's card shows the points the model predicts for them in that game.",
+      "Each followed player's card shows the points the model predicts for them in that game; clicking it opens their profile.",
       // YourMatchupsSection returns null without a team or followed player
       // that has an upcoming game, so the step has to say it can be missing.
       "It only appears once you support a team or follow players with an upcoming game. You can change both on your profile.",
@@ -171,6 +171,7 @@ const PREDICTIONS_TUTORIAL_STEPS: TutorialStep[] = [
     points: [
       "Man of the match is the highest predicted scorer. Consistency picks are the players whose recent scoring has stayed closest to their prediction.",
       "Reliability counts how many of a player's recent games landed close to the points predicted for them now.",
+      "Each card's View profile link opens that player's page.",
     ],
   },
   {

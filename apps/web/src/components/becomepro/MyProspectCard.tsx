@@ -82,8 +82,8 @@ export function MyProspectCard() {
     return (
       <Shell>
         <p className="text-[12.5px] text-locker-ink-muted">
-          Log your own games and see what your season projects to against the NBA rookie salary scale —
-          and which real NBA rookies your game looks most like.
+          The games you actually play, projected onto the NBA rookie salary scale: your season line, the
+          draft pick it points to, and the real NBA rookies your game looks most like.
         </p>
         <Link to="/become-pro" className={LINK_CLASS}>
           Start a season

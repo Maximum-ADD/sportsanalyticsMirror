@@ -45,7 +45,10 @@ export function InfoTooltip({ label, children }: { label: string; children: Reac
         aria-expanded={isOpen}
         aria-controls={panelId}
         onClick={() => setIsOpen((open) => !open)}
-        className="flex size-5 items-center justify-center border border-landing-light font-display text-[11px] text-locker-ink-muted transition hover:border-locker-leather hover:text-locker-leather focus:border-locker-leather focus:outline-none"
+        // The outline, not just a border-colour change, is what shows
+        // keyboard focus: the border shift on a 20px square is too faint to
+        // find on a page that now carries several of these buttons.
+        className="flex size-5 items-center justify-center border border-landing-light font-display text-[11px] text-locker-ink-muted transition hover:border-locker-leather hover:text-locker-leather focus:border-locker-leather focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
       >
         i
       </button>

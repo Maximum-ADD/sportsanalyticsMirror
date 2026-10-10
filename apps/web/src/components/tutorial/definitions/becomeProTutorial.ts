@@ -9,9 +9,9 @@ import type { PageTutorialDefinition, TutorialMapRegion, TutorialStep } from "@/
 // wide column holding your games, season line, scoring chart and NBA rookie
 // comparison, the narrow one the projected value card, traits radar and the
 // "How the valuation works" note. A user with no season yet sees only the
-// header, the setup form and that note, so the welcome step says so instead
-// of drawing a second map. Moving a section on the page means moving its
-// region here too.
+// header, the how-it-works steps, the setup form and that note, so the
+// welcome step says so instead of drawing a second map. Moving a section on
+// the page means moving its region here too.
 //
 // Everything a step says has to be true of the page as built — no promised
 // feature, and no figure that the server decides (the minimum games before a
@@ -127,7 +127,7 @@ const BECOME_PRO_TUTORIAL_STEPS: TutorialStep[] = [
       "Log the games of a season you play yourself, and see what it projects to on the NBA rookie salary scale — and which real NBA rookies your game looks most like.",
     points: [
       "Only you can see this page. You're compared with NBA rookies only, never with other users.",
-      "New here? The page starts with a short form: the season, your position, the level you played at and, if you like, your team — then Start season. This tutorial shows the page once a season is under way.",
+      "New here? The page explains how it works, then asks for a short form: the season, your position, the level you played at and, if you like, your team — then Start season. This tutorial shows the page once a season is under way.",
       "Move through it with Next and Previous. Skip closes it; Skip all also stops tutorials opening by themselves on other pages.",
     ],
   },

@@ -118,8 +118,13 @@ function GameHighlightBody({ game }: { game: Game }) {
           <TeamBadge team={game.homeTeam} size="sm" />
         </span>
       </div>
+      {/* The number is the win chance the model set before the game —
+          "model likes OKC 64%" read as a confidence score and never said what
+          it measured. The home card's Beat the model section says it the same
+          way (F20). */}
       <p className="mt-2 text-[11.5px] text-locker-ink-muted">
-        {new Date(game.gameDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · model likes{" "}
+        {new Date(game.gameDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · model&rsquo;s
+        pre-game win chance{" "}
         <span className="font-semibold text-landing-ink">
           {favored.abbreviation} {PERCENT(favoredProbability)}
         </span>
@@ -708,7 +713,7 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
             </span>
             {favoriteTeamNextGame.prediction && (
               <span className="text-[11.5px] text-locker-ink-muted">
-                model likes{" "}
+                model&rsquo;s pre-game win chance{" "}
                 <span className="font-semibold text-landing-ink">
                   {favoriteTeamNextGame.prediction.homeWinProbability >= 0.5
                     ? favoriteTeamNextGame.homeTeam.abbreviation
@@ -736,7 +741,7 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
               <Link
                 key={player.id}
                 to={`/players/${player.id}`}
-                className="flex flex-col items-center border border-landing-light bg-landing-hero p-3 text-center transition-colors hover:border-locker-leather"
+                className="group flex flex-col items-center border border-landing-light bg-landing-hero p-3 text-center transition-colors hover:border-locker-leather focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather"
               >
                 <PlayerHeadshot player={player} size="sm" />
                 <p className="mt-2 text-[11px] text-landing-ink">
@@ -749,6 +754,11 @@ function YourMatchupsSection({ games, recentGames }: YourMatchupsSectionProps) {
                   {predictedPoints !== undefined ? predictedPoints : "—"}
                 </p>
                 <p className="font-mono text-[8px] tracking-[0.08em] text-locker-ink-muted uppercase">Pred pts</p>
+                {/* The mini card opens the profile; say so rather than
+                    leaving the hover border to imply it. */}
+                <span className="mt-1.5 font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase transition-colors group-hover:text-locker-leather">
+                  View profile <span aria-hidden>→</span>
+                </span>
               </Link>
             ))}
           </div>
@@ -928,8 +938,10 @@ export function PredictionsPage() {
         <div className="mb-5 flex flex-wrap items-center gap-2.5">
           {/* Full width on phones — a fixed field plus its chrome leaves
               nothing beside it at 360px, so it would take its own row
-              regardless. */}
-          <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 sm:min-h-0 sm:w-auto">
+              regardless. The leather ring follows focus to the whole field
+              (F28): the input's own outline is suppressed, and the reviewer
+              could not tell when either control was focused. */}
+          <div className="flex min-h-10 w-full items-center gap-2 border border-landing-light bg-landing-hero px-2.5 py-1.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-locker-leather sm:min-h-0 sm:w-auto">
             <Search aria-hidden className="size-3.5 shrink-0 text-locker-ink-muted" />
             <input
               type="search"
@@ -940,9 +952,11 @@ export function PredictionsPage() {
               }}
               placeholder="Search a team"
               aria-label="Search games by team"
-              className="w-full min-w-0 bg-transparent text-[12.5px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-40"
+              className="w-full min-w-0 bg-transparent text-[13px] text-landing-ink placeholder:text-locker-ink-muted focus:outline-none sm:w-44"
             />
           </div>
+          {/* Sentence case at a readable size, not the 10px mono uppercase
+              chip this was — the reviewer could not read the options (F28). */}
           <select
             value={seasonFilter}
             onChange={(event) => {
@@ -950,7 +964,7 @@ export function PredictionsPage() {
               setShowAllCards(false);
             }}
             aria-label="Filter games by season"
-            className="min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 font-mono text-[10px] tracking-[0.1em] text-landing-ink uppercase focus:outline-none sm:min-h-0"
+            className="min-h-10 border border-landing-light bg-landing-hero px-2.5 py-1.5 text-[13px] text-landing-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-locker-leather sm:min-h-0"
           >
             <option value="all">Upcoming games</option>
             {(seasonsQuery.data ?? []).map((season) => (
