@@ -247,6 +247,35 @@ export interface PlayerPredictionListItem {
   player: Player;
 }
 
+// POST /v1/optimizer/solve — lineups solved on demand under the user's own
+// rules (players locked in, players left out), over every player's latest
+// projection. See lineup-solve.dto.ts on the API for the full contract.
+export interface SolvedLineupSlot {
+  playerId: string;
+  player: Player;
+  predictedFantasyPoints: number;
+  salary: number;
+  isLocked: boolean;
+}
+
+export interface SolvedLineup {
+  // 1 for the best lineup.
+  rank: number;
+  totalPredictedPoints: number;
+  totalSalary: number;
+  // Highest projection first.
+  slots: SolvedLineupSlot[];
+}
+
+export interface SolveLineupResponse {
+  budget: number;
+  rules: { lineupSize: number; minimumGuards: number; minimumForwards: number };
+  lockedPlayerIds: string[];
+  excludedPlayerIds: string[];
+  projectionsAsOf: string;
+  lineups: SolvedLineup[];
+}
+
 // GET/POST /v1/me/lineups — a lineup the user saved from the optimizer
 // board. Slots freeze the numbers the board showed at save time
 // (PlayerPrediction is append-and-take-latest, so a live lookup would

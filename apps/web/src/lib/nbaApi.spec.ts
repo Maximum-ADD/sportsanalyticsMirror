@@ -8,6 +8,7 @@ import {
   fetchTeam,
   fetchTeamRecords,
   fetchTeams,
+  solveLineup,
 } from "./nbaApi";
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
@@ -105,6 +106,39 @@ describe("nbaApi", () => {
   it("rejects with an error when the response is not ok", async () => {
     mockFetchOnce({}, false, 404);
     await expect(fetchPlayer("missing")).rejects.toThrow("Request to /v1/players/missing failed with status 404");
+  });
+
+  it("solveLineup POSTs the rules as JSON to /v1/optimizer/solve", async () => {
+    mockFetchOnce({ lineups: [] });
+    const rules = { budget: 45_000, lockedPlayerIds: ["player-1"], excludedPlayerIds: ["player-2"] };
+
+    await expect(solveLineup(rules)).resolves.toEqual({ lineups: [] });
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/optimizer/solve", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rules),
+    });
+  });
+
+  it("solveLineup rejects with the server's own reason when no lineup fits", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () =>
+          Promise.resolve({
+            error: { code: "INFEASIBLE_LINEUP", message: "You locked 6 players, but a lineup has only 5 slots." },
+          }),
+      })
+    );
+
+    await expect(solveLineup({ lockedPlayerIds: ["a", "b", "c", "d", "e", "f"] })).rejects.toMatchObject({
+      status: 400,
+      message: "You locked 6 players, but a lineup has only 5 slots.",
+    });
   });
 
   it("resolves with the parsed JSON body on success", async () => {

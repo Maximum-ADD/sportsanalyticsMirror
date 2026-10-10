@@ -26,6 +26,7 @@ import type {
   PlayerStatsSplitsResponse,
   PlayerStatSort,
   PagedResult,
+  SolveLineupResponse,
   SeasonType,
   Team,
   TeamEloRating,
@@ -248,6 +249,26 @@ export function fetchPlayerPrediction(playerId: string): Promise<PlayerPredictio
 // page's edit-mode suggestions without one request per candidate.
 export function fetchPlayerPredictions(): Promise<PlayerPredictionListItem[]> {
   return fetchJson<PlayerPredictionListItem[]>("/v1/optimizer/predictions");
+}
+
+export interface SolveLineupParams {
+  // Whole dollars; the API defaults to the full salary cap.
+  budget?: number;
+  // Players every returned lineup must include.
+  lockedPlayerIds?: string[];
+  // Players no returned lineup may include.
+  excludedPlayerIds?: string[];
+  // Runner-up lineups to return after the best one, each a different set of
+  // players under the same rules. The API caps it (0 to 4) and defaults to 0.
+  alternatives?: number;
+}
+
+// Solves for the best lineup under the user's own rules. A POST because the
+// rules are a body, but nothing is written, so it's safe to run as a query.
+// A rule set no lineup can meet is a 400 whose message names the rule to
+// change (ApiError.message carries it).
+export function solveLineup(params: SolveLineupParams): Promise<SolveLineupResponse> {
+  return sendJson<SolveLineupResponse>("/v1/optimizer/solve", "POST", params);
 }
 
 export function fetchGamePrediction(gameId: string): Promise<GamePrediction> {

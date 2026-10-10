@@ -1,9 +1,10 @@
 import type { PageTutorialDefinition, TutorialMapRegion, TutorialStep } from "@/lib/pageTutorial";
 
 // The Optimizer page tutorial: what the page is for, then one step per
-// section in the order a reader meets them — the intro, the lineup totals,
-// the edit controls, the lineup itself and the solver checks with the save
-// button — and last, where to find the tutorial again.
+// section in the order a reader meets them — the intro, the rules panel,
+// the lineup totals, the edit controls, the lineup itself, the solver
+// checks with the save button and the alternative lineups — and last, where
+// to find the tutorial again.
 //
 // The map mirrors OptimizerPage's own layout at desktop width: a single
 // column of full-width modules. "Edit lineup" stands for The lineup's
@@ -28,52 +29,72 @@ const OPTIMIZER_TUTORIAL_REGIONS: TutorialMapRegion[] = [
     x: 36,
     y: 18,
     width: 148,
-    height: 19,
+    height: 12,
     sketch: "page-header",
     calloutSide: "left",
+  },
+  {
+    id: "lineup-rules",
+    label: "Your rules",
+    x: 36,
+    y: 33,
+    width: 148,
+    height: 10,
+    sketch: "filters",
+    calloutSide: "right",
   },
   {
     id: "lineup-totals",
     label: "Lineup totals",
     x: 36,
-    y: 40,
+    y: 46,
     width: 148,
-    height: 12,
+    height: 9,
     sketch: "stat-blocks",
-    calloutSide: "right",
+    calloutSide: "left",
   },
   {
     id: "edit-lineup",
     label: "Edit lineup",
     x: 36,
-    y: 55,
+    y: 58,
     width: 148,
-    height: 14,
+    height: 8,
     sketch: "filters",
-    calloutSide: "left",
+    calloutSide: "right",
   },
   {
     id: "lineup-table",
     label: "The lineup",
     x: 36,
-    y: 72,
+    y: 69,
     width: 148,
-    height: 27,
+    height: 18,
     sketch: "table",
-    calloutSide: "right",
+    calloutSide: "left",
   },
   {
     id: "solver-checks",
     label: "Solver checks",
     x: 36,
-    y: 102,
+    y: 90,
     width: 148,
-    height: 18,
+    height: 14,
     sketch: "rows",
+    calloutSide: "right",
+  },
+  {
+    id: "alternatives",
+    label: "Alternative lineups",
+    x: 36,
+    y: 107,
+    width: 148,
+    height: 13,
+    sketch: "card-grid",
     calloutSide: "left",
   },
-  // Last, so it is drawn over the solver checks' corner the way the real
-  // button floats over the bottom of the page.
+  // Last, so it is drawn over the alternative lineups' corner the way the
+  // real button floats over the bottom of the page.
   {
     id: "help-button",
     label: "Tutorial button",
@@ -113,6 +134,16 @@ const OPTIMIZER_TUTORIAL_STEPS: TutorialStep[] = [
     ],
   },
   {
+    regionId: "lineup-rules",
+    title: "Your rules",
+    summary: "Tell the solver which players the lineup must include and which to leave out, and it finds the best lineup that follows your rules.",
+    points: [
+      "Search for a player under Must include or Excluded, or use the buttons on each row of the lineup. A player can only be under one rule at a time.",
+      "If no lineup can follow your rules, for example more must-include players than spots or more salary than the cap, the page says why instead of showing a lineup.",
+      "Clear all rules goes back to the solver's own lineup. Rules only last while you're on this page.",
+    ],
+  },
+  {
     regionId: "lineup-totals",
     title: "Lineup totals",
     summary: "The lineup's projected points, the salary it uses and the budget cap it has to fit under.",
@@ -137,6 +168,7 @@ const OPTIMIZER_TUTORIAL_STEPS: TutorialStep[] = [
     summary: "The players in the lineup, with each one's team, position, projected points and salary.",
     points: [
       "$ / PT is salary divided by projected points. Lower means better value for the money.",
+      "Must include and Exclude on a row add that player to your rules.",
       "Click a player's name to open their page.",
     ],
   },
@@ -148,6 +180,15 @@ const OPTIMIZER_TUTORIAL_STEPS: TutorialStep[] = [
       "Every lineup needs exactly five different players, at least one guard and at least one forward, and has to fit under the cap.",
       "Save lineup only works once every check is met. The note beside it says what is still missing.",
       "Save lineup asks you to name the lineup, then saves it to your account. You'll find it on your profile and on your home page's saved shelf.",
+    ],
+  },
+  {
+    regionId: "alternatives",
+    title: "Alternative lineups",
+    summary: "The next best lineups the solver found under the same rules, each a different set of players.",
+    points: [
+      "Each one shows its projected points and salary, how far its points are from the best lineup's, and which players it swaps out and in.",
+      "They follow your rules too, so they change whenever you add or drop a rule.",
     ],
   },
   {
