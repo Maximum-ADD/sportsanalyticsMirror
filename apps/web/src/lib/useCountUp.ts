@@ -32,16 +32,21 @@ export function useCountUp(target: number, active: boolean, durationInMillisecon
     let frameHandle = 0;
     const startTimestamp = performance.now();
 
-    function advanceTo(timestampInMilliseconds: number) {
-      const progress = Math.min((timestampInMilliseconds - startTimestamp) / durationInMilliseconds, 1);
+    // Progress is measured with performance.now() at both ends rather than
+    // the timestamp requestAnimationFrame passes in. In a browser the two
+    // share a clock, but jsdom's frame timestamps start from a different
+    // origin, which stretched this 1.1 s count to ~16 s under test and past
+    // the 25 s wait limit when the whole suite ran with coverage.
+    function advance() {
+      const progress = Math.min((performance.now() - startTimestamp) / durationInMilliseconds, 1);
       const easedProgress = 1 - Math.pow(1 - progress, 3);
       setValue(Math.round(target * easedProgress));
       if (progress < 1) {
-        frameHandle = requestAnimationFrame(advanceTo);
+        frameHandle = requestAnimationFrame(advance);
       }
     }
 
-    frameHandle = requestAnimationFrame(advanceTo);
+    frameHandle = requestAnimationFrame(advance);
     return () => cancelAnimationFrame(frameHandle);
   }, [active, target, durationInMilliseconds]);
 
