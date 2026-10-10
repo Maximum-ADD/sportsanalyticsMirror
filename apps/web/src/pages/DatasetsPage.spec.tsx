@@ -112,6 +112,31 @@ describe("DatasetsPage", () => {
     await expectNoAccessibilityViolations(container);
   });
 
+  it("shows how many players and games a release covers", async () => {
+    signInAs(null);
+    mockReleases([makeRelease({ playersCount: 50, gamesCount: 100 })]);
+
+    renderWithProviders(<DatasetsPage />);
+
+    expect(await screen.findByText("50 players")).toBeInTheDocument();
+    expect(screen.getByText("100 games")).toBeInTheDocument();
+    expect(screen.queryByText("No game data")).not.toBeInTheDocument();
+  });
+
+  // F25: an older release of a season that hadn't started counted its whole
+  // loaded schedule as games, so it read as a season that was loaded.
+  it("labels a release with no player rows instead of showing its counts", async () => {
+    signInAs(null);
+    mockReleases([makeRelease({ version: "2026-27.1", season: "2026-27", playersCount: 0, gamesCount: 1230 })]);
+
+    renderWithProviders(<DatasetsPage />);
+
+    expect(await screen.findByText("No game data")).toBeInTheDocument();
+    expect(screen.getByText(/No 2026-27 games had been played when this release was published/)).toBeInTheDocument();
+    expect(screen.queryByText("1230 games")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 players")).not.toBeInTheDocument();
+  });
+
   it("hides publishedBy when null", async () => {
     signInAs(null);
     mockReleases([makeRelease({ publishedBy: null })]);
@@ -184,7 +209,7 @@ describe("DatasetsPage", () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease()]);
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "abc123" });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "abc123", source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
@@ -196,14 +221,12 @@ describe("DatasetsPage", () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease()]);
-      vi.mocked(downloadDatasetRelease).mockRejectedValue(
-        new ApiError("Release is stale after a correction", 409),
-      );
+      vi.mocked(downloadDatasetRelease).mockRejectedValue(new ApiError("Release not found", 404));
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
 
-      expect(await screen.findByText("Release is stale after a correction")).toBeInTheDocument();
+      expect(await screen.findByText("Release not found")).toBeInTheDocument();
     });
 
     it("confirms a download that matches the published checksum", async () => {
@@ -211,7 +234,7 @@ describe("DatasetsPage", () => {
       signInAs(null);
       mockReleases([makeRelease({ checksum: "abc123" })]);
       // Case differs on purpose: hex digests are case-insensitive.
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "ABC123" });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "ABC123", source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
@@ -220,25 +243,54 @@ describe("DatasetsPage", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
-    it("warns when the data has changed since the release was published", async () => {
+    it("warns when a stored file doesn't match the published checksum", async () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease({ checksum: "abc123" })]);
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456" });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456", source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
 
       const warning = await screen.findByRole("alert");
       expect(warning).toHaveTextContent(/doesn't match the published checksum/i);
-      expect(warning).toHaveTextContent(/since 2025-26\.1 was released/);
+      expect(warning).toHaveTextContent(/isn't exactly what was published as 2025-26\.1/);
+    });
+
+    // F26: an older release is rebuilt from current data. The user gets the
+    // file, and is told what it is and whether it is the published one.
+    it("says a rebuilt file differs from the release when the data has changed since", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease({ checksum: "abc123", isStale: true })]);
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "def456", source: "rebuilt" });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      const warning = await screen.findByRole("alert");
+      expect(warning).toHaveTextContent(/Rebuilt from current data/);
+      expect(warning).toHaveTextContent(/won't reproduce analysis made against the original/);
+    });
+
+    it("says a rebuilt file that matches is the release exactly as published", async () => {
+      const user = userEvent.setup();
+      signInAs(null);
+      mockReleases([makeRelease({ checksum: "abc123" })]);
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: "abc123", source: "rebuilt" });
+
+      renderWithProviders(<DatasetsPage />);
+      await user.click(await screen.findByRole("button", { name: "Download" }));
+
+      expect(await screen.findByText(/this is 2025-26\.1 exactly as published/)).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
     it("claims neither a match nor a mismatch when no checksum came back", async () => {
       const user = userEvent.setup();
       signInAs(null);
       mockReleases([makeRelease()]);
-      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: null });
+      vi.mocked(downloadDatasetRelease).mockResolvedValue({ checksum: null, source: "stored" });
 
       renderWithProviders(<DatasetsPage />);
       await user.click(await screen.findByRole("button", { name: "Download" }));
@@ -248,14 +300,16 @@ describe("DatasetsPage", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
-    it("flags a stale release so its failed download is explicable up front", async () => {
+    it("flags a stale release, and still offers its download", async () => {
       signInAs(null);
       mockReleases([makeRelease({ isStale: true })]);
 
       renderWithProviders(<DatasetsPage />);
 
       expect(await screen.findByText("Stale")).toBeInTheDocument();
-      expect(screen.getByText(/no longer matches the source data/)).toBeInTheDocument();
+      expect(screen.getByText(/some of its figures may be out of date/)).toBeInTheDocument();
+      expect(screen.getByText(/This one still downloads/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
     });
   });
 
@@ -294,6 +348,26 @@ describe("DatasetsPage", () => {
         }),
       );
       expect(await screen.findByText("Published 2025-26.2.")).toBeInTheDocument();
+    });
+
+    it("shows why the API refused to publish a season with no played games", async () => {
+      const user = userEvent.setup();
+      signInAs("ADMIN");
+      mockReleases([makeRelease()]);
+      vi.mocked(publishDatasetRelease).mockRejectedValue(
+        new ApiError("Season 2026-27 has 1230 games loaded, but none has been played and passed review yet", 409),
+      );
+
+      renderWithProviders(<DatasetsPage />);
+      await screen.findByText("2025-26.1");
+
+      await user.type(screen.getByLabelText("Release version"), "2026-27.1");
+      await user.type(screen.getByLabelText("Release season"), "2026-27");
+      await user.type(screen.getByLabelText("Release description"), "Opening night");
+      await user.click(screen.getByRole("button", { name: "Publish" }));
+
+      expect(await screen.findByText(/none has been played and passed review yet/)).toBeInTheDocument();
+      expect(screen.queryByText(/^Published /)).not.toBeInTheDocument();
     });
 
     it("keeps publish disabled until every field is filled in", async () => {

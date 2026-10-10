@@ -106,31 +106,31 @@ export class DatasetReleasesController {
   }
 
   // GET /v1/datasets/:version/download — the release's stored CSV snapshot,
-  // or for a release published before files were stored, a rebuild.
+  // or for a release published before files were stored, a rebuild. Any
+  // release that exists downloads, stale or not (see the service).
   @Get(":version/download")
   @ApiOperation({ summary: "Download a dataset release as CSV" })
   @ApiParam({ name: "version", description: "Release version" })
-  @ApiResponse({ status: 200, description: "CSV file. X-Dataset-Source says whether it is the stored snapshot or a rebuild." })
+  @ApiResponse({
+    status: 200,
+    description:
+      "CSV file. X-Dataset-Source says whether it is the stored snapshot or a rebuild from current data (a release published before files were stored); a rebuild is named dataset-<version>-rebuilt.csv. X-Checksum-SHA256 is the hash of the bytes sent: compare it with the release's checksum to tell whether a rebuild is exactly the published file.",
+  })
   @ApiResponse({ status: 404, description: "Release not found" })
-  @ApiResponse({ status: 409, description: "Release predates stored files and is stale after a correction, so it cannot be rebuilt" })
   async downloadRelease(@Param("version") version: string, @Res() res: Response): Promise<void> {
     const result = await this.datasetsService.downloadRelease(version);
     if (result.kind === "missing") {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Release not found");
     }
-    if (result.kind === "stale") {
-      throw new ApiException(
-        HttpStatus.CONFLICT,
-        "STALE_DATASET_RELEASE",
-        "This release was published before files were stored and is stale after a correction, so it can't be rebuilt. Download a newer release of this season instead.",
-      );
-    }
 
+    // A rebuild gets its own file name so that, once saved, it can't be
+    // mistaken for the snapshot published under the plain version name.
+    const fileName = result.source === "rebuilt" ? `dataset-${version}-rebuilt.csv` : `dataset-${version}.csv`;
     res
       .status(HttpStatus.OK)
       .set({
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="dataset-${version}.csv"`,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
         "X-Checksum-SHA256": result.checksum,
         // "stored": the snapshot captured at publish time. "rebuilt": an
         // older release regenerated from live data, which may have drifted.
@@ -146,6 +146,7 @@ export class DatasetReleasesController {
   @ApiOperation({ summary: "Publish a new dataset release (admin only)" })
   @ApiResponse({ status: 201, description: "Release published" })
   @ApiResponse({ status: 400, description: "Invalid request body" })
+  @ApiResponse({ status: 409, description: "The season has no played, reviewed games yet, so the release would be empty", type: ErrorResponseDto })
   async publishRelease(
     @Body() body: unknown,
     @Req() request: { user: { id: string } },

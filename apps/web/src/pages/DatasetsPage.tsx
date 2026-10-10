@@ -5,6 +5,7 @@ import {
   fetchDatasetReleases,
   publishDatasetRelease,
   type DatasetRelease,
+  type DownloadSource,
   type ReleaseSortField,
   type SortDirection,
 } from "@/lib/datasetsApi";
@@ -34,9 +35,8 @@ const SORT_DIRECTION_OPTIONS: { value: SortDirection; label: string }[] = [
 /**
  * Admin-only control for cutting a new release from a season's current
  * data. It exists because releases are immutable: correcting an event
- * marks every release for that season stale, and a stale release refuses
- * to download. Without a way to publish a replacement, the first
- * correction would permanently take that season's downloads offline.
+ * marks every release for that season stale but never rewrites one, so a
+ * new release is the only way to get the corrected figures into a file.
  */
 function PublishReleaseForm({ onPublished }: { onPublished: () => void }) {
   const [version, setVersion] = useState("");
@@ -69,6 +69,7 @@ function PublishReleaseForm({ onPublished }: { onPublished: () => void }) {
       <p className="mt-1 text-[12px] text-locker-ink-muted">
         Cuts a new immutable snapshot of a season's current data. Publish a replacement after a
         correction — existing releases stay stale on purpose, so earlier analysis stays reproducible.
+        A season can only be released once some of its games have been played and reviewed.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <input
@@ -113,43 +114,72 @@ function PublishReleaseForm({ onPublished }: { onPublished: () => void }) {
   );
 }
 
-/**
- * Download button for one release, with its own pending and error state.
- * Each release tracks its own status rather than sharing one at page level
- * so a failure names the release it belongs to.
- */
 type ChecksumVerdict = "match" | "mismatch" | "unverified";
 
 /**
  * Compares the checksum of the bytes just downloaded with the one recorded
  * when the release was published.
  *
- * The CSV is rebuilt from live data on every download rather than stored,
- * so a re-ingestion since publishing changes its contents under the same
- * version name. This is the only point where that drift becomes visible.
- * "unverified" means the response carried no checksum header, so neither a
- * match nor a mismatch can honestly be claimed.
+ * A release published since files were stored downloads exactly as
+ * published, so it should always match. One published before then is
+ * rebuilt from current data on every download, and a correction or a
+ * re-ingestion since publishing changes its contents under the same version
+ * name; this is the only point where that drift becomes visible. "unverified"
+ * means the response carried no checksum header, so neither a match nor a
+ * mismatch can honestly be claimed.
  */
 function compareChecksums(downloadedChecksum: string | null, publishedChecksum: string): ChecksumVerdict {
   if (!downloadedChecksum) return "unverified";
   return downloadedChecksum.toLowerCase() === publishedChecksum.toLowerCase() ? "match" : "mismatch";
 }
 
-function ChecksumNotice({ verdict, version }: { verdict: ChecksumVerdict; version: string }) {
+/**
+ * What the file just downloaded is. A rebuilt file is said to be one even
+ * when it matches: the match is what shows the rebuild came out the same as
+ * the published file, and the saved file's "-rebuilt" name needs explaining.
+ */
+function ChecksumNotice({
+  verdict,
+  version,
+  source,
+}: {
+  verdict: ChecksumVerdict;
+  version: string;
+  source: DownloadSource;
+}) {
+  const isRebuilt = source === "rebuilt";
   if (verdict === "match") {
-    return <span className="text-right text-[10.5px] text-locker-good">✓ Matches published checksum</span>;
+    return (
+      <span className="max-w-72 text-right text-[10.5px] text-locker-good">
+        {isRebuilt
+          ? `✓ Rebuilt from current data, and matches the published checksum: this is ${version} exactly as published.`
+          : "✓ Matches published checksum"}
+      </span>
+    );
   }
   if (verdict === "unverified") {
-    return <span className="text-right text-[10.5px] text-locker-ink-muted">Checksum could not be verified</span>;
+    return (
+      <span className="max-w-72 text-right text-[10.5px] text-locker-ink-muted">
+        {isRebuilt
+          ? `Rebuilt from current data, because ${version} was published before files were kept. Whether it matches what was published could not be checked.`
+          : "Checksum could not be verified"}
+      </span>
+    );
   }
   return (
     <span role="alert" className="max-w-72 text-right text-[10.5px] text-yellow-700">
-      Doesn't match the published checksum — the data has changed since {version} was released, so
-      this file won't reproduce analysis made against it.
+      {isRebuilt
+        ? `Rebuilt from current data, because ${version} was published before files were kept. The data has changed since, so this file doesn't match the published checksum and won't reproduce analysis made against the original.`
+        : `Doesn't match the published checksum, so this file isn't exactly what was published as ${version}.`}
     </span>
   );
 }
 
+/**
+ * Download button for one release, with its own pending and error state.
+ * Each release tracks its own status rather than sharing one at page level
+ * so a failure names the release it belongs to.
+ */
 function DownloadReleaseButton({ release }: { release: DatasetRelease }) {
   const downloadMutation = useMutation({
     mutationFn: () => downloadDatasetRelease(release.version),
@@ -174,6 +204,7 @@ function DownloadReleaseButton({ release }: { release: DatasetRelease }) {
         <ChecksumNotice
           verdict={compareChecksums(downloadMutation.data.checksum, release.checksum)}
           version={release.version}
+          source={downloadMutation.data.source}
         />
       )}
     </div>
@@ -238,9 +269,21 @@ function ReleaseDetails({ release }: { release: DatasetRelease }) {
   );
 }
 
+/**
+ * True for a release with no player rows: no game of its season had been
+ * played and reviewed when it was published. The API refuses to publish one
+ * now, but releases published before that are still listed, and they used
+ * to count the season's whole loaded schedule as their games — so listed
+ * like any other release, one read as a season that was already loaded.
+ */
+function hasNoGameData(release: DatasetRelease): boolean {
+  return release.playersCount === 0;
+}
+
 function ReleaseRow({ release }: { release: DatasetRelease }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const detailsId = `release-details-${release.id}`;
+  const isEmpty = hasNoGameData(release);
 
   return (
     <div className="border border-landing-light bg-locker-surface">
@@ -262,6 +305,11 @@ function ReleaseRow({ release }: { release: DatasetRelease }) {
             <span className="rounded bg-landing-hero px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-locker-ink-muted uppercase">
               {release.season}
             </span>
+            {isEmpty && (
+              <span className="rounded bg-yellow-100 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-yellow-800 uppercase">
+                No game data
+              </span>
+            )}
             {release.isStale && (
               <span className="rounded bg-yellow-100 px-1.5 py-0.5 font-mono text-[9px] tracking-[0.08em] text-yellow-800 uppercase">
                 Stale
@@ -269,18 +317,31 @@ function ReleaseRow({ release }: { release: DatasetRelease }) {
             )}
           </div>
           <p className="mt-0.5 text-[12px] text-locker-ink-muted">{release.description}</p>
+          {isEmpty && (
+            <p className="mt-1 text-[11px] text-yellow-700">
+              No {release.season} games had been played when this release was published, so it has no
+              player rows.
+            </p>
+          )}
           {release.isStale && (
             <p className="mt-1 text-[11px] text-yellow-700">
-              A correction landed after this snapshot was cut, so it no longer matches the source
-              data. It still downloads as originally published, to reproduce earlier analysis; use a
-              newer release for the corrected figures.
+              A correction was saved in {release.season} after this release was published, so some
+              of its figures may be out of date. Use a newer {release.season} release for the
+              corrected figures. This one still downloads, and the check after downloading says
+              whether the file is exactly as published.
             </p>
           )}
         </button>
 
         <div className="flex flex-wrap items-center gap-4 text-right font-mono text-[10px] text-locker-ink-muted uppercase">
-          <span>{release.playersCount} players</span>
-          <span>{release.gamesCount} games</span>
+          {/* Left off an empty release: an older one's games count is its
+              season's schedule, not games in the file (see hasNoGameData). */}
+          {!isEmpty && (
+            <>
+              <span>{release.playersCount} players</span>
+              <span>{release.gamesCount} games</span>
+            </>
+          )}
           <span>{new Date(release.publishedAt).toLocaleDateString()}</span>
         </div>
 

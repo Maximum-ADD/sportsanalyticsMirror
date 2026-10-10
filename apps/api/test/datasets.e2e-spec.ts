@@ -411,6 +411,44 @@ describe("Datasets API", () => {
       expect(afterStale.text).toBe(atPublish.text);
     });
 
+    // F25: the schedule loads every game of a season up front with no
+    // stats, so counting Game rows made a season that hadn't started look
+    // loaded.
+    it("counts only the games the file was built from, not the scheduled ones", async () => {
+      await seedSeasonWithOnePlayer();
+      const team = await testPrisma.team.findFirstOrThrow();
+      await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-SCHEDULED-${uid()}`, gameDate: new Date("2026-04-01"), season: "2025-26",
+          seasonType: "REGULAR", homeTeamId: team.id, awayTeamId: team.id,
+        },
+      });
+
+      const published = await app
+        .get(DatasetReleasesService)
+        .publishRelease({ version: "2025-26.1", description: "Snapshot", season: "2025-26" });
+
+      expect(published.gamesCount).toBe(1);
+      expect(published.playersCount).toBe(1);
+    });
+
+    it("refuses to publish a season whose games are only scheduled", async () => {
+      const team = await testPrisma.team.create({
+        data: { nbaTeamId: uid(), name: "Future FC", abbreviation: "FUT", city: "City", conference: "East", division: "Atlantic" },
+      });
+      await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-FUTURE-${uid()}`, gameDate: new Date("2026-10-21"), season: "2026-27",
+          seasonType: "REGULAR", homeTeamId: team.id, awayTeamId: team.id,
+        },
+      });
+
+      await expect(
+        app.get(DatasetReleasesService).publishRelease({ version: "2026-27.1", description: "Too early", season: "2026-27" }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(await testPrisma.datasetRelease.count()).toBe(0);
+    });
+
     it("never includes the stored file in list or detail responses", async () => {
       await seedSeasonWithOnePlayer();
       await app
@@ -434,6 +472,53 @@ describe("Datasets API", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers["x-dataset-source"]).toBe("rebuilt");
+      expect(response.headers["content-disposition"]).toContain('filename="dataset-2025-26.1-rebuilt.csv"');
+    });
+
+    // F26: a stale release with no stored file used to answer 409 with no
+    // file at all. It now rebuilds, and the checksum tells the caller
+    // whether the rebuild is the file that was published.
+    it("rebuilds a stale release published before files were stored, and the checksum says whether it matches", async () => {
+      await seedSeasonWithOnePlayer();
+      const published = await app
+        .get(DatasetReleasesService)
+        .publishRelease({ version: "2025-26.1", description: "Snapshot", season: "2025-26" });
+      const original = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      // Turn it into a release from before files were stored, published
+      // before the next game, and since gone stale.
+      await testPrisma.datasetRelease.update({
+        where: { version: "2025-26.1" },
+        data: { csv: null, isStale: true, publishedAt: new Date("2026-01-01T00:00:00.000Z") },
+      });
+
+      // A game played after the release was published stays out of it.
+      const [team, player] = await Promise.all([testPrisma.team.findFirstOrThrow(), testPrisma.player.findFirstOrThrow()]);
+      const later = await testPrisma.game.create({
+        data: {
+          nbaGameId: `DS-LATER-${uid()}`, gameDate: new Date("2026-02-01"), season: "2025-26",
+          seasonType: "REGULAR", homeTeamId: team.id, awayTeamId: team.id,
+        },
+      });
+      await testPrisma.playerGameStat.create({
+        data: {
+          playerId: player.id, gameId: later.id, minutes: 40, points: 44, rebounds: 9, assists: 9,
+          steals: 2, blocks: 2, turnovers: 2, fieldGoalsMade: 16, fieldGoalsAttempted: 25,
+          threesMade: 4, threesAttempted: 8, freeThrowsMade: 8, freeThrowsAttempted: 9,
+        },
+      });
+
+      const unchanged = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      expect(unchanged.status).toBe(200);
+      expect(unchanged.headers["x-dataset-source"]).toBe("rebuilt");
+      expect(unchanged.text).toBe(original.text);
+      expect(unchanged.headers["x-checksum-sha256"]).toBe(published.checksum);
+
+      // A correction to a game it covers: still a file, but not the same one.
+      await testPrisma.playerGameStat.updateMany({ where: { gameId: { not: later.id } }, data: { points: 21 } });
+      const corrected = await request(app.getHttpServer()).get("/v1/datasets/2025-26.1/download");
+      expect(corrected.status).toBe(200);
+      expect(corrected.headers["x-dataset-source"]).toBe("rebuilt");
+      expect(corrected.headers["x-checksum-sha256"]).not.toBe(published.checksum);
     });
   });
 });

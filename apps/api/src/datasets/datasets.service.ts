@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { HttpStatus, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
+import { ApiException } from "../common/api-exception.js";
 import { PUBLISHED_GAME_FILTER } from "../common/game-visibility.js";
 import { parsePageParams, type PagedResult } from "../common/pagination.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -90,12 +91,13 @@ function buildReleaseOrderBy(sort: ReleaseSort) {
 // Where a served file came from. "stored" is the snapshot captured at
 // publish time; "rebuilt" is regenerated from live data, which only happens
 // for releases published before files were stored — and can differ from
-// what was originally released.
+// what was originally released. The checksum sent with the file is what
+// tells for certain: a rebuild that hashes to the release's published
+// checksum is byte-for-byte the file that was published.
 export type ReleaseFileSource = "stored" | "rebuilt";
 
 export type DownloadReleaseResult =
   | { kind: "missing" }
-  | { kind: "stale"; checksum: string }
   | { kind: "ready"; csv: string; checksum: string; source: ReleaseFileSource };
 
 const DIFFABLE_RELEASE_FIELDS: (keyof Pick<ReleaseMetadata, "checksum" | "season" | "gamesCount" | "playersCount" | "eventsCount" | "fieldSchema">)[] = [
@@ -202,8 +204,23 @@ export class DatasetReleasesService {
   }
 
   // Generate the CSV content for a given season — one row per player
-  // with their season averages. Returns the raw CSV string.
-  async generateSeasonCsv(season: string): Promise<{ csv: string; rowCount: number; checksum: string }> {
+  // with their season averages. Returns the raw CSV string, its row count,
+  // and how many distinct games those rows were averaged over.
+  //
+  // gamesCount is counted here, from the very stat rows the file is built
+  // from, rather than by a separate count of the season's Game rows: those
+  // include every scheduled game not yet played (apps/ingestion/schedule.py
+  // loads a whole season's schedule ahead of time) and games still awaiting
+  // review, none of which are in the file.
+  //
+  // `playedBy` limits the file to games dated on or before it. Publishing
+  // leaves it off (everything played so far); rebuilding an older release
+  // passes the release's publish time, so games played since then don't end
+  // up in a file that stands for that release.
+  async generateSeasonCsv(
+    season: string,
+    playedBy?: Date,
+  ): Promise<{ csv: string; rowCount: number; gamesCount: number; checksum: string }> {
     // Fetch all players with their game stats for this season.
     //
     // The explicit order is what makes the checksum reproducible. Without
@@ -218,7 +235,9 @@ export class DatasetReleasesService {
       include: {
         team: { select: { abbreviation: true } },
         gameStats: {
-          where: { game: { season, ...PUBLISHED_GAME_FILTER } },
+          where: {
+            game: { season, ...PUBLISHED_GAME_FILTER, ...(playedBy ? { gameDate: { lte: playedBy } } : {}) },
+          },
           include: { game: true },
         },
       },
@@ -226,6 +245,7 @@ export class DatasetReleasesService {
 
     const headerLine = DATASET_COLUMNS.map((c) => c.column).join(",");
     const lines: string[] = [headerLine];
+    const gameIds = new Set<string>();
 
     for (const player of players) {
       const stats = player.gameStats;
@@ -234,6 +254,7 @@ export class DatasetReleasesService {
       // Skip players with no games in this season — they have nothing
       // to export for it.
       if (gamesPlayed === 0) continue;
+      for (const stat of stats) gameIds.add(stat.gameId);
 
       const totalPoints = stats.reduce((s, g) => s + g.points, 0);
       const totalRebounds = stats.reduce((s, g) => s + g.rebounds, 0);
@@ -281,25 +302,34 @@ export class DatasetReleasesService {
     const csv = lines.join("\r\n") + "\r\n";
     const checksum = hashCsv(csv);
 
-    return { csv, rowCount: lines.length - 1, checksum };
+    return { csv, rowCount: lines.length - 1, gamesCount: gameIds.size, checksum };
   }
 
   // Publish a new dataset release — generates the CSV once, stores it with
   // its checksum on the DatasetRelease row, and returns the release without
   // the file (the caller only needs the metadata).
+  //
+  // Refused (409) for a season with no played, reviewed games: see
+  // describeSeasonWithNoGames.
   async publishRelease(params: {
     version: string;
     description: string;
     season: string;
     publishedById?: string;
   }): Promise<ReleaseMetadata> {
-    const { csv, rowCount, checksum } = await this.generateSeasonCsv(params.season);
+    const { csv, rowCount, gamesCount, checksum } = await this.generateSeasonCsv(params.season);
 
-    // Games in the season for the metadata. The player count comes from the
-    // CSV's own row count, which is already one row per distinct player with
-    // games in this season — counting PlayerGameStat rows instead would
-    // count player-games, a much larger and quite different number.
-    const gamesCount = await this.prisma.game.count({ where: { season: params.season } });
+    // A file with no player rows has nothing in it to analyse. Releases
+    // can't be withdrawn, so publishing one would leave a release on the
+    // Datasets page for a season that hasn't started — which, listed with a
+    // Download button like any other, reads as a season that's loaded.
+    if (rowCount === 0) throw await this.describeSeasonWithNoGames(params.season);
+
+    // Both counts describe the file itself. The player count is the CSV's
+    // own row count, already one row per distinct player with games in this
+    // season — counting PlayerGameStat rows instead would count
+    // player-games, a much larger and quite different number. The games
+    // count is the games those rows come from (see generateSeasonCsv).
     const playersCount = rowCount;
 
     const fieldSchema = DATASET_COLUMNS.map((c) => ({
@@ -326,7 +356,25 @@ export class DatasetReleasesService {
   }
 
   /**
-   * The file for a release download.
+   * Why a season can't be released yet, worded for the admin who tried.
+   * Only counted on this refusal path, to tell a season whose schedule is
+   * loaded but hasn't been played (or reviewed) apart from a season name
+   * that matches no games at all — most likely a typo.
+   */
+  private async describeSeasonWithNoGames(season: string): Promise<ApiException> {
+    const loadedGames = await this.prisma.game.count({ where: { season } });
+    const games = loadedGames === 1 ? "1 game" : `${loadedGames} games`;
+    const message =
+      loadedGames === 0
+        ? `No games are loaded for season ${season}. Check the season name (e.g. 2025-26).`
+        : `Season ${season} has ${games} loaded, but none has been played and passed review yet, so a release would be an empty file. Publish one once games have been played.`;
+    return new ApiException(HttpStatus.CONFLICT, "NO_PLAYED_GAMES", message);
+  }
+
+  /**
+   * The file for a release download. Every release that exists downloads:
+   * there is always a file to hand over, and the source and checksum sent
+   * with it say what it is.
    *
    * A release with a stored file serves exactly that file — the snapshot
    * captured at publish time — even if it has since gone stale. Serving a
@@ -335,10 +383,16 @@ export class DatasetReleasesService {
    * exists.
    *
    * A release published before files were stored has nothing to serve but
-   * a rebuild from live data. If it is stale, a rebuild would put corrected
-   * figures under the old version name, so it is refused; otherwise it is
-   * rebuilt, and the checksum sent back lets the caller tell whether the
-   * data has drifted since publishing.
+   * a rebuild from live data, limited to games played by its publish date.
+   * That includes a stale one. Refusing it, as this used to, left the user
+   * with no file at all once any stat in the season had been edited, while
+   * an un-stale rebuild — which drifts just as surely when a game is
+   * re-ingested — was served. The stale flag can't say whether a rebuild
+   * matches (any correction in the season sets it, even one to a game the
+   * release never covered); the checksum can. The caller compares it with
+   * the release's published checksum to say whether the file is exactly as
+   * published, and the "rebuilt" source names the file as a rebuild so it
+   * can't be taken for the original snapshot later.
    */
   async downloadRelease(version: string): Promise<DownloadReleaseResult> {
     const release = await this.prisma.datasetRelease.findUnique({ where: { version } });
@@ -347,9 +401,8 @@ export class DatasetReleasesService {
     if (typeof release.csv === "string") {
       return { kind: "ready", csv: release.csv, checksum: hashCsv(release.csv), source: "stored" };
     }
-    if (release.isStale) return { kind: "stale", checksum: release.checksum };
 
-    const { csv, checksum } = await this.generateSeasonCsv(release.season);
+    const { csv, checksum } = await this.generateSeasonCsv(release.season, release.publishedAt);
     return { kind: "ready", csv, checksum, source: "rebuilt" };
   }
 }

@@ -31,8 +31,12 @@ export class DatasetReleaseDto {
   @ApiProperty({ description: "SHA-256 of the release CSV, to verify a download" })
   checksum!: string;
 
-  @ApiProperty() gamesCount!: number;
-  @ApiProperty() playersCount!: number;
+  @ApiProperty({ description: "Played, reviewed games the CSV's averages are taken from (not the season's whole schedule)" })
+  gamesCount!: number;
+
+  @ApiProperty({ description: "Players in the CSV: one row each" })
+  playersCount!: number;
+
   @ApiProperty() eventsCount!: number;
 
   @ApiProperty({ type: [DatasetFieldDto], description: "Every CSV column, with its type and meaning" })
@@ -44,7 +48,10 @@ export class DatasetReleaseDto {
   @ApiProperty({ type: String, format: "date-time" })
   publishedAt!: string;
 
-  @ApiProperty({ description: "True once a later event correction changed figures this snapshot holds" })
+  @ApiProperty({
+    description:
+      "True once an event correction in this season was saved after the release was published, so some of its figures may be out of date. The release still downloads; publish a new one for the corrected figures.",
+  })
   isStale!: boolean;
 
   @ApiProperty({ type: DatasetPublisherDto, nullable: true })
