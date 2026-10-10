@@ -1,26 +1,142 @@
-import { Controller, Get, HttpStatus, Param, Query } from "@nestjs/common";
+import { applyDecorators, Controller, Get, HttpStatus, Param, Query, Res, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from "@nestjs/swagger";
 import { ApiException } from "../common/api-exception.js";
-import { PredictionsService } from "../predictions/predictions.service.js";
+import { ApiKeyGuard } from "../common/api-key.guard.js";
+import { OptionalSessionGuard } from "../common/optional-session.guard.js";
+import {
+  ApiKeyOrSessionAccess,
+  ApiNotFoundError,
+  ApiPageQuery,
+  ApiSeasonTypeQuery,
+} from "../common/openapi/api-docs.decorators.js";
+import { ErrorResponseDto } from "../common/openapi/error-response.dto.js";
+import { parsePageParams } from "../common/pagination.js";
+import { toCsv, type ColumnSpec } from "../common/csv.js";
+import { ExportRequestsService } from "../common/export-requests.service.js";
+import type { Response } from "express";
+import { GameEventPageDto } from "./game-event.dto.js";
+import { GamePageDto } from "./game.dto.js";
 import { GameDetailService } from "./game-detail.service.js";
-import { GamesService } from "./games.service.js";
+import { GamesService, type GameWithTeamsAndPrediction } from "./games.service.js";
 
+const MAX_EXPORT_ROWS = 5_000;
+
+const GAME_EXPORT_COLUMNS: ColumnSpec<GameWithTeamsAndPrediction>[] = [
+  { header: "id", value: (game) => game.id },
+  { header: "nbaGameId", value: (game) => game.nbaGameId },
+  { header: "gameDate", value: (game) => game.gameDate.toISOString() },
+  { header: "season", value: (game) => game.season },
+  { header: "seasonType", value: (game) => game.seasonType },
+  { header: "homeTeam", value: (game) => game.homeTeam.name },
+  { header: "awayTeam", value: (game) => game.awayTeam.name },
+  { header: "homeScore", value: (game) => game.homeScore },
+  { header: "awayScore", value: (game) => game.awayScore },
+];
+
+// Public, like TeamsController/PlayersController — games/schedules/scores
+// are the same kind of read-only, non-personal data those already expose.
+// Callers need a signed-in session or an API key: the first-party site
+// proxy attaches its own key, so the landing page's live-match widget
+// (rendered for signed-out visitors) still reaches this endpoint while
+// plain anonymous requests get a 401.
+@ApiTags("games")
+@UseGuards(OptionalSessionGuard, ApiKeyGuard)
+@ApiKeyOrSessionAccess()
 @Controller("v1/games")
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly predictionsService: PredictionsService,
-    private readonly gameDetailService: GameDetailService
-  ) {}
+    private readonly gameDetailService: GameDetailService,
+    private readonly exportRequests: ExportRequestsService
+  ) {
+    this.exportRequests.registerBuilder("GAMES", {
+      fetchRows: (query, maximumRows) => this.gamesService.getGamesForExport(query, maximumRows),
+      columns: GAME_EXPORT_COLUMNS,
+    });
+  }
 
   @Get()
+  @ApiOperation({ summary: "List games (paginated: soonest upcoming first, then most recently completed)" })
+  @ApiGameFilters()
+  @ApiPageQuery()
+  @ApiResponse({ status: 200, description: "Paginated game list with predictions", type: GamePageDto })
   listGames(@Query() query: Record<string, unknown>) {
     return this.gamesService.getGames(query);
   }
 
+  // async=true queues this export as a background job instead of blocking
+  // the response on it — see ExportRequestsService. Still synchronous by
+  // default: today's real row counts (243 games) never approach the
+  // 5,000-row cap, so nothing changes unless a caller opts in.
+  @Get("export")
+  @ApiOperation({ summary: "Export a filtered game slice as CSV (up to 5,000 games, newest first)" })
+  @ApiGameFilters()
+  @ApiQuery({
+    name: "async",
+    required: false,
+    description: "true to queue this export as a background job instead of waiting for it (see GET /v1/exports/:id)",
+  })
+  @ApiResponse({ status: 200, description: "CSV file (synchronous)" })
+  @ApiResponse({ status: 202, description: "Export queued (async=true); poll GET /v1/exports/:id" })
+  async exportGames(@Query() query: Record<string, unknown>, @Res() response: Response): Promise<void> {
+    if (query.async === "true") {
+      const exportQuery = { ...query };
+      delete exportQuery.async;
+      const request = await this.exportRequests.queueExport("GAMES", exportQuery);
+      response.status(HttpStatus.ACCEPTED).json(request);
+      return;
+    }
+
+    const games = await this.gamesService.getGamesForExport(query, MAX_EXPORT_ROWS);
+    response.status(HttpStatus.OK).set({
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="games.csv"',
+    }).send(toCsv(games, GAME_EXPORT_COLUMNS));
+  }
+
+  // GET /v1/games/seasons — every season with at least one ingested game,
+  // most recent first. Declared before the :id route below so "seasons"
+  // isn't swallowed as a game id — Nest matches routes in declaration
+  // order. Backs the Predictions page's season filter with real options.
+  @Get("seasons")
+  @ApiOperation({ summary: "Every season with at least one game, most recent first" })
+  @ApiResponse({ status: 200, description: "Season labels, e.g. 2025-26" })
+  listSeasons() {
+    return this.gamesService.getSeasons();
+  }
+
+  @Get(":id/live")
+  @ApiOperation({ summary: "Poll newly received events for an in-progress fixture" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiQuery({
+    name: "afterSequence",
+    required: false,
+    type: Number,
+    description: "Return only events after this sequence; pass the previous response's nextSequence. Omit for every event",
+  })
+  @ApiResponse({ status: 200, description: "New events, the cursor for the next poll, and how long to wait" })
+  @ApiResponse({ status: 400, description: "afterSequence is not a non-negative integer", type: ErrorResponseDto })
+  @ApiNotFoundError("Game not found")
+  async getLiveFeed(@Param("id") id: string, @Query("afterSequence") rawAfterSequence: unknown) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    const afterSequence = typeof rawAfterSequence === "string" ? Number(rawAfterSequence) : -1;
+    if (!Number.isInteger(afterSequence) || afterSequence < -1) {
+      throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "afterSequence must be a non-negative integer");
+    }
+    const events = await this.gamesService.getLiveEvents(id, afterSequence);
+    return { gameId: id, events, nextSequence: events.at(-1)?.sequence ?? afterSequence, pollAfterMilliseconds: 5_000 };
+  }
+
   // GET /v1/games/:id — a single game with its win probability/predicted
-  // margin (if generated) and predicted top scorers from both rosters —
-  // everything the game detail page needs in one request.
+  // margin (if generated), market odds (if fetched — see
+  // apps/ingestion/fetch_market_odds.py) and predicted top scorers from
+  // both rosters — everything the game detail page needs in one request.
   @Get(":id")
+  @ApiOperation({ summary: "Get game detail with prediction and predicted scorers" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Full game detail" })
+  @ApiNotFoundError("Game not found")
   async getGame(@Param("id") id: string) {
     const detail = await this.gameDetailService.getGameDetail(id);
     if (!detail) {
@@ -33,15 +149,20 @@ export class GamesController {
   // Factors predicted margin for this game, written by apps/predictor's
   // predict_games.py. Two-step 404: game not found vs. game found but not
   // yet predicted are different problems, same pattern as
-  // PlayersController's :id/stats route.
+  // PlayersController's :id/stats route. getGameById already joins the
+  // prediction, so both checks come from one query.
   @Get(":id/prediction")
+  @ApiOperation({ summary: "Get Elo win probability and Four Factors prediction" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Game prediction" })
+  @ApiResponse({ status: 404, description: "Game not found or no prediction yet" })
   async getGamePrediction(@Param("id") id: string) {
     const game = await this.gamesService.getGameById(id);
     if (!game) {
       throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
     }
 
-    const prediction = await this.predictionsService.getPredictionForGame(id);
+    const { prediction } = game;
     if (!prediction) {
       throw new ApiException(
         HttpStatus.NOT_FOUND,
@@ -51,4 +172,58 @@ export class GamesController {
     }
     return prediction;
   }
+
+  // GET /v1/games/:id/prediction/history — every model version's
+  // prediction ever produced for this game, oldest first. The
+  // reproducibility half of model versioning: :id/prediction above always
+  // reflects the latest model run, so this is how a caller sees what the
+  // game was predicted to be under a version that's since been superseded.
+  // Empty array, not 404, when the game exists but has no prediction runs
+  // yet — a collection endpoint, same convention as GET /v1/games.
+  @Get(":id/prediction/history")
+  @ApiOperation({ summary: "Get every model version's prediction for this game" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiResponse({ status: 200, description: "Prediction history, oldest first" })
+  @ApiResponse({ status: 404, description: "Game not found" })
+  async getGamePredictionHistory(@Param("id") id: string) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    }
+    return this.gamesService.getPredictionHistoryForGame(id);
+  }
+
+  // GET /v1/games/:id/events — this game's raw, ordered play-by-play (see
+  // apps/ingestion/play_by_play.py), the record every derived stat this
+  // platform publishes ultimately traces back to
+  // (apps/ingestion/derive_player_game_stats.py). Paginated: a completed
+  // game can carry several hundred events. Empty page, not 404, for a
+  // game with no events yet — same collection convention as
+  // :id/prediction/history; only the game itself missing 404s.
+  @Get(":id/events")
+  @ApiOperation({ summary: "Get a game's ordered play-by-play events" })
+  @ApiParam({ name: "id", description: "Game UUID" })
+  @ApiPageQuery()
+  @ApiResponse({ status: 200, description: "Paginated game events, in sequence order", type: GameEventPageDto })
+  @ApiNotFoundError("Game not found")
+  async getGameEvents(@Param("id") id: string, @Query() query: Record<string, unknown>) {
+    const game = await this.gamesService.getGameById(id);
+    if (!game) {
+      throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Game not found");
+    }
+    const { page, pageSize } = parsePageParams(query);
+    return this.gamesService.getGameEvents(id, page, pageSize);
+  }
+}
+
+/**
+ * Documents the filters the game list and the CSV export share (see
+ * GamesService's parseStatusFilter and parseSeasonFilter).
+ */
+function ApiGameFilters(): MethodDecorator {
+  return applyDecorators(
+    ApiQuery({ name: "status", required: false, enum: ["upcoming", "completed"], description: "Omit for both" }),
+    ApiQuery({ name: "season", required: false, description: "League year, e.g. 2025-26 (see GET /v1/games/seasons)" }),
+    ApiSeasonTypeQuery("Omit for every segment"),
+  );
 }

@@ -1,0 +1,676 @@
+========================================================================
+CHAT EXPORT
+Cutting database calls: caching, query consolidation, and the
+Beat the Model game
+Date: 13 September 2026
+Branch: DBCallRate
+========================================================================
+
+HOW THIS FILE WAS PRODUCED: exported from the Claude Code session
+transcript. User prompts and the assistant's substantive replies are
+reproduced as written. Tool calls are summarised after each turn by
+name, files touched and commands run, rather than reproducing raw tool
+JSON or its output, and the assistant's internal reasoning is not
+included. The short status lines printed between tool calls were not
+persisted to the transcript, so they are absent here. Credentials that
+passed through tool output while reading apps/api/.env are redacted.
+
+========================================================================
+SESSION SUMMARY
+========================================================================
+
+GOAL
+Reduce how often, and how expensively, the API queries the Supabase
+Postgres database, and introduce caching where the data allows it.
+
+WHAT THE INVESTIGATION FOUND
+- Nothing was cached anywhere. Every page view, tab refocus and
+  signed-in request went to Postgres.
+- React Query's defaults (staleTime 0, refetch on window focus) re-ran
+  all 41 queries on mount and on every tab switch.
+- Every signed-in request re-read the Session and User tables through
+  BetterAuth.
+- Heavy public reads ran per request: /players/leaders and sorted
+  player lists scanned the whole player table plus a groupBy over
+  ~80k boxscore rows; both analytics routes scanned every completed
+  game; elo-ratings and /games/seasons ran full scans.
+- Redundant queries: /players/:id/stats ran the same query twice,
+  /stats/splits ran four, /players/compare ran two per player, and
+  /games/:id/prediction re-fetched a prediction it had already joined.
+- The Game table had no index on gameDate, homeTeamId or awayTeamId.
+
+WHAT WAS IMPLEMENTED
+1. An in-memory response cache in apps/api/src/cache/. It de-duplicates
+   concurrent identical loads, never stores errors or nulls, bounds
+   itself to 500 entries, and disables itself under Vitest.
+   TTLs: 5 minutes for derived data, 1 hour for teams/seasons,
+   60 seconds for leaderboard counts. Only public, non-user-specific
+   reads are cached; nothing under /v1/me is.
+2. Query consolidation: /players/:id/stats 3 -> 2 queries,
+   /stats/splits 5 -> 2, /players/compare (4 players) 8 -> 2,
+   /games/:id/prediction 2 -> 1, leaderboard counts 3 -> 2. The
+   now-unused PredictionsService was deleted.
+3. Frontend: a 5-minute staleTime and no refetch on window focus.
+4. BetterAuth session cookie cache (5 minutes), removing the per-request
+   session lookup. Trade-off: a session revoked elsewhere can stay valid
+   for up to 5 minutes; sign-out and account deletion are immediate.
+5. New indexes on Game(gameDate), Game(homeTeamId, gameDate),
+   Game(awayTeamId, gameDate), PlayerGameStat(gameId) and
+   Player(teamId).
+6. Beat the Model: the card kept showing the game just called while the
+   next one loaded, replayed a called game after navigating back, and
+   got stuck on a 409. It now drops the called game immediately, loads
+   the next one behind the graded result, always revalidates on mount,
+   and skips a game that was already called. The server now breaks
+   same-date ties on id so the next game is stable.
+
+MEASURED RESULTS (local dev database, real data)
+Queries logged per request, first call then second:
+  /v1/games?status=completed   6 -> 0
+  /v1/games/seasons            1 -> 0
+  /v1/teams/elo-ratings        6 -> 0
+  /v1/players/leaders          3 -> 0
+  /v1/players?sort=ppg         0 -> 0  (reuses the leaders data)
+  /v1/analytics/model-accuracy 2 -> 0
+  /v1/analytics/leaderboard    1 -> 0
+  /v1/players/:id/stats        1 -> 0
+  /v1/players/:id/stats/splits 3 -> 1  (was 5 before consolidation)
+
+Beat the Model, verified against the real database inside a rolled-back
+transaction: five consecutive calls returned five different real games
+(TOR, IND, OKC, CLE, NYK) with real final scores, and repeated requests
+returned the same game. The leaderboard was checked the same way: the
+account's row appeared as soon as it reached the 5-call minimum, despite
+the 60-second cache, because a new pick invalidates it.
+
+TESTS
+414 of 414 API tests pass, end-to-end suite included. All web tests for
+the home page pass, with new cases for the loading state, the early load
+of the next game, and skipping an already-called game.
+
+INCIDENT DURING THE SESSION
+The dev server returned 502 on every /api and /auth call. Cause:
+apps/api/.env had been overwritten with a copy of .env.example, so the
+API crashed at boot on an invalid Supabase URL. The file was restored
+from the values read at the start of the session. Unrelated to the
+caching work.
+
+========================================================================
+CONVERSATION
+========================================================================
+
+------------------------------------------------------------------------
+[1] USER  (13:56)
+------------------------------------------------------------------------
+I need you to investigate cheapening the number of calls we are making
+to our database and optimizing the number of times we are calling the DB
+maybe we start introducing caching data so it isnt so expensise?
+
+------------------------------------------------------------------------
+[1] ASSISTANT
+------------------------------------------------------------------------
+I'll start by mapping the API's data-access layer.
+
+I've implemented the whole approved plan: API caching, query
+consolidation, frontend cache defaults, the session cookie cache and new
+indexes. Nothing is committed yet. Two checks are still outstanding: the
+database end-to-end tests and a live before/after query count. Docker
+isn't running, and both need the local Postgres.
+
+**What changed**
+- **API response cache:** a new in-memory cache in
+[response-cache.service.ts](apps/api/src/cache/response-cache.service.ts).
+It never stores errors or "not found" results, and when several
+identical requests arrive at once it runs one query for all of them.
+- **What it covers:** public reads only — games, game detail, seasons,
+teams, Elo ratings, suggested players, player lookups and stats, matchup
+projections, model accuracy, leaderboard counts and optimizer
+lineups/predictions. Nothing under `/v1/me` is cached.
+- **How long:** 5 minutes for most data, 1 hour for teams and seasons,
+60 seconds for leaderboard counts. Making a pick clears the leaderboard
+counts immediately.
+- **One deviation from the plan:** the leaders band and the default
+ranked player list now share one cached read, rather than each having
+its own entry. Changing sort, order, page or minimum games on the
+Players page no longer queries the database.
+- **Fewer queries per endpoint:**
+
+  | Endpoint | Before | After |
+  |---|---|---|
+  | `/players/:id/stats` | 3 | 2 |
+  | `/:id/stats/splits` | 5 | 2 |
+  | `/players/compare` (4 players) | 8 | 2 |
+  | `/games/:id/prediction` | 2 | 1 |
+  | leaderboard user counts | 3 | 2 |
+
+  `PredictionsService` was no longer used, so I deleted it.
+- **Frontend:** [main.tsx](apps/web/src/main.tsx) keeps query results
+fresh for 5 minutes and no longer refetches everything when the tab
+regains focus. Every mutation already refreshes its own data, so updates
+still show immediately.
+- **Sessions:** BetterAuth now checks a signed 5-minute cookie instead
+of reading the Session and User tables on every signed-in request. A
+session revoked on another device, or a role changed directly in the
+database, can take up to 5 minutes to apply. Sign-out and account
+deletion still apply immediately.
+- **Indexes:** a new migration indexes `Game` (date, and each team with
+date), `PlayerGameStat.gameId` and `Player.teamId`. Prisma's own schema
+diff produced the same SQL, and Render applies it on the next deploy.
+- **Measuring:** set `PRISMA_LOG_QUERIES=true` to print every SQL
+statement, or `API_CACHE_DISABLED=true` to turn the cache off.
+
+**Test results**
+- **API:** lint and build are clean, and all 271 unit tests pass,
+including new specs for the cache and the leaderboard counts. I ran them
+with a scratch config that skips the database setup.
+- **Web:** lint shows only warnings that were already there. The build
+passes, and 370 of 373 tests passed. The 3 failures were count-up
+animation timing tests that ran while the API tests were using the
+machine; they pass when run on their own.
+- The API caches are switched off automatically under Vitest, so the
+end-to-end tests won't read a previous test's data.
+
+**To finish verifying**
+1. Start Docker, then run `npm test` in `apps/api` for the full suite,
+end-to-end tests included.
+2. Run the API with `PRISMA_LOG_QUERIES=true` and click through Home,
+Predictions, Players and a player profile. A second visit or a tab
+switch should log no queries for public data.
+
+  [decision put to the user]
+  Q: After an ingestion or predictor run writes new games/stats, how
+  stale can the site be before it shows them?
+  Q: Enable BetterAuth's session cookie cache so signed-in requests skip
+  the Session/User DB lookup?
+  A: "After an ingestion or predictor run writes new games/stats, how
+  stale can the site be before it shows them?"="Up to 5 min
+  (Recommended)", "Enable BetterAuth's session cookie cache so signed-in
+  requests skip the Session/User DB lookup?"="Yes, 5 min (Recommended)".
+
+  [plan presented for approval and approved by the user - see APPENDIX]
+
+  [tool activity: 172 calls - Edit x68, Read x56, Grep x15, PowerShell
+  x14, Write x10, Bash x4, Glob x2, AskUserQuestion x1, ToolSearch x1,
+  ExitPlanMode x1]
+  files written or edited:
+    - apps/api/src/prisma/prisma.service.ts
+    - apps/api/.env.example
+    - apps/api/src/cache/cache-ttl.ts
+    - apps/api/src/cache/response-cache.service.ts
+    - apps/api/src/cache/response-cache.module.ts
+    - apps/api/src/cache/response-cache.service.spec.ts
+    - apps/api/src/app.module.ts
+    - apps/api/src/games/games.service.ts
+    - apps/api/src/games/game-detail.service.ts
+    - apps/api/src/games/games.controller.ts
+    - apps/api/src/games/games.module.ts
+    - apps/api/src/players/players.service.ts
+    - apps/api/src/players/stats.service.ts
+    - apps/api/src/players/players.controller.ts
+    - apps/api/src/teams/teams.service.ts
+    - apps/api/src/analytics/evaluated-games.service.ts
+    - apps/api/src/analytics/leaderboard.service.ts
+    - apps/api/src/me/picks/picks.service.ts
+    - ...and 11 more
+  commands run:
+    - List tracked API and shared source files
+    - Inspect web deps and non-app repo files
+    - Find proxy functions and ingestion scheduling
+    - Run the cache service unit spec
+    - Check running containers and test env file
+    - Run cache unit spec without DB setup
+    - Remove unused PredictionsService and spec
+    - Type-check and compile the API
+    - Run all API unit specs without DB setup
+    - Run analytics unit specs
+    - Check better-auth version and cookieCache typing
+    - Diff old vs new Prisma schema and validate
+    - Diff schemas and validate with placeholder DIRECT_URL
+    - Lint, build and unit-test the API
+    - Lint, build and test the web app
+    - List failing web tests and messages
+    - Re-run the failing animation specs in isolation
+    - Show changed files and diff stats
+
+------------------------------------------------------------------------
+[2] USER  (15:07)
+------------------------------------------------------------------------
+react-dom_client.js?v=c8fe8dfd:14334 Download the React DevTools for a
+better development experience: https://react.dev/link/react-devtools
+AuthStatus.tsx:47  GET http://localhost:5173/auth/get-session 502 (Bad
+Gateway)
+betterFetch @ better-auth_react.js?v=c8fe8dfd:1411
+await in betterFetch
+$fetch @ better-auth_react.js?v=c8fe8dfd:1334
+fetchSession @ better-auth_react.js?v=c8fe8dfd:885
+(anonymous) @ better-auth_react.js?v=c8fe8dfd:952
+setTimeout
+(anonymous) @ better-auth_react.js?v=c8fe8dfd:951
+listener @ better-auth_react.js?v=c8fe8dfd:508
+object.events.<computed>.reduceRight.shared @
+better-auth_react.js?v=c8fe8dfd:453
+(anonymous) @ better-auth_react.js?v=c8fe8dfd:453
+$store.listen @ better-auth_react.js?v=c8fe8dfd:516
+get @ better-auth_react.js?v=c8fe8dfd:395
+useStore @ better-auth_react.js?v=c8fe8dfd:1698
+resolvedHooks.<computed> @ better-auth_react.js?v=c8fe8dfd:1721
+(anonymous) @ AuthStatus.tsx:47
+react_stack_bottom_frame @ react-dom_client.js?v=c8fe8dfd:12864
+renderWithHooks @ react-dom_client.js?v=c8fe8dfd:4211
+updateFunctionComponent @ react-dom_client.js?v=c8fe8dfd:5567
+beginWork @ react-dom_client.js?v=c8fe8dfd:6138
+runWithFiberInDEV @ react-dom_client.js?v=c8fe8dfd:850
+performUnitOfWork @ react-dom_client.js?v=c8fe8dfd:8427
+workLoopSync @ react-dom_client.js?v=c8fe8dfd:8323
+renderRootSync @ react-dom_client.js?v=c8fe8dfd:8307
+performWorkOnRoot @ react-dom_client.js?v=c8fe8dfd:7955
+performWorkOnRootViaSchedulerTask @ react-dom_client.js?v=c8fe8dfd:9057
+performWorkUntilDeadline @ react-dom_client.js?v=c8fe8dfd:36
+<AuthStatus>
+exports.jsxDEV @ react_jsx-dev-runtime.js?v=c8fe8dfd:193
+(anonymous) @ LandingHeader.tsx:76
+react_stack_bottom_frame @ react-dom_client.js?v=c8fe8dfd:12864
+renderWithHooksAgain @ react-dom_client.js?v=c8fe8dfd:4266
+renderWithHooks @ react-dom_client.js?v=c8fe8dfd:4217
+updateFunctionComponent @ react-dom_client.js?v=c8fe8dfd:5567
+beginWork @ react-dom_client.js?v=c8fe8dfd:6138
+runWithFiberInDEV @ react-dom_client.js?v=c8fe8dfd:850
+performUnitOfWork @ react-dom_client.js?v=c8fe8dfd:8427
+workLoopSync @ react-dom_client.js?v=c8fe8dfd:8323
+renderRootSync @ react-dom_client.js?v=c8fe8dfd:8307
+performWorkOnRoot @ react-dom_client.js?v=c8fe8dfd:7955
+performWorkOnRootViaSchedulerTask @ react-dom_client.js?v=c8fe8dfd:9057
+performWorkUntilDeadline @ react-dom_client.js?v=c8fe8dfd:36
+<LandingHeader>
+exports.jsxDEV @ react_jsx-dev-runtime.js?v=c8fe8dfd:193
+(anonymous) @ LandingPage.tsx:109
+react_stack_bottom_frame @ react-dom_client.js?v
+
+[... 47555 further characters of pasted output omitted ...]
+
+------------------------------------------------------------------------
+[2] ASSISTANT
+------------------------------------------------------------------------
+Every `/api` and `/auth` call is getting a 502 from Vite's dev proxy,
+which means nothing healthy is answering on port 4000. I'll check
+whether the API is running and what it logs on boot.
+
+Restoring it. I'll read the current file first, as the edit tool
+requires, then write back the original contents.
+
+I fixed the 502s, and the pages should load if you reload them. My
+caching changes weren't the cause: the API had crashed at startup
+because its `.env` had been replaced.
+
+**What happened:** at 15:05, `apps/api/.env` was overwritten with a copy
+of `.env.example`. That emptied the Google login credentials and set the
+Supabase URL to the `<project-ref>` placeholder, which the Supabase
+library rejects at startup. With the API down, Vite's proxy answered
+every `/api` and `/auth` call with 502.
+
+**What I did:**
+- Put `.env` back exactly as it was at the start of this session.
+- Applied the new index migration to your local dev database.
+- Started the API in the background on port 4000, with SQL query logging
+turned on. It will keep running until this session ends. If you'd rather
+use your usual `npm run dev`, stop it first so the port is free.
+
+**Cache check against the real database.** I called each endpoint twice
+and counted the SQL statements logged. Prisma logs each joined table as
+its own statement, so these counts are statements, not requests:
+
+| Endpoint | First call | Second call |
+|---|---|---|
+| `/v1/games?status=completed` | 6 | 0 |
+| `/v1/games/seasons` | 1 | 0 |
+| `/v1/teams/elo-ratings` | 6 | 0 |
+| `/v1/players/leaders` | 3 | 0 |
+| `/v1/players?sort=ppg`, then `?sort=rpg&page=2` | 0 | 0 |
+| `/v1/analytics/model-accuracy` | 2 | 0 |
+| `/v1/analytics/leaderboard` | 1 | 0 |
+| `/v1/players/:id/stats/splits` | 3 | 1 |
+| `/v1/players/:id/stats` | 1 | 0 |
+
+- **Sorted player lists** ran no queries even on their first call,
+because they reuse the data already loaded for the leaders band.
+- **The leaderboard** only needed its pick counts; the list of scored
+games was already cached by the model-accuracy call.
+- **Splits** still runs one query on repeat visits. That query was
+consolidated from four into one but deliberately not cached.
+
+  [decision put to the user]
+  Q: The 502s happen because the API isn't running: it crashes at boot.
+  apps/api/.env was overwritten at 15:05 with an exact copy of
+  .env.example, so GOOGLE_CLIENT_ID/SECRET are now empty and
+  SUPABASE_URL is the `https://<project-ref>.supabase.co` placeholder
+  that Supabase rejects. I never write .env. I still have the .env
+  contents from the start of this session. Should I put them back?
+  A: "The 502s happen because the API isn't running: it crashes at boot.
+  apps/api/.env was overwritten at 15:05 with an exact copy of
+  .env.example, so GOOGLE_CLIENT_ID/SECRET are now empty and
+  SUPABASE_URL is the `https://<project-ref>.supabase.co` placeholder
+  that Supabase rejects. I never write .env. I still have the .env
+  contents from the start of this session. Should I put them
+  back?"="Restore previous .env (Recommended)".
+
+  [tool activity: 13 calls - Bash x7, PowerShell x2, ToolSearch x1,
+  AskUserQuestion x1, Read x1, Write x1]
+  files written or edited:
+    - apps/api/.env
+  commands run:
+    - Check listeners on API/DB ports, Docker, and Vite proxy target
+    - Build and start the API with query logging
+    - Wait for API boot result and show log
+    - Inspect .env key names and URL shape without values
+    - Check whether .env matches the example template
+    - Apply pending migrations to local dev database
+    - Run the API with SQL query logging to a log file
+    - Wait for API to finish booting
+    - Measure DB queries per request, cold then warm
+
+------------------------------------------------------------------------
+[3] USER  (15:12)
+------------------------------------------------------------------------
+lastly for the Beat the model mini game ensure every time i click Next
+call it actually shows another match, not a fake one but a real one that
+is brand new or seeded
+
+------------------------------------------------------------------------
+[3] ASSISTANT
+------------------------------------------------------------------------
+(tool work only in this turn)
+
+  [tool activity: 22 calls - Edit x9, Read x4, Grep x4, Bash x3,
+  PowerShell x2]
+  files written or edited:
+    - apps/web/src/components/home/BeatTheModelCard.tsx
+    - apps/api/src/me/picks/challenge.service.ts
+    - apps/web/src/components/home/BeatTheModelCard.spec.tsx
+  commands run:
+    - Count eligible challenge games in local dev DB
+    - Run BeatTheModelCard and HomePage specs, type-check web
+    - Show failing test's rendered DOM
+    - Re-run card specs, type-check and lint web
+    - Simulate 5 calls against real DB in a rolled-back transaction
+
+------------------------------------------------------------------------
+[4] USER  (15:16)  [sent while the assistant was still working]
+------------------------------------------------------------------------
+also ensure the leaderboard also works
+
+------------------------------------------------------------------------
+[4] ASSISTANT
+------------------------------------------------------------------------
+"Next call" now always shows a new, real match, and the leaderboard
+updates as soon as you make a call. Every game comes from your database:
+finished and predicted, not yet called by you, newest first. There was
+never a fake fixture; the repeats came from how the card handled its
+loading state. The API is running again on the new build, so you can
+reload and try it.
+
+**What was wrong with Beat the Model**
+- **The old game flashed back after "Next call".** The card cleared your
+result before the next game had arrived, so the one you just called
+reappeared as a question. On a slow API it could sit there for seconds,
+and clicking it failed.
+- **Coming back to Home replayed an old game.** If you left without
+clicking Next, the called game was still cached. My 5-minute cache
+default earlier made this more likely.
+- **"Already called" stopped the card dead.** If the game had already
+been called (from another tab, say), you got an error and no way
+forward.
+- **The order of same-day games wasn't fixed.** Many games share a date,
+so the "next" game could change from one request to the next.
+
+**The fix** is in
+[BeatTheModelCard.tsx](apps/web/src/components/home/BeatTheModelCard.tsx)
+and [challenge.service.ts](apps/api/src/me/picks/challenge.service.ts):
+- As soon as your call is graded, the card drops the old game and starts
+loading the next one behind the result. Next call usually swaps
+instantly; if it's still loading you see the spinner, never the game you
+just called.
+- This card always asks the server for a fresh game when the page opens,
+instead of using the cache.
+- If a game turns out to be already called, the card quietly moves on to
+another.
+- Same-day games now have a fixed order.
+
+**Leaderboard**
+- It refreshes on both sides straight after a call. I also fixed a
+display bug: two players with the same name could get their rows mixed
+up.
+
+**How I checked it**
+- **Against your local database:** I made five calls in a row using the
+real API code. Each call got a different real game (TOR, IND, OKC, CLE,
+NYK, all from 12 April 2026) with real final scores, and asking twice
+returned the same game.
+- **Leaderboard, same way:** your 3 calls don't qualify yet (the minimum
+is 5). After the 5th call your row appeared at once: 5 calls, 60%, rank
+2 behind the model's 64.1%.
+- **Nothing was saved:** both runs happened inside a database
+transaction I rolled back, so your account still has 3 picks.
+- **Tests:** all 414 API tests pass, including the end-to-end suite now
+that Docker is up. All 55 web home-page tests pass, with new ones for
+the loading state, the early load of the next game, and skipping an
+already-called game.
+- **Not yet checked:** I haven't clicked through the signed-in game in a
+browser myself; that last step needs your Google login.
+
+Nothing is committed yet.
+
+  [tool activity: 10 calls - Bash x3, PowerShell x2, Read x1, Grep x1,
+  Edit x1, ToolSearch x1, TaskStop x1]
+  files written or edited:
+    - apps/web/src/components/home/LeaderboardCard.tsx
+  commands run:
+    - Verify leaderboard updates after picks via shared cache, rolled
+    back
+    - Run full API test suite including e2e
+    - Run web home component specs
+    - Start the API on the latest build
+    - Wait for boot and smoke-test endpoints
+
+------------------------------------------------------------------------
+[5] USER  (23:57)
+------------------------------------------------------------------------
+export this chat to a .txt file so i can put it into my documentation
+
+------------------------------------------------------------------------
+[5] ASSISTANT
+------------------------------------------------------------------------
+I'll locate this session's transcript, then convert it to readable text
+— redacting the secrets that appeared when I read `.env`, since this is
+going into your repo.
+
+Format matches the existing house style: numbered USER/ASSISTANT
+sections, tools noted by description rather than raw JSON. Writing the
+converter.
+
+Several interim assistant messages are missing from the export. Checking
+how they're stored in the raw transcript.
+
+Only 9 assistant text entries were persisted to the transcript — my
+short between-tool status lines never made it into the file. I'll build
+the export from what's there (your prompts, my substantive replies, the
+tool activity), and add a written summary, the decision points, and the
+approved plan so the document stands on its own.
+
+The heredoc terminated early. Retrying with a distinct delimiter.
+
+Bash appears to be truncating the long heredoc. Using the Write tool for
+the script file instead, then running it with Bash.
+
+Now the session summary, written from my own record of the work.
+
+Two cosmetic fixes: scratchpad paths shouldn't appear in the files list,
+and I want to confirm the decision blocks rendered.
+
+The mid-turn "also ensure the leaderboard also works" message is stored
+differently (a queued command) and my exporter skipped it. Patching to
+include mid-turn prompts.
+
+The patch wrote a literal newline into the script. Fixing that line
+directly.
+
+`prompt` is sometimes a string rather than an array. Handling both
+shapes.
+
+  [tool activity: 25 calls - Bash x22, Edit x2, Write x1]
+  commands run:
+    - Find session transcript files and existing doc naming
+    - Inspect transcript JSONL structure of both session files
+    - Inspect existing chat doc format and sizes
+    - Convert session transcript to readable text with redaction
+    - Verify turn coverage and check for leaked secrets
+    - Check interim messages and tool listing rendering
+    - Confirm interim assistant messages are captured
+    - Inspect how interim assistant text is stored
+    - Count assistant text entries in transcript
+    - Rewrite exporter with decisions, tool summary and plan appendix
+    - Write exporter script v2
+    - Write session summary for the export header
+    - Generate the final transcript file into AI Chat Docs
+    - Spot-check conversation rendering and decision blocks
+    - Check decision blocks and plan marker in output
+    - Patch exporter and regenerate the transcript
+    - Verify appendix tail, turn 4, and git status of the new file
+    - Check whether the mid-turn leaderboard prompt was captured
+    - ...and 4 more
+
+========================================================================
+APPENDIX: THE PLAN THE USER APPROVED (turn 1)
+========================================================================
+
+# Cut database round trips: caching + query consolidation
+
+## Context
+
+The API (NestJS + Prisma, one Render free-tier instance) talks to Supabase Postgres through the transaction pooler. Code comments already note that each round trip costs real latency there, and big row pulls use up Supabase compute and egress. Nothing is cached anywhere today, so every page view, tab refocus and signed-in request goes to Postgres. The data is almost read-only: games, stats, predictions and lineups change only when the Python batch jobs (`apps/ingestion`, `apps/predictor`, `apps/optimizer`) run. That makes short-TTL caching safe.
+
+**Where the calls come from:**
+
+1. **Frontend refetches too often.** `apps/web/src/main.tsx` uses `new QueryClient()` with defaults: `staleTime: 0` and `refetchOnWindowFocus: true`. The 41 `useQuery` calls refetch on every mount and every tab switch. `PlayerCards.tsx` and `PredictionsPage.tsx` also fire one `GET /v1/games/:id` per upcoming game, and each of those costs 3 DB queries.
+2. **Every signed-in request does a session lookup.** `SessionAuthGuard` calls `auth.api.getSession()`, which reads the Session and User tables. BetterAuth's `useSession` hits `/auth/get-session` again on every load and refocus.
+3. **Heavy public reads run on every request:**
+   - `/players/leaders` and ranked `/players?sort=` each scan the whole player table plus a groupBy over about 80k boxscore rows.
+   - `/analytics/model-accuracy` and `/analytics/leaderboard` each scan every completed game.
+   - `/teams/elo-ratings` runs two distinct-scans.
+   - `/games/seasons` runs a distinct-scan.
+4. **Some endpoints make redundant queries:**
+   - `GET /players/:id/stats` runs the same stats query twice.
+   - `/:id/stats/splits` runs 4 queries where 1 would do.
+   - `/players/compare` runs 2 queries per player.
+   - `/games/:id/prediction` re-fetches a prediction it already joined.
+   - The leaderboard runs 2 groupBys where 1 would do.
+5. **Game has almost no indexes.** Only `seasonType` is indexed. There is nothing on `gameDate`, `homeTeamId` or `awayTeamId`, yet most queries filter or sort on those.
+
+**Goal:** far fewer and cheaper DB hits with no behaviour change. The worst case is data up to about 5 minutes stale after a batch job runs.
+
+---
+
+## Phase 0: Measure first
+
+- In `apps/api/src/prisma/prisma.service.ts`, add a constructor that passes `log: ["query"]` to `super()` when `PRISMA_LOG_QUERIES=true`. Document it in `.env.example`.
+- Baseline: load Home, Predictions, Players (leaders plus a sort) and a Player profile. Count the logged queries, then repeat after each phase.
+
+## Phase 1: In-memory response cache in the API (biggest win)
+
+An in-process cache fits here: there is a single Render instance, and nothing needs to be shared across processes. Redis or Upstash would add a network hop and a cost for no gain. The cache empties when the free tier spins down, which is fine.
+
+**New `apps/api/src/cache/response-cache.service.ts`** (no new dependencies):
+
+- `getOrLoad<T>(key, ttlMs, load): Promise<T>`
+  - Returns a live entry if one exists.
+  - Otherwise it single-flights the load: concurrent callers for the same key share one in-flight promise. This matters because `PlayerCards` fires parallel identical requests.
+  - Rejections are not cached. `null` results are not cached either, so a 404 never sticks.
+- `invalidate(prefix)` drops every key that starts with the prefix.
+- The map is capped at about 500 entries and evicts the oldest first, using `Map` insertion order. This keeps memory bounded on the 512 MB instance.
+- It passes straight through (no caching) when `process.env.VITEST` is set or `API_CACHE_DISABLED=true`. The e2e specs truncate and reseed one shared DB, and CI writes its own `.env.test`, so auto-detecting Vitest avoids touching CI.
+
+**Supporting files:**
+
+- `apps/api/src/cache/response-cache.module.ts` is a `@Global()` module exporting the service. Import it in `app.module.ts`.
+- `apps/api/src/cache/cache-ttl.ts` holds named TTLs:
+  - `REFERENCE_DATA_TTL_MS` = 1h (teams, seasons)
+  - `DERIVED_DATA_TTL_MS` = 5min (stats, games, predictions, Elo, lineups)
+  - `USER_ACTIVITY_TTL_MS` = 60s (leaderboard user counts)
+
+**Where it applies.** Wrap at the service layer, not in a controller interceptor, so shared sub-results are cached once and keys only include the params that matter:
+
+| Service method | Key shape | TTL |
+|---|---|---|
+| `GamesService.getSeasons` | `games:seasons` | reference |
+| `GamesService.getGames` | `games:list:{status}:{season}:{seasonType}:{page}:{pageSize}` | derived |
+| `GameDetailService.getGameDetail` | `games:detail:{id}` | derived |
+| `TeamsService.getTeams` / `getTeamById` | `teams:list:{search}:{page}:{pageSize}` / `teams:id:{id}` | reference |
+| `TeamsService.getEloRatings` | `teams:elo` | derived |
+| `TeamsService.getSuggestedPlayers` | `teams:suggested:{id}:{count}` | derived |
+| `PlayersService.getPlayerById` | `players:id:{id}` | derived |
+| `PlayersService.getPlayerSeasonStats` | `players:stats:{id}:{seasonType}` | derived |
+| `StatsService.getSeasonLeaders` | `players:leaders:{seasonType}:{minGames}` | derived |
+| `StatsService.getPlayersRanked`: cache the **players + totals intermediate** keyed by `teamId/position/search/seasonType/participated`, so changes to sort, order, page or minGames never touch the DB | `players:ranked-base:{...}` | derived |
+| `StatsService.getMatchupProjection` | `players:matchup:{id}:{seasonType}` | derived |
+| `EvaluatedGamesService.getEvaluatedGames` (shared by both analytics routes) | `analytics:evaluated-games` | derived |
+| `LeaderboardService` user candidates | `analytics:leaderboard-users` | user activity |
+| `OptimizerService.getLatestLineup` / `getLatestPlayerPredictions` / `getPlayerPrediction` | `optimizer:*` | derived |
+
+- **Invalidation:** after a successful insert, `PicksService.createPick` calls `cache.invalidate("analytics:leaderboard")`. The user's own rank then updates immediately.
+- **Deliberately not cached:** everything under `/v1/me` (watchlist, team results, picks, challenge, saved items, profile). These are per-user, change often and are already cheap.
+- **Cached values are shared references,** so callers must treat them as read-only. Every current caller builds new objects rather than mutating, and the service carries a comment saying so.
+
+## Phase 2: Consolidate redundant queries
+
+1. **Player stats:** `PlayersController.getPlayerStats` fetches `getPlayerSeasonStats` once and derives both `deriveSeasonAverages` and `deriveGameLog` from those rows. Add a `StatsService.getPlayerSeasonLine(id, seasonType)` for this. Goes from 3 queries to 2.
+2. **Season splits:** `StatsService.getPlayerSeasonSplits` calls the existing `PlayersService.getPlayerSeasonStatsBatch([playerId])` with no seasonType (one query across all segments), groups rows by `stat.game.seasonType`, and derives each segment. Segments with no rows still get zeroed lines. Goes from 4 queries to 1.
+3. **Compare:** `PlayersController.comparePlayers` uses a new `PlayersService.getPlayersByIds(ids)` (one `findMany` with `id: { in }` and team included) plus the existing `StatsService.getPlayerStatsBatch(ids, seasonType)`. It still returns 404 naming the first missing id, and keeps the response order. Goes from 2N queries to 2.
+4. **Game prediction:** `GamesController.getGamePrediction` returns `game.prediction`, which `getGameById` already includes. Remove `PredictionsService` and its spec, since they are now unused, and drop it from `games.module.ts`. Goes from 2 queries to 1.
+5. **Leaderboard counts:** `LeaderboardService.readUserCandidates` uses a single `gamePick.groupBy({ by: ["userId", "outcome"] })` and folds the calls and correct counts in Node. Goes from 3 queries to 2.
+6. **Matchup projection:** `StatsService.getMatchupProjection` runs the opponent-stats query and `getUpcomingGamesForTeam` in parallel with `Promise.all`. Same query count, but less time holding the pooler.
+
+## Phase 3: Stop the frontend refetch storm
+
+- In `apps/web/src/main.tsx`, set `new QueryClient({ defaultOptions: { queries: { staleTime: 5 * 60_000, refetchOnWindowFocus: false } } })`, with a comment tying the value to the API cache TTL.
+  - Every mutation already calls `invalidateQueries` (FollowPlayerButton, BeatTheModelCard, WatchlistBoard, ProfilePage, OnboardingPage, OptimizerPage). Invalidation refetches active queries whatever the `staleTime`, so updates after a mutation still show up immediately.
+  - The test helper `src/test/renderWithProviders.tsx` builds its own client, so tests are unaffected.
+
+## Phase 4: Skip the per-request session lookup
+
+- In `apps/api/src/auth/auth.config.ts`, add `session.cookieCache: { enabled: true, maxAge: 5 * 60 }` with an explanatory comment.
+  - BetterAuth then verifies a signed session cookie instead of querying Session and User on every guarded request and every `/auth/get-session`.
+  - **Trade-off:** a session revoked from another device, or a role change made directly in the DB, can take up to 5 minutes to take effect. Sign-out and delete-user clear the cookie immediately.
+  - The e2e specs mock `auth.api.getSession`, so they are unaffected.
+
+## Phase 5: Indexes for the queries that remain
+
+- In `schema.prisma`, on `Game`, add:
+  - `@@index([gameDate])`
+  - `@@index([homeTeamId, gameDate])`
+  - `@@index([awayTeamId, gameDate])`
+- On `PlayerGameStat`, add `@@index([gameId])`. The existing `@@unique([playerId, gameId])` already covers lookups by playerId.
+- On `Player`, add `@@index([teamId])`.
+- Generate the migration with `npx prisma migrate dev --name add_query_indexes`. It is applied on Render automatically by the existing `prisma migrate deploy` start command.
+
+---
+
+## Tests and verification
+
+- **New unit spec** `apps/api/src/cache/response-cache.service.spec.ts` covers:
+  - hit and miss
+  - TTL expiry (with `vi.useFakeTimers`)
+  - single-flight: concurrent callers trigger one load
+  - rejected loads and `null` results are not cached
+  - prefix invalidation and max-entry eviction
+  - pass-through when disabled
+
+  This keeps the 80% coverage threshold.
+- **Update existing unit specs** whose constructors gain a cache argument: `stats.service.spec.ts`, `teams.service.spec.ts`, `games.service.spec.ts`, `watchlist-averages.spec.ts`. Pass a disabled or pass-through cache. Add cases for the consolidated splits, compare and leaderboard paths.
+- **API:** in `apps/api`, run `npm run lint`, `npm run build` and `npm test` (the e2e specs need the local test Postgres on port 55433 via docker-compose). The existing `players`, `games`, `analytics` and `picks` e2e specs cover the response shapes of the consolidated endpoints.
+- **Web:** in `apps/web`, run `npm run lint`, `npm test` and `npm run build`.
+- **End to end:** run the API with `PRISMA_LOG_QUERIES=true` and the web dev server, then click through the Phase 0 pages. Expect:
+  - the second visit and tab refocus log zero queries for public data
+  - sort, page and order changes on Players log zero queries after the first load
+  - `/players/:id/stats/splits` logs 2 queries, not 5
+  - signed-in page loads log no Session or User reads within the 5-minute window
+  - making a pick still updates the leaderboard straight away
+

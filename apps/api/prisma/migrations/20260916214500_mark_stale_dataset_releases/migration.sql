@@ -1,0 +1,2 @@
+ALTER TABLE "DatasetRelease"
+ADD COLUMN "isStale" BOOLEAN NOT NULL DEFAULT false;

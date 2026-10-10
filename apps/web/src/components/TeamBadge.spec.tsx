@@ -19,6 +19,13 @@ describe("TeamBadge", () => {
     expect(screen.getByText("LAL")).toHaveStyle({ backgroundColor: "#552583" });
   });
 
+  it("prefers a supplied logoUrl over deriving one from nbaTeamId", () => {
+    render(
+      <TeamBadge team={{ abbreviation: "LAL", nbaTeamId: 1610612747, logoUrl: "https://example.com/lal.svg" }} />
+    );
+    expect(screen.getByRole("img", { name: "LAL logo" })).toHaveAttribute("src", "https://example.com/lal.svg");
+  });
+
   it("renders the abbreviation badge directly when no nbaTeamId is given", () => {
     render(<TeamBadge team={{ abbreviation: "LAL" }} />);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();

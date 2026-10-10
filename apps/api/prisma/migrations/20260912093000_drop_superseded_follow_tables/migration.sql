@@ -1,0 +1,34 @@
+-- Drops the two follow tables that 20260910134345_home_personalization
+-- created, now that 20260911120912_add_user_personalization has landed with
+-- its own, overlapping design.
+--
+-- There were briefly two ways to record the same fact:
+--
+--   FollowedPlayer (this branch)      vs  UserFollowedPlayer (main)
+--   FollowedTeam.isPrimary            vs  User.favoriteTeamId
+--
+-- Two tables for "who do you follow" is not a merge conflict, it is a bug:
+-- onboarding wrote UserFollowedPlayer / favoriteTeamId while the home page
+-- read the other pair, so a user who had actually chosen players and a team
+-- saw an empty watchlist and an empty results strip. One source of truth per
+-- fact, and the survivor is the pair the onboarding flow already writes.
+--
+-- FollowedPlayer carried a per-player scouting note that UserFollowedPlayer
+-- has no column for. That feature goes with the table rather than being
+-- rebuilt on the survivor, which is a deliberate loss of function, not an
+-- oversight -- see the watchlist board, which no longer offers to write one.
+--
+-- Rather than editing 20260910134345 to stop creating these, this is a
+-- forward migration: any database that already applied that one (prod did,
+-- before the feature was reverted out of main) would see a changed checksum
+-- and refuse to migrate at all. Render runs `prisma migrate deploy` on boot
+-- and deliberately fails the boot if it errors, so a checksum mismatch there
+-- is an outage, not a warning.
+--
+-- IF EXISTS because a database whose history skipped 20260910134345 never
+-- had these tables, and dropping what was never created must not be an error.
+-- No data is migrated across: both tables only ever held rows in local and
+-- preview databases.
+
+DROP TABLE IF EXISTS "FollowedTeam";
+DROP TABLE IF EXISTS "FollowedPlayer";

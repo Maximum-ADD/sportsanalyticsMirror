@@ -47,7 +47,7 @@ export function resolveTeamColors(abbreviation: string): TeamColors {
 }
 
 interface TeamBadgeProps {
-  team: Pick<Team, "abbreviation"> & Partial<Pick<Team, "nbaTeamId">>;
+  team: Pick<Team, "abbreviation"> & Partial<Pick<Team, "nbaTeamId">> & { logoUrl?: string | null };
   size?: "sm" | "md";
   className?: string;
 }
@@ -57,10 +57,14 @@ export function TeamBadge({ team, size = "md", className }: TeamBadgeProps) {
   const { primary, secondary } = resolveTeamColors(team.abbreviation);
   const sizeClass = size === "sm" ? "size-6 text-[10px]" : "size-10 text-xs";
 
-  if (team.nbaTeamId && !logoFailed) {
+  // Some endpoints (e.g. the challenge game) hand back a ready-made logoUrl
+  // instead of an nbaTeamId to derive one from — prefer it when present.
+  const logoSrc = team.logoUrl ?? (team.nbaTeamId ? getTeamLogoUrl(team.nbaTeamId) : null);
+
+  if (logoSrc && !logoFailed) {
     return (
       <img
-        src={getTeamLogoUrl(team.nbaTeamId)}
+        src={logoSrc}
         alt={`${team.abbreviation} logo`}
         className={cn("inline-block shrink-0 rounded-full object-contain", sizeClass, className)}
         onError={() => setLogoFailed(true)}

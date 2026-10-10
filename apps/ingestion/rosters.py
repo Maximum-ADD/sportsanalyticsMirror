@@ -6,6 +6,8 @@ overall call budget. Requires RATE_LIMIT_DELAY_SECONDS between calls (see
 throttle.py) since, unlike the static team list, this hits the live API.
 """
 
+from collections.abc import Iterable
+
 from nba_api.stats.endpoints import commonteamroster
 
 from throttle import call_with_rate_limit
@@ -79,3 +81,36 @@ def upsert_players(cursor, players: list[dict], team_internal_id: str) -> dict[i
         row = cursor.fetchone()
         player_id_by_nba_id[row["nbaPlayerId"]] = row["id"]
     return player_id_by_nba_id
+
+
+def select_first_names_by_nba_id(cursor, nba_player_ids: Iterable[int | None]) -> dict[int, str]:
+    """nbaPlayerId -> firstName for the given players, from the Player table.
+
+    The stats derivation needs full first names to tell apart teammates who
+    share a surname and an initial ("Jal. Williams" and "Jay. Williams" in a
+    credit), and play-by-play doesn't carry them: its playerNameI is
+    "J. Williams" for both. Ids that are None or the team sentinel (0) are
+    ignored, so a game's raw personIds can be passed straight in; a player
+    missing from the table is simply absent from the result.
+    """
+    known_ids = sorted({nba_player_id for nba_player_id in nba_player_ids if nba_player_id})
+    if not known_ids:
+        return {}
+    cursor.execute(
+        'SELECT "nbaPlayerId", "firstName" FROM "Player" WHERE "nbaPlayerId" = ANY(%s)',
+        (known_ids,),
+    )
+    return {row["nbaPlayerId"]: row["firstName"] for row in cursor.fetchall()}
+
+
+def select_player_ids_by_nba_id(cursor) -> dict[int, str]:
+    """nbaPlayerId -> internal id for every player already in the Player table.
+
+    What a pull uses in place of fresh rosters when it must not write any:
+    a past season (see ingest.py's resolve_player_ids) or a single phase run
+    against a database that already has them (ingest_postseason.py). A
+    player missing from the table has their plays rejected as
+    UNKNOWN_PLAYER and their stat rows skipped.
+    """
+    cursor.execute('SELECT "nbaPlayerId", "id" FROM "Player"')
+    return {row["nbaPlayerId"]: row["id"] for row in cursor.fetchall()}

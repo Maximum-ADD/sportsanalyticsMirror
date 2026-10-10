@@ -5,15 +5,33 @@ build/
 .env.local
 .env.test
 *.log
+*.tsbuildinfo
 .DS_Store
+.vscode
 
 apps/api/prisma/dev.db
 apps/api/generated/
 
+# Database dumps taken before hand-run production writes (see
+# apps/ingestion/README.md). These contain the real User/Session/Account
+# tables — email addresses and live Google OAuth access/refresh tokens — so
+# committing one means rotating every credential in it.
+# Deliberately not a blanket *.sql: that would silently swallow new Prisma
+# migrations under apps/api/prisma/migrations/.
+*.dump
+*-backup-*.sql
+*-backup-*.sql.gz
+
 .vite/
 coverage/
 coverage-report/
+
+# A self-hosted act_runner's local state, including ci-runner/data/.runner,
+# which holds the runner's registration token. One was committed to main on
+# 12 Sep; registering a runner from a checkout must never put that file back.
+ci-runner/
 test-report.json
+.wrangler/
 
 apps/optimizer/.venv/
 apps/optimizer/__pycache__/
@@ -26,3 +44,11 @@ apps/predictor/**/__pycache__/
 apps/ingestion/.venv/
 apps/ingestion/__pycache__/
 apps/ingestion/**/__pycache__/
+
+apps/similarity/.venv/
+apps/similarity/__pycache__/
+apps/similarity/**/__pycache__/
+
+apps/valuation/.venv/
+apps/valuation/__pycache__/
+apps/valuation/**/__pycache__/

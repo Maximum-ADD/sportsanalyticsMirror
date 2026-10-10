@@ -1,0 +1,264 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { ApiError } from "@/lib/apiClient";
+import { fetchWatchlist } from "@/lib/nbaApi";
+import { unfollowPlayer } from "@/lib/meApi";
+import { ME_QUERY_KEY } from "@/lib/useMe";
+import { signInWithGoogle } from "@/lib/authClient";
+import { requireStat } from "@/lib/statGlossary";
+import { PlayerHeadshot } from "@/components/PlayerHeadshot";
+import { TeamBadge } from "@/components/TeamBadge";
+import { LockerSection } from "./LockerSection";
+import { PointsSparkline } from "./PointsSparkline";
+import type { WatchlistEntry } from "@/types/nba";
+
+const UNAUTHENTICATED_STATUS = 401;
+
+// The board asks for more than a default page in one request; 100 is the
+// API's own pageSize cap. Past that this would need real pagination, which a
+// home-page module is the wrong place for.
+const BOARD_PAGE_SIZE = 100;
+
+/** The query key the unfollow mutation invalidates, alongside the profile. */
+export const WATCHLIST_QUERY_KEY = ["watchlist"];
+
+// The card is too narrow to spell each label out under its figure the way a
+// stat tile does, so the board carries one visible key line under the grid
+// instead, and each label is read out in full to a screen reader rather than
+// spelled "P-P-G".
+function StatPair({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <span className="block font-mono text-[9px] tracking-[0.14em] text-locker-ink-muted uppercase">
+        <span aria-hidden>{label}</span>
+        <span className="sr-only normal-case">{requireStat(label).name}</span>
+      </span>
+      <span className="block font-display text-lg text-landing-ink tabular-nums">{value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+/**
+ * The players this user follows, with how they are actually doing.
+ *
+ * Reads GET /v1/me/watchlist, which derives every figure at request time from
+ * the PlayerGameStat rows the ingestion already holds — nothing here is stored
+ * or invented. Who you follow comes from the same follow graph the rest of the
+ * app writes (User.followedPlayers via /v1/me/followed-players/:playerId), so
+ * a player followed during onboarding or from a player page appears here
+ * immediately, and removing one here removes it everywhere.
+ *
+ * This is the page's clearest argument for having an account: the averages
+ * are public, but which players you care about is not.
+ */
+export function WatchlistBoard() {
+  const watchlistQuery = useQuery({
+    queryKey: WATCHLIST_QUERY_KEY,
+    queryFn: () => fetchWatchlist({ pageSize: BOARD_PAGE_SIZE }),
+    // Signed out is a state, not a fault; retrying a 401 only delays it.
+    retry: (failureCount, error) =>
+      !(error instanceof ApiError && error.status === UNAUTHENTICATED_STATUS) && failureCount < 2,
+  });
+
+  if (watchlistQuery.isPending) {
+    return (
+      <LockerSection title="Your watchlist">
+        <div
+          role="status"
+          aria-label="Loading your watchlist"
+          className="grid animate-pulse grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3"
+        >
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="h-32 border border-landing-light bg-locker-surface" />
+          ))}
+        </div>
+      </LockerSection>
+    );
+  }
+
+  const error = watchlistQuery.error;
+
+  if (error instanceof ApiError && error.status === UNAUTHENTICATED_STATUS) {
+    return (
+      <LockerSection title="Your watchlist">
+        <div className="border border-dashed border-landing-light bg-locker-surface p-5">
+          <p className="mb-3.5 max-w-[62ch] text-[12.5px] text-locker-ink-muted">
+            Follow the players you actually care about and this board keeps their scoring, rebounding and
+            assists in one place. It is kept to your account, which is why it needs one.
+          </p>
+          <button
+            type="button"
+            onClick={() => signInWithGoogle(window.location.href)}
+            className="leather-texture h-11 px-5 font-display text-sm tracking-[0.07em] text-white uppercase transition-opacity hover:opacity-90"
+          >
+            Sign in to build one
+          </button>
+        </div>
+      </LockerSection>
+    );
+  }
+
+  if (watchlistQuery.isError || !watchlistQuery.data) {
+    return (
+      <LockerSection title="Your watchlist">
+        <div className="border border-landing-light bg-locker-surface p-5">
+          <p className="text-[12.5px] text-locker-bad">Could not load your watchlist.</p>
+          <button
+            type="button"
+            onClick={() => watchlistQuery.refetch()}
+            className="mt-2 text-[12.5px] text-locker-leather underline underline-offset-[3px]"
+          >
+            Try again
+          </button>
+        </div>
+      </LockerSection>
+    );
+  }
+
+  const { data: entries, total } = watchlistQuery.data;
+
+  return (
+    <LockerSection
+      title={`Your watchlist · ${total} ${total === 1 ? "player" : "players"}`}
+      action={
+        <Link
+          to="/players"
+          className="font-mono text-[10px] tracking-[0.14em] whitespace-nowrap text-locker-ink-muted uppercase hover:text-locker-leather"
+        >
+          Add players
+        </Link>
+      }
+    >
+      {entries.length === 0 ? (
+        <p className="border border-dashed border-landing-light bg-locker-surface p-5 text-center text-[12.5px] text-locker-ink-muted">
+          Nothing here yet.{" "}
+          <Link to="/players" className="text-locker-leather underline underline-offset-[3px]">
+            Find a player
+          </Link>{" "}
+          and follow them — this board fills out from the boxscores we already hold.
+        </p>
+      ) : (
+        <>
+          <ul className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+            {entries.map((entry) => (
+              <li key={entry.player.id}>
+                <WatchlistCard entry={entry} />
+              </li>
+            ))}
+          </ul>
+          {/* Says what the averages span as well as what they are: they take
+              in every game we hold for the player, so "this season" would be
+              wrong for anyone with earlier seasons or playoffs on record. */}
+          <p className="mt-2.5 text-[11.5px] text-locker-ink-muted">
+            PPG, RPG and APG are points, rebounds and assists per game, across every game we hold for the player.
+          </p>
+        </>
+      )}
+    </LockerSection>
+  );
+}
+
+/**
+ * One followed player: their numbers, their trend, and a way to drop them.
+ *
+ * The whole card links to the player's page via the "stretched link"
+ * pattern — a full-card anchor absolutely positioned behind the rest of the
+ * content — rather than wrapping the card in an anchor directly, since an
+ * anchor wrapping the Remove button would be invalid HTML that keyboard and
+ * screen reader users hit first. The Remove button sits in normal flow
+ * above the stretched link (z-10) so it stays independently clickable and
+ * focusable in its own right, in document order before the stretched link.
+ *
+ * The card also carries a visible "View profile →" cue in its footer,
+ * because the hover border tint alone was not read as a link — and a hover
+ * state is invisible to keyboard users however it is styled.
+ */
+function WatchlistCard({ entry }: { entry: WatchlistEntry }) {
+  const queryClient = useQueryClient();
+  const fullName = `${entry.player.firstName} ${entry.player.lastName}`;
+
+  const removeMutation = useMutation({
+    mutationFn: () => unfollowPlayer(entry.player.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: WATCHLIST_QUERY_KEY });
+      // The same follow graph backs the profile, and the follow buttons on
+      // the player pages render from it — leaving it stale would show a
+      // player as followed right after they were dropped here.
+      queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY });
+    },
+  });
+
+  const { seasonAverages } = entry;
+  // The API sends the most recent game first; a sparkline reads left to right
+  // in time, so it has to be reversed rather than plotted as delivered.
+  const pointsOldestFirst = [...entry.recentPoints].reverse().map((game) => game.points);
+
+  return (
+    <div className="group relative flex h-full flex-col border border-landing-light bg-locker-surface p-3 transition-colors hover:border-locker-leather">
+      <div className="mb-2.5 flex items-center gap-2.5">
+        <PlayerHeadshot
+          player={entry.player}
+          size="sm"
+          className="size-8 bg-[#c3bfb9] text-locker-ink-muted"
+        />
+        <span className="text-[12.5px] leading-tight font-semibold text-landing-ink">{fullName}</span>
+        {entry.player.team && (
+          <TeamBadge
+            team={{ abbreviation: entry.player.team.abbreviation, nbaTeamId: entry.player.team.nbaTeamId }}
+            size="sm"
+            className="ml-auto"
+          />
+        )}
+      </div>
+
+      <div className="mb-2 flex gap-4">
+        <StatPair label="PPG" value={seasonAverages.pointsPerGame} />
+        <StatPair label="RPG" value={seasonAverages.reboundsPerGame} />
+        <StatPair label="APG" value={seasonAverages.assistsPerGame} />
+      </div>
+
+      {/* An honest empty state beats a flat line at zero: a followed player
+          with no boxscores has not played, which is not the same as scoring
+          nothing. */}
+      {pointsOldestFirst.length > 0 ? (
+        <PointsSparkline points={pointsOldestFirst} playerName={fullName} />
+      ) : (
+        <p className="text-[11px] text-locker-ink-muted">No games on record yet.</p>
+      )}
+
+      {removeMutation.error instanceof Error && (
+        <p role="alert" className="relative z-10 mt-2 text-[11px] text-locker-bad">
+          {removeMutation.error.message}
+        </p>
+      )}
+
+      <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+        {/* The card opens the profile — say so. Hidden from screen readers:
+            the stretched link's own label carries the same words, and this
+            span would otherwise be read as dead text between the numbers
+            and Remove. */}
+        <span
+          aria-hidden
+          className="font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase transition-colors group-hover:text-locker-leather"
+        >
+          View profile →
+        </span>
+        <button
+          type="button"
+          disabled={removeMutation.isPending}
+          onClick={() => removeMutation.mutate()}
+          aria-label={`Remove ${fullName} from your watchlist`}
+          className="relative z-10 font-mono text-[9.5px] tracking-[0.12em] text-locker-ink-muted uppercase hover:text-locker-bad disabled:opacity-50"
+        >
+          {removeMutation.isPending ? "Removing…" : "Remove"}
+        </button>
+      </div>
+
+      <Link
+        to={`/players/${entry.player.id}`}
+        aria-label={`View ${fullName}'s profile`}
+        className="absolute inset-0 z-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-locker-leather"
+      />
+    </div>
+  );
+}

@@ -1,0 +1,99 @@
+import { HttpStatus } from "@nestjs/common";
+import { describe, expect, it, vi } from "vitest";
+import { CustomStatisticsController } from "./custom-statistics.controller.js";
+
+// The controller's session guard imports auth.config, which builds a real
+// PrismaClient at import time. Its native engine loads in the background,
+// and if this short file ends first, Vitest tears down the worker mid-load
+// and the engine aborts the whole run. Nothing here needs real auth.
+vi.mock("../auth/auth.config.js", () => ({
+  auth: { api: { getSession: vi.fn() } },
+}));
+
+function createServiceMock() {
+  return {
+    calculateDefinition: vi.fn(),
+    createDefinition: vi.fn(),
+    listDefinitions: vi.fn().mockResolvedValue([]),
+    listVersions: vi.fn(),
+    updateDefinition: vi.fn(),
+  };
+}
+
+describe("CustomStatisticsController", () => {
+  const request = { user: { id: "author-1" } };
+
+  it("lists a caller's definitions", async () => {
+    const service = createServiceMock();
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.listDefinitions(request)).resolves.toEqual([]);
+    expect(service.listDefinitions).toHaveBeenCalledWith("author-1");
+  });
+
+  it("creates a trimmed, validated definition", async () => {
+    const service = createServiceMock();
+    service.createDefinition.mockResolvedValue({ id: "definition-1" });
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.createDefinition(request, { name: " Impact ", expression: " points + assists " })).resolves.toEqual({ id: "definition-1" });
+    expect(service.createDefinition).toHaveBeenCalledWith("author-1", "Impact", "points + assists");
+  });
+
+  it("returns a bad request when create input is incomplete or invalid", async () => {
+    const service = createServiceMock();
+    service.createDefinition.mockRejectedValue(new Error("unsupported statistic: salary"));
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.createDefinition(request, { name: "", expression: "points" })).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+    await expect(controller.createDefinition(request, { name: "Impact", expression: "salary" })).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+  });
+
+  it("updates a definition and reports invalid update input", async () => {
+    const service = createServiceMock();
+    service.updateDefinition.mockResolvedValue({ id: "definition-1", version: 2 });
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.updateDefinition(request, "definition-1", { expression: " points - turnovers " })).resolves.toEqual({ id: "definition-1", version: 2 });
+    expect(service.updateDefinition).toHaveBeenCalledWith("author-1", "definition-1", "points - turnovers");
+    await expect(controller.updateDefinition(request, "definition-1", {})).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+  });
+
+  it("calculates a definition, and handles missing input or definitions", async () => {
+    const service = createServiceMock();
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.calculateDefinition(request, "definition-1", "", undefined)).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+    service.calculateDefinition.mockResolvedValue(null);
+    await expect(controller.calculateDefinition(request, "definition-1", "player-1", undefined)).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
+    service.calculateDefinition.mockResolvedValue({ value: 18 });
+    await expect(controller.calculateDefinition(request, "definition-1", "player-1", "PLAYOFFS")).resolves.toEqual({ value: 18 });
+    expect(service.calculateDefinition).toHaveBeenLastCalledWith("author-1", "definition-1", "player-1", "PLAYOFFS", undefined);
+  });
+
+  it("passes a requested version through, and rejects one that isn't a positive whole number", async () => {
+    const service = createServiceMock();
+    service.calculateDefinition.mockResolvedValue({ value: 12, version: 1 });
+    const controller = new CustomStatisticsController(service as never);
+
+    await expect(controller.calculateDefinition(request, "definition-1", "player-1", undefined, "1")).resolves.toEqual({ value: 12, version: 1 });
+    expect(service.calculateDefinition).toHaveBeenLastCalledWith("author-1", "definition-1", "player-1", undefined, 1);
+    for (const invalidVersion of ["0", "-1", "1.5", "latest"]) {
+      await expect(controller.calculateDefinition(request, "definition-1", "player-1", undefined, invalidVersion)).rejects.toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+      });
+    }
+  });
+
+  it("lists a definition's versions, and 404s one the caller doesn't own", async () => {
+    const service = createServiceMock();
+    const controller = new CustomStatisticsController(service as never);
+    service.listVersions.mockResolvedValueOnce([{ version: 1, expression: "points" }]).mockResolvedValueOnce(null);
+
+    await expect(controller.listVersions(request, "definition-1")).resolves.toEqual({
+      definitionId: "definition-1",
+      versions: [{ version: 1, expression: "points" }],
+    });
+    await expect(controller.listVersions(request, "someone-elses")).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
+  });
+});

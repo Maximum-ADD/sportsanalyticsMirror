@@ -1,0 +1,312 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{parskip}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[htt]{hyphenat}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Prediction Accuracy Report v3}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue,
+    pdftitle={Prediction Algorithm Accuracy Report v3 - Multi-Season Results},
+    pdfauthor={Sports Analytics Project}
+}
+
+\newcommand{\code}[1]{\allowbreak\texttt{\small #1}\allowbreak}
+
+\title{\textbf{Prediction Algorithm Accuracy Report — v3} \\ \large Multi-Season Data: What More Data Actually Bought Us}
+\author{Sports Analytics Project}
+\date{September 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent This report covers the third round of work on the platform's prediction algorithms, following two
+single-season reports (\code{prediction-accuracy-report.pdf}, \code{-v2.pdf}, same directory) that concluded
+recency-weighted feature recombination was exhausted and the two highest-value remaining bets were a genuine
+data-correctness fix and more historical data. Both were executed: a real trade-attribution bug was found and
+fixed (players' historical box scores were being attributed to their \emph{current} team, not the team they
+played for in that specific game), and two additional complete NBA seasons were ingested, taking the dataset
+from 1,321 games to 3,781. Re-running the Elo constant grid search against the enlarged dataset produced a
+different, validated result from the single-season attempt: tuned constants
+(\code{HOME\_COURT\_ADVANTAGE\_ELO}\,=\,40, \code{K\_FACTOR}\,=\,25) now beat the literature defaults on
+held-out data, confirmed stable across a wide parameter grid and two independent validation splits, and have
+been shipped. Every other model improved as well, most strikingly the two recency-weighted player-point
+predictors, whose edge over a naive baseline roughly doubled. We also document two engineering incidents from
+the ingestion process itself — a Postgres connection pooler killing idle/long-lived connections far more
+aggressively than expected — since the fixes are reusable for any future data pull.
+\end{abstract}
+
+\tableofcontents
+
+\section{What Changed Since v2}
+
+\begin{table}[h]
+\centering
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.13\textwidth}>{\raggedright\arraybackslash}p{0.51\textwidth}@{}}
+\toprule
+Change & Status & Detail \\
+\midrule
+Trade-attribution bug fix & \textbf{Shipped} & New \code{PlayerGameStat.teamId} column, schema migration, ingestion fix, backfill of 33,590 existing rows, \code{four\_factors.py} query fix (\S\ref{sec:trade-bug}) \\
+2023-24 season ingested & \textbf{Shipped} & 1,230 games, full boxscores, correct team attribution from day one \\
+2024-25 season ingested & \textbf{Shipped} & 1,230 games, same \\
+Elo constants re-tuned & \textbf{Shipped} & \code{HOME\_COURT\_ADVANTAGE\_ELO} 75\,\textrightarrow\,40, \code{K\_FACTOR} 20\,\textrightarrow\,25 — this time validated, unlike the v1/v2 attempt (\S\ref{sec:elo-retune}) \\
+Ingestion connection resilience & \textbf{Shipped} & \code{ingest\_historical\_season.py} — fresh DB connection per game write, not one held across the whole run (\S\ref{sec:pooler}) \\
+\bottomrule
+\end{tabular}
+\caption{Disposition of this round's changes.}
+\end{table}
+
+\section{The Trade-Attribution Bug}
+\label{sec:trade-bug}
+
+While scoping the multi-season pull, we found that \code{four\_factors.py}'s team-game boxscore aggregation
+joined \code{PlayerGameStat} to \code{Team} via \code{Player.teamId} — a player's \emph{current} team — rather
+than the team they actually suited up for in a specific historical game. A player traded mid-season had every
+one of their pre-trade games silently reattributed to their new team the moment the roster ingestion next ran.
+An audit query confirmed this was not theoretical: \textbf{7.7\% of the 33,590 \code{PlayerGameStat} rows}
+already had a \code{Player.teamId} that matched neither team in that row's own game.
+
+The fix required a real schema change, not just a query edit, since the correct information (which team each
+boxscore row's player was on, for that specific game) was being read from the NBA API and then discarded
+before ever reaching the database:
+
+\begin{enumerate}
+    \item Added \code{PlayerGameStat.teamId} via a Prisma migration (nullable, foreign-keyed to \code{Team}).
+    \item Updated \code{apps/ingestion/games.py}/\code{ingest.py} to capture and write this field going
+    forward — the boxscore endpoint already reports it per player, it just wasn't being kept.
+    \item Backfilled all 33,590 existing rows: 31,012 were unambiguous (the player's current team matched one
+    of the two teams in that game, so no fix was needed) and were updated directly; the remaining 2,578 rows
+    (774 distinct games) needed a boxscore re-fetch to resolve correctly, since the original ingestion never
+    stored per-game team identity.
+    \item Updated \code{four\_factors.py}'s query to join on the new field.
+\end{enumerate}
+
+\textbf{Measured impact}, isolated from the data-volume increase (re-run against the original single-season
+dataset before any new games were added): MAE improved from 12.52 to 12.51 points, walk-forward MAE from
+12.65 to 12.62. A small, real improvement — expected, since only 7.7\% of rows were affected and the fix
+redistributes existing signal between two teams' season averages rather than adding new information. The fix
+was worth making on correctness grounds regardless of its accuracy impact, and matters increasingly as more
+seasons (with more real trades) are added.
+
+\section{The Multi-Season Elo Re-Tuning: A Different Result This Time}
+\label{sec:elo-retune}
+
+\subsection{What changed}
+
+v1/v2 reported that a chronological train/validation grid search over \code{HOME\_COURT\_ADVANTAGE\_ELO} and
+\code{K\_FACTOR}, run against the single-season dataset (1,321 games), picked a training-split winner that
+validated \emph{worse} than the FiveThirtyEight literature defaults (HCA=75, K=20) — textbook overfitting, not
+a real improvement, attributed to too little independent evidence in one season to beat a well-chosen prior.
+
+With the dataset now at 3,781 games (2023-24, 2024-25, 2025-26), the identical grid search was re-run.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Split & Default (HCA=75, K=20) Brier & Tuned (HCA=40, K=25) Brier \\
+\midrule
+70/30 chronological split & 0.2142 & 0.2119 \\
+60/40 chronological split & 0.2123 & 0.2101 \\
+\bottomrule
+\end{tabular}
+\caption{Validation-split Brier score, default vs.\ tuned constants, multi-season dataset. Lower is better;
+tuned constants win on both independent splits this time.}
+\end{table}
+
+Two checks were run before trusting this, given the exact same experiment produced the opposite conclusion
+on less data:
+
+\begin{itemize}
+    \item \textbf{Grid stability.} The winning pair (HCA=40, K=25) was re-confirmed against a much wider grid
+    (HCA $\in [0, 110]$, K $\in [5, 45]$) and sits comfortably in the interior, not pinned against either
+    boundary — a boundary-pinned winner would suggest the true optimum lies outside the tested range and the
+    result shouldn't be trusted as-is.
+    \item \textbf{Split independence.} The same winner was reproduced from two different chronological
+    train/validation cut points (70/30 and 60/40 of the season timeline), not just the one split used in the
+    original single-season report. Both splits favor the tuned constants over the defaults by a similar
+    margin, which is the standard cross-validation argument that this is a real effect, not an artifact of
+    exactly where one particular split happened to fall.
+\end{itemize}
+
+The training-split Brier surface itself also tightened meaningfully with more data — the top-10 grid
+candidates spanned 0.2233–0.2251 on the single-season dataset (a difference small enough to be mostly noise)
+versus 0.2156–0.2162 on the 3-season dataset (a narrower, more confidently-identified optimum). This is
+exactly the signature you'd expect if the earlier result really was a data-volume problem rather than a
+methodology problem, as the v1/v2 report speculated.
+
+\subsection{What shipped}
+
+\code{HOME\_COURT\_ADVANTAGE\_ELO} was changed from 75 to 40, and \code{K\_FACTOR} from 20 to 25, in
+\code{elo.py}. \code{GamePrediction} was regenerated for all 3,781 games under the new constants.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Metric & Single-season (old constants) & Multi-season (tuned constants) \\
+\midrule
+$n$ & 1,321 & 3,781 \\
+Brier score & 0.2146 & 0.2145 \\
+Accuracy (threshold 0.5) & 65.2\% & 66.0\% \\
+Naive home-favorite baseline & 55.5\% & 54.8\% \\
+\bottomrule
+\end{tabular}
+\caption{Full-dataset accuracy, old vs.\ new. Brier score is nearly unchanged on the full (non-held-out)
+figure — the real gain is in calibration (Table~\ref{tab:calibration}) and in how the model generalizes to
+unseen games (the validation-split numbers above), not in a large full-dataset summary-statistic move.}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Predicted range & $n$ (old) & Old: pred / actual & $n$ (new) & New: pred / actual \\
+\midrule
+0.2--0.3 & 27 & 0.257 / 0.037 & 311 & 0.253 / 0.296 \\
+0.3--0.4 & 87 & 0.357 / 0.230 & 421 & 0.352 / 0.363 \\
+0.4--0.5 & 181 & 0.454 / 0.359 & 572 & 0.453 / 0.442 \\
+\bottomrule
+\end{tabular}
+\caption{Calibration in the range where v1 found the worst overconfidence. The predicted-vs-actual gap
+(e.g.\ predicting 0.454 when the true rate was 0.359, a 0.095 overconfidence) has closed substantially at the
+new constants (0.453 predicted vs.\ 0.442 actual, a 0.011 gap) — this is the practically meaningful
+improvement, even though the single headline Brier number barely moved.}
+\label{tab:calibration}
+\end{table}
+
+The permutation test (1,000 randomized-outcome reruns of the real schedule) again rejects the null decisively
+($p < 0.001$) — the model's accuracy is real signal, not an artifact of the larger dataset alone.
+
+\subsection{A caveat we deliberately did not address}
+
+\code{compute\_elo\_ratings} treats every game across all three seasons as one continuous chronological
+sequence — a team's rating carries directly from the last game of one season into the first game of the next,
+with no reset or regression-toward-the-mean for the roster turnover a real NBA offseason involves (trades,
+draft, free agency). This is a real simplification. It was deliberately left unaddressed in this round so the
+re-tuning experiment isolated one variable (more data under the existing model) rather than two (more data
+\emph{and} a season-boundary model change) — conflating them would have left it unclear which change actually
+produced the improvement. A season-aware reset is a reasonable candidate for a future, separately-evaluated
+change.
+
+\section{Impact on the Other Three Models}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Model & Single-season & Multi-season \\
+\midrule
+Four Factors margin MAE & 12.52 & 12.30 \\
+Four Factors naive-baseline MAE & 13.36 & 12.91 \\
+Fantasy points: recency-weighted MAE & 7.74 & 8.00 \\
+Fantasy points: naive-mean MAE & 8.25 & 8.94 \\
+Fantasy points: recency-weighting edge & +0.52 & +0.94 \\
+Scorer points: recency-weighted MAE & 4.45 & 4.63 \\
+Scorer points: naive-mean MAE & 4.64 & 4.98 \\
+Scorer points: recency-weighting edge & +0.20 & +0.36 \\
+\bottomrule
+\end{tabular}
+\caption{All four models, single- vs.\ multi-season. MAE in points (or fantasy points) throughout.}
+\end{table}
+
+\textbf{Four Factors} improved modestly (12.52 $\to$ 12.30 MAE) — a real gain, consistent with more team-game
+observations sharpening the same 3-feature regression, but not a transformation the way Elo's calibration
+was. It remains the weakest of the four models relative to its naive baseline and should stay a secondary,
+lower-confidence signal in the product.
+
+\textbf{Both recency-weighted player-point predictors got measurably better relative to their own naive
+baseline}, even though their raw MAE went up slightly. This is not a contradiction: MAE going up while the
+\emph{edge over naive} roughly doubles means the naive baseline got substantially worse with more data (a
+longer unweighted history dilutes toward a player's career-long average, increasingly stale as more games
+accumulate), while the recency-weighted model held up better against the same harder task. In other words,
+recency-weighting's specific value proposition — tracking current form instead of career-long average —
+becomes more important, not less, exactly as more historical data is added. This is the strongest positive
+result in this report for a fully-shipped, no-caveats model.
+
+\section{Engineering Note: Pooled-Connection Fragility During Ingestion}
+\label{sec:pooler}
+
+Two separate incidents during the historical-season ingestion are worth recording since the underlying cause
+recurs for any future long-running script against this project's Supabase database.
+
+\textbf{Incident 1 — idle connection killed during a slow, mostly-network-bound phase.} The original
+\code{ingest\_historical\_season.py} opened one database connection at the start of the script and held it
+through \code{collect\_season\_game\_dates}, a phase making 30 rate-limited \code{LeagueGameFinder} calls with
+no database activity in between. That connection was killed by Supabase's pooler before a single write
+happened, with the error \texttt{server closed the connection unexpectedly}.
+
+\textbf{Incident 2 — connection killed mid-write-loop, even while actively used.} After fixing incident 1 by
+opening a fresh connection only for the write phase, the run still failed, repeatedly, partway through —
+including within the first 50 games. A direct test isolated the cause precisely: \textbf{a connection idle
+for as little as 5 seconds was already killed} (\texttt{cur.execute('SELECT 1')} on a 5-second-idle connection
+failed with the same error). Each game in the write loop involves a rate-limited $\sim$1 second-plus network
+call to \code{stats.nba.com} \emph{before} the next database write — comfortably enough idle time, every
+single game, to exceed a 5-second pooler timeout.
+
+\textbf{Fix.} Rather than reconnect-on-failure (tried first; the pooler was frequent enough that even a
+retry-once policy failed multiple times within the first 50 games), the script now opens, writes, commits,
+and closes a fresh connection for \emph{every individual game}. This adds one extra network round-trip per
+game but means every write is durably committed the instant it happens — a crash or interruption loses at
+most one in-flight game, and simply re-running the script (every write is an idempotent upsert) picks up
+exactly where it left off. This pattern generalizes to any future long-running script against this database:
+do not hold one connection across a loop with rate-limited network calls between writes; treat this pooler's
+practical idle budget as a few seconds, not the tens of seconds or minutes that might be assumed for a
+typical managed Postgres instance.
+
+\section{Recommendations Going Forward}
+
+\begin{enumerate}
+    \item \textbf{Treat the Elo re-tuning result as a positive signal for pulling even more data}, specifically
+    for Four Factors and the two player-point predictors, none of which improved as dramatically as Elo did.
+    Elo's constants were the most data-starved parameter in the whole system (only 2 free parameters,
+    literature priors already close), so it's the one most likely to show a clean signal early; the others
+    may simply need more than 3 seasons to show a similarly clear multi-season effect.
+    \item \textbf{Revisit the season-boundary reset question} (\S\ref{sec:elo-retune}'s caveat) as a focused,
+    separately-evaluated follow-up — now that Elo's core constants are validated against real multi-season
+    data, adding a principled offseason regression-toward-the-mean is the next natural refinement, and can be
+    backtested the same way (train/validation split, compare against the current no-reset baseline).
+    \item \textbf{Apply the same trade-attribution correctness discipline going forward}: any future feature
+    that joins boxscore data to a team should use \code{PlayerGameStat.teamId}, not \code{Player.teamId} —
+    worth a code-review note or lint rule if more code ends up needing this join.
+    \item \textbf{Reuse the fresh-connection-per-write pattern} (\S\ref{sec:pooler}) for any future ingestion
+    or long-running write script against this database, rather than rediscovering the 5-second idle timeout
+    the hard way again.
+\end{enumerate}
+
+\section*{Appendix: Reproducing These Results}
+
+\code{apps/predictor/check\_accuracy.py} recomputes the Elo and Four Factors numbers in this report against
+the database's current state — run it directly rather than trusting the point-in-time figures above once
+more data has been added. The player-point predictor backtests (recency-weighting edge over a naive running
+mean) and the Elo grid-search/validation-split methodology are one-off analysis scripts, not part of the
+committed codebase, reflecting their purpose as a one-time validation exercise rather than ongoing monitoring
+— \code{check\_accuracy.py} is the durable, re-runnable piece.
+
+\end{document}

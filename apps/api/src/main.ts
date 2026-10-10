@@ -6,11 +6,15 @@ import { toNodeHandler } from "better-auth/node";
 import cors from "cors";
 import expressFactory from "express";
 import helmet from "helmet";
-import { auth } from "./auth/auth.config.js";
+import { auth, allowedOrigins } from "./auth/auth.config.js";
+import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter.js";
+import { API_KEY_SECURITY_NAME } from "./common/openapi/api-docs.decorators.js";
 import { AppModule } from "./app.module.js";
 
 const DEFAULT_PORT = 4000;
+// The guide for outside callers: no-account routes, keys, limits, errors.
+const PUBLIC_API_GUIDE_URL = "https://sdp.ms.wits.ac.za/innovation/sportsanalytics/src/branch/main/docs/PUBLIC_API.md";
 
 async function bootstrap() {
   // Built and wired up manually, then handed to Nest via ExpressAdapter,
@@ -23,7 +27,14 @@ async function bootstrap() {
   server.use(helmet());
   server.use(
     cors({
-      origin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
+      origin: (requestOrigin, callback) => {
+        // Allow requests with no Origin (server-to-server, curl, etc.)
+        if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin ${requestOrigin} not allowed by CORS`));
+        }
+      },
       credentials: true,
     })
   );
@@ -37,6 +48,51 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { bodyParser: false });
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle("NBA Analytics API")
+    .setDescription(
+      "REST API for the NBA Analytics & Optimisation Engine. " +
+      "Provides player/team/game data ingested from nba_api, " +
+      "Elo-based game predictions, Four Factors analysis, and " +
+      "MILP fantasy lineup optimisation.\n\n" +
+      "No account needed for `/v1/live/games` and `/v1/health`. The data routes need an " +
+      "`X-API-Key` header (sign in, then Profile > API keys) or a signed-in session. " +
+      `Limits, errors and examples: [Using the public API](${PUBLIC_API_GUIDE_URL}).`
+    )
+    .setVersion("1.0")
+    .addCookieAuth("better-auth.session_token", {
+      type: "apiKey",
+      in: "cookie",
+      name: "better-auth.session_token",
+      description: "BetterAuth session cookie. Required for auth-gated endpoints.",
+    })
+    // The public read endpoints (players, teams, games, analytics, datasets)
+    // take either this key or a session. "Authorize" in Swagger UI then
+    // sends it on every "Try it out" request.
+    .addApiKey(
+      {
+        type: "apiKey",
+        in: "header",
+        name: "X-API-Key",
+        description: "An API key from your profile page (or an admin). Rate-limited per minute, with a daily quota.",
+      },
+      API_KEY_SECURITY_NAME,
+    )
+    .addTag("health", "Service health check")
+    .addTag("players", "Player data and statistics (API key or session)")
+    .addTag("teams", "Team data (API key or session)")
+    .addTag("games", "Game data and predictions (API key or session)")
+    .addTag("optimizer", "Fantasy lineup optimiser (auth required)")
+    .addTag("me", "Current user's profile, avatar, and followed players (auth required)")
+    .addTag("live", "Live and recent games, read straight from the NBA's live feed (public)")
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup("api/docs", app, document, {
+    jsonDocumentUrl: "/api-json",
+    swaggerOptions: { persistAuthorization: true },
+  });
 
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   await app.listen(port);

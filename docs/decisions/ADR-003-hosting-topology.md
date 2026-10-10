@@ -1,8 +1,12 @@
 # ADR-003: Hosting topology
 
-- **Status:** Proposed — awaiting team review before acceptance. Do not
-  implement until the team has signed off (see
-  [`GIT_METHODOLOGY.md`](../GIT_METHODOLOGY.md), "Requirements for merging").
+- **Status:** Accepted — implemented. This file's status field was never
+  flipped from "Proposed" when that happened; fixed here rather than left
+  to keep contradicting `render.yaml`, `ADR-003`'s own topology below, and
+  the many reviewed-and-merged PRs (Cloudflare Pages Functions location,
+  Google OAuth production origin, cross-site session cookie, CORS trusted
+  origins, a Cloudflare Pages rebuild trigger as recently as 2026-09-13)
+  that only make sense once this was live.
 - **Date:** 2026-08-19
 - **Updated:** 2026-08-19 — database moved from Azure PostgreSQL Flexible
   Server to Supabase; frontend moved to Cloudflare Pages; API and batch jobs
@@ -207,8 +211,9 @@ benefits with a simpler Gitea-compatible deploy path, so Vercel was not chosen.
 - Prisma migrations: on the free tier Render does not run `preDeployCommand`,
   so `npx prisma migrate deploy` must be run manually or from a Gitea Actions
   workflow before the API deploy.
-- Updating [`PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md) "Known gaps" and
-  [`README.md`](../../README.md) to mark hosting as decided once accepted.
+- ~~Updating [`PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md) "Known gaps" ...
+  to mark hosting as decided once accepted.~~ Done alongside the status fix
+  above.
 
 ## Open questions for the team
 
@@ -230,7 +235,8 @@ benefits with a simpler Gitea-compatible deploy path, so Vercel was not chosen.
 - [`render.yaml`](../../render.yaml) — the Render Blueprint for the API.
 - [`docker-compose.yml`](../../docker-compose.yml) — local Postgres setup this
   parallels.
-- [`docs/PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md) — tech stack and the
-  "Production deployment — not done" known gap.
+- [`docs/PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md) — tech stack and
+  infra; no longer lists production deployment as a known gap now that
+  this ADR is implemented.
 - [`docs/GIT_METHODOLOGY.md`](../GIT_METHODOLOGY.md) — review gate this ADR's
   *Proposed* status respects.

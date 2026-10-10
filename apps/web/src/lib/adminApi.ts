@@ -1,0 +1,463 @@
+import { fetchJson, sendJson } from "./apiClient";
+import { toQueryString } from "./nbaApi";
+import type { AdminUserSummary, PagedResult, Player, Team, UserRole } from "@/types/nba";
+
+export interface FetchAdminTeamsParams {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminTeams(params: FetchAdminTeamsParams = {}): Promise<PagedResult<Team>> {
+  return fetchJson<PagedResult<Team>>(`/v1/admin/teams${toQueryString(params)}`);
+}
+
+// Every field is optional — only send what's actually being changed.
+// nbaTeamId/id stay off this type entirely: they're the identity ingestion
+// upserts against, and the API rejects editing them.
+export interface UpdateTeamParams {
+  name?: string;
+  abbreviation?: string;
+  city?: string;
+  conference?: string;
+  division?: string;
+  logoUrl?: string | null;
+}
+
+export function updateAdminTeam(teamId: string, patch: UpdateTeamParams): Promise<Team> {
+  return sendJson<Team>(`/v1/admin/teams/${teamId}`, "PATCH", patch);
+}
+
+export interface FetchAdminPlayersParams {
+  search?: string;
+  teamId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminPlayers(params: FetchAdminPlayersParams = {}): Promise<PagedResult<Player>> {
+  return fetchJson<PagedResult<Player>>(`/v1/admin/players${toQueryString(params)}`);
+}
+
+// Same "every field optional, id/nbaPlayerId excluded" contract as
+// UpdateTeamParams. birthDate is an ISO date string (or null to clear it) —
+// the API parses it into a real Date.
+export interface UpdatePlayerParams {
+  firstName?: string;
+  lastName?: string;
+  position?: string;
+  heightInches?: number | null;
+  weightLbs?: number | null;
+  jerseyNumber?: string | null;
+  headshotUrl?: string | null;
+  teamId?: string | null;
+  birthDate?: string | null;
+  school?: string | null;
+  country?: string | null;
+  lastAffiliation?: string | null;
+  seasonExp?: number | null;
+  rosterStatus?: string | null;
+  draftYear?: number | null;
+  draftRound?: number | null;
+  draftNumber?: number | null;
+}
+
+export function updateAdminPlayer(playerId: string, patch: UpdatePlayerParams): Promise<Player> {
+  return sendJson<Player>(`/v1/admin/players/${playerId}`, "PATCH", patch);
+}
+
+export interface FetchAdminUsersParams {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminUsers(params: FetchAdminUsersParams = {}): Promise<PagedResult<AdminUserSummary>> {
+  return fetchJson<PagedResult<AdminUserSummary>>(`/v1/admin/users${toQueryString(params)}`);
+}
+
+export function deleteAdminUser(userId: string): Promise<{ deleted: true }> {
+  return sendJson<{ deleted: true }>(`/v1/admin/users/${userId}`, "DELETE");
+}
+
+export function updateAdminUserRole(userId: string, role: UserRole): Promise<AdminUserSummary> {
+  return sendJson<AdminUserSummary>(`/v1/admin/users/${userId}/role`, "PATCH", { role });
+}
+
+// --- Submission Review ---
+
+export interface IngestionBatchSummary {
+  id: string;
+  gameId: string;
+  source: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  eventsAccepted: number;
+  eventsRejected: number;
+  rejectionSummary: unknown;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  game: {
+    id: string;
+    gameDate: string;
+    season: string;
+    nbaGameId: string;
+    homeTeam: { name: string };
+    awayTeam: { name: string };
+  };
+  reviewedBy: { id: string; name: string } | null;
+}
+
+/** Orders the batch list by the date the game was played (the Date column),
+ * by season, or by when the pull that produced the batch ran. */
+export type BatchSortField = "date" | "season" | "ingested";
+export type SortDirection = "asc" | "desc";
+
+export interface FetchAdminBatchesParams {
+  status?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: BatchSortField;
+  order?: SortDirection;
+}
+
+export function fetchAdminBatches(params: FetchAdminBatchesParams = {}): Promise<PagedResult<IngestionBatchSummary>> {
+  return fetchJson<PagedResult<IngestionBatchSummary>>(`/v1/admin/batches${toQueryString(params)}`);
+}
+
+export function approveAdminBatch(batchId: string, reviewNotes?: string): Promise<IngestionBatchSummary> {
+  return sendJson<IngestionBatchSummary>(`/v1/admin/batches/${batchId}/approve`, "POST", { reviewNotes });
+}
+
+export function rejectAdminBatch(batchId: string, reviewNotes?: string): Promise<IngestionBatchSummary> {
+  return sendJson<IngestionBatchSummary>(`/v1/admin/batches/${batchId}/reject`, "POST", { reviewNotes });
+}
+
+// --- Event Corrections ---
+
+export interface CorrectionTeam {
+  id: string;
+  name: string;
+  abbreviation: string;
+}
+
+export interface EventCorrection {
+  id: string;
+  gameId: string;
+  sequence: number;
+  previousValues: Record<string, unknown>;
+  newValues: Record<string, unknown>;
+  correctedById: string | null;
+  reason: string | null;
+  correctedAt: string;
+  // Set when this correction is an undo: the correction it reverted.
+  revertsCorrectionId: string | null;
+  game: {
+    id: string;
+    gameDate: string;
+    season: string;
+    nbaGameId: string;
+    homeTeam: CorrectionTeam;
+    awayTeam: CorrectionTeam;
+  };
+  correctedBy: { id: string; name: string } | null;
+  // The undo of this correction, once it has been undone.
+  revertedBy: { id: string; correctedAt: string } | null;
+  // playerId -> "First Last" for the player ids in previousValues/newValues.
+  playerNames: Record<string, string>;
+}
+
+export interface FetchAdminCorrectionsParams {
+  gameId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminCorrections(params: FetchAdminCorrectionsParams = {}): Promise<PagedResult<EventCorrection>> {
+  return fetchJson<PagedResult<EventCorrection>>(`/v1/admin/events/corrections${toQueryString(params)}`);
+}
+
+export interface AdminGameTeam {
+  id: string;
+  name: string;
+  abbreviation: string;
+  city: string;
+  logoUrl: string | null;
+}
+
+export interface AdminGameSummary {
+  id: string;
+  nbaGameId: string;
+  gameDate: string;
+  season: string;
+  seasonType: string;
+  homeTeam: AdminGameTeam;
+  awayTeam: AdminGameTeam;
+  homeScore: number | null;
+  awayScore: number | null;
+  // Games ingested before real play-by-play hold only a few period markers.
+  eventCount: number;
+  correctionCount: number;
+}
+
+export interface FetchAdminGamesParams {
+  season?: string;
+  teamId?: string;
+  fromDate?: string;
+  toDate?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function fetchAdminGames(params: FetchAdminGamesParams = {}): Promise<PagedResult<AdminGameSummary>> {
+  return fetchJson<PagedResult<AdminGameSummary>>(`/v1/admin/games${toQueryString(params)}`);
+}
+
+export interface AdminGameEvent {
+  sequence: number;
+  period: number;
+  clock: string;
+  eventType: string;
+  subType: string | null;
+  playerId: string | null;
+  playerName: string | null;
+  teamId: string | null;
+  success: boolean | null;
+  value: number | null;
+  description: string;
+  // Who the play's assist/block/steal credit resolves to, as the stats
+  // derivation resolves it; null when there's none or it's ambiguous.
+  creditPlayerId: string | null;
+  isCorrected: boolean;
+}
+
+/** A player with a box-score row for the game, and their team in it. */
+export interface AdminRosterPlayer {
+  id: string;
+  firstName: string;
+  lastName: string;
+  teamId: string | null;
+}
+
+export interface AdminGamePlayByPlay {
+  game: Omit<AdminGameSummary, "eventCount" | "correctionCount">;
+  events: AdminGameEvent[];
+  roster: AdminRosterPlayer[];
+  eventTypes: string[];
+}
+
+export function fetchAdminPlayByPlay(gameId: string): Promise<AdminGamePlayByPlay> {
+  return fetchJson<AdminGamePlayByPlay>(`/v1/admin/games/${gameId}/events`);
+}
+
+/** The GameEvent fields a correction can change. */
+export interface CorrectableEventFields {
+  period: number;
+  clock: string;
+  eventType: string;
+  subType: string | null;
+  playerId: string | null;
+  teamId: string | null;
+  success: boolean | null;
+  value: number | null;
+  description: string;
+}
+
+/**
+ * A correction: the fields to change, the play's assist/block/steal credit
+ * (a playerId, null for none, omitted to leave it alone) and a reason.
+ */
+export type CorrectionRequestBody = Partial<CorrectableEventFields> & {
+  creditPlayerId?: string | null;
+  reason: string;
+};
+
+export interface CorrectionFieldChange {
+  field: keyof CorrectableEventFields;
+  from: unknown;
+  to: unknown;
+}
+
+export interface PlayerStatChange {
+  playerId: string;
+  playerName: string;
+  stats: { field: string; before: number | null; after: number }[];
+}
+
+/** What a correction does (or, from a preview, would do). */
+export interface CorrectionOutcome {
+  gameId: string;
+  sequence: number;
+  season: string;
+  changes: CorrectionFieldChange[];
+  statChanges: PlayerStatChange[];
+}
+
+export interface SavedCorrection extends CorrectionOutcome {
+  correction: { id: string };
+  // How many of the season's dataset releases this marked stale.
+  releasesMarkedStale: number;
+}
+
+export function previewEventCorrection(
+  gameId: string,
+  sequence: number,
+  body: CorrectionRequestBody,
+): Promise<CorrectionOutcome> {
+  return sendJson<CorrectionOutcome>(`/v1/admin/games/${gameId}/events/${sequence}/preview`, "POST", body);
+}
+
+export function correctGameEvent(gameId: string, sequence: number, body: CorrectionRequestBody): Promise<SavedCorrection> {
+  return sendJson<SavedCorrection>(`/v1/admin/games/${gameId}/events/${sequence}/correct`, "POST", body);
+}
+
+export function revertEventCorrection(correctionId: string, reason: string): Promise<SavedCorrection> {
+  return sendJson<SavedCorrection>(`/v1/admin/corrections/${correctionId}/revert`, "POST", { reason });
+}
+
+export interface ReplayResult {
+  gameId: string;
+  playersRecomputed: number;
+  playersChanged: number;
+}
+
+export function replayAdminGame(gameId: string): Promise<ReplayResult> {
+  return sendJson<ReplayResult>(`/v1/admin/games/${gameId}/replay`, "POST");
+}
+
+// --- API Consumers ---
+
+export interface ApiConsumer {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  rateLimit: number;
+  dailyQuota: number;
+  isActive: boolean;
+  createdAt: string;
+  // USER — a consumer auto-provisioned for a signed-in user's own API
+  // access (user is the owner); EXTERNAL — an admin-created third-party
+  // consumer. This is how the admin list tells user keys apart from
+  // external integration keys.
+  kind: "USER" | "EXTERNAL";
+  user: { id: string; name: string; email: string } | null;
+  keys: { id: string; label: string | null; isActive: boolean; lastUsedAt: string | null; createdAt: string }[];
+  _count: { usageLog: number };
+}
+
+export interface CreatedApiKey {
+  id: string;
+  label: string | null;
+  rawKey: string;
+  createdAt: string;
+}
+
+export function fetchAdminConsumers(params: { page?: number; pageSize?: number } = {}): Promise<PagedResult<ApiConsumer>> {
+  return fetchJson<PagedResult<ApiConsumer>>(`/v1/admin/consumers${toQueryString(params)}`);
+}
+
+export function createAdminConsumer(data: { name: string; contactEmail?: string; rateLimit?: number; dailyQuota?: number }): Promise<ApiConsumer> {
+  return sendJson<ApiConsumer>("/v1/admin/consumers", "POST", data);
+}
+
+export function updateAdminConsumer(consumerId: string, patch: Record<string, unknown>): Promise<ApiConsumer> {
+  return sendJson<ApiConsumer>(`/v1/admin/consumers/${consumerId}`, "PATCH", patch);
+}
+
+export function createAdminApiKey(consumerId: string, label?: string): Promise<CreatedApiKey> {
+  return sendJson<CreatedApiKey>(`/v1/admin/consumers/${consumerId}/keys`, "POST", { label });
+}
+
+export function revokeAdminApiKey(consumerId: string, keyId: string): Promise<{ revoked: true }> {
+  return sendJson<{ revoked: true }>(`/v1/admin/consumers/${consumerId}/keys/${keyId}`, "DELETE");
+}
+
+export function deleteAdminConsumer(consumerId: string): Promise<{ deleted: true }> {
+  return sendJson<{ deleted: true }>(`/v1/admin/consumers/${consumerId}`, "DELETE");
+}
+
+export function deleteAdminApiKey(consumerId: string, keyId: string): Promise<{ deleted: true }> {
+  return sendJson<{ deleted: true }>(`/v1/admin/consumers/${consumerId}/keys/${keyId}/purge`, "DELETE");
+}
+
+// --- Ingestion Schedule & Manual Pull ---
+
+export type IngestionFrequency = "NEVER" | "HOURLY" | "DAILY" | "WEEKLY";
+
+/**
+ * How the API carries out a pull. "direct": it runs ingest.py itself (local
+ * development). "queue": it can't reach stats.nba.com (the deployed API), so
+ * it queues the pull for a pull worker running on another machine.
+ */
+export type PullMode = "direct" | "queue";
+
+export interface IngestionScheduleConfig {
+  frequency: IngestionFrequency;
+  lastRunAt: string | null;
+  updatedAt: string;
+  /** True only in direct mode. Kept for older callers; prefer pullMode. */
+  ingestionAvailable: boolean;
+  pullMode: PullMode;
+  /** When a pull worker last checked in; null if none ever has. */
+  workerLastSeenAt: string | null;
+}
+
+export interface TriggerResult {
+  started: boolean;
+  message: string;
+  /** True when the pull was queued for a worker rather than run by the API. */
+  queued?: boolean;
+}
+
+export type IngestionRequestStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+
+/** One queued pull and, once a worker has run it, how it ended. */
+export interface IngestionPullRequest {
+  id: string;
+  status: IngestionRequestStatus;
+  season: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  scheduled: boolean;
+  requestedAt: string;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  finishedAt: string | null;
+  message: string | null;
+  requestedBy: { id: string; name: string } | null;
+}
+
+export function fetchIngestionRequests(): Promise<IngestionPullRequest[]> {
+  return fetchJson<IngestionPullRequest[]>("/v1/admin/ingestion/requests");
+}
+
+export function cancelIngestionRequest(requestId: string): Promise<{ cancelled: true }> {
+  return sendJson<{ cancelled: true }>(`/v1/admin/ingestion/requests/${requestId}/cancel`, "POST");
+}
+
+export function fetchIngestionSchedule(): Promise<IngestionScheduleConfig> {
+  return fetchJson<IngestionScheduleConfig>("/v1/admin/ingestion/schedule");
+}
+
+export function updateIngestionSchedule(frequency: IngestionFrequency): Promise<IngestionScheduleConfig> {
+  return sendJson<IngestionScheduleConfig>("/v1/admin/ingestion/schedule", "PUT", { frequency });
+}
+
+/** Narrows what a manual pull covers. Every field is optional; an empty
+ * object pulls the current season's recent games plus the postseason, which
+ * is what the button did before the window existed. */
+export interface PullOptions {
+  season?: string;
+  fromDate?: string;
+  toDate?: string;
+}
+
+export function triggerIngestionPull(options: PullOptions = {}): Promise<TriggerResult> {
+  return sendJson<TriggerResult>("/v1/admin/ingestion/pull", "POST", options);
+}
+
+export function deleteIngestionBatch(batchId: string): Promise<{ success: boolean }> {
+  return sendJson<{ success: boolean }>(`/v1/admin/ingestion/batches/${batchId}`, "DELETE");
+}

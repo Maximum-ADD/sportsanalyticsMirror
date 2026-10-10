@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { resolveTeamColors } from "@/components/TeamBadge";
+import { getPlayerHeadshotUrl } from "@/lib/nbaMedia";
 import type { PredictedScorer, Team } from "@/types/nba";
 
 interface CourtViewProps {
@@ -6,6 +8,8 @@ interface CourtViewProps {
   awayTeam: Team;
   homeScorers: PredictedScorer[];
   awayScorers: PredictedScorer[];
+  selectedPlayerId?: string | null;
+  onSelectPlayer?: (scorer: PredictedScorer) => void;
 }
 
 const COURT_WIDTH = 940;
@@ -17,7 +21,10 @@ const KEY_HEIGHT = 160;
 const THREE_POINT_RADIUS = 220;
 const CENTER_CIRCLE_RADIUS = 60;
 
-const PLAYER_MARKER_RADIUS = 26;
+// Large enough for a real headshot to read as a face, not a dot — this
+// grew from the original flat-color marker's 26px once real photos
+// replaced the colored-circle+initials treatment (see PlayerMarker below).
+const PLAYER_MARKER_RADIUS = 34;
 
 // A predicted starting five isn't tracked positional data — nba_api's
 // roster endpoint only gives a role string (G, F, C, or a hybrid like
@@ -65,24 +72,78 @@ interface PlayerMarkerProps {
   x: number;
   y: number;
   colors: { primary: string; secondary: string };
+  selected: boolean;
+  onSelect?: (scorer: PredictedScorer) => void;
 }
 
-function PlayerMarker({ scorer, x, y, colors }: PlayerMarkerProps) {
+function PlayerMarker({ scorer, x, y, colors, selected, onSelect }: PlayerMarkerProps) {
+  // Same fallback contract as PlayerHeadshot.tsx: not every player has a
+  // real headshot at this id (two-way/G-League call-ups, very recent
+  // draftees), so a failed <image> load falls back to the same colored-
+  // circle-plus-initials treatment this replaced, rather than a broken-
+  // image icon or empty circle. SVG's <image> fires a real "error" event
+  // (unlike a CSS background-image), so this is the same onError-driven
+  // pattern as the HTML <img> version, just on the SVG element.
+  const [photoFailed, setPhotoFailed] = useState(false);
   const initials = `${scorer.player.firstName[0]}${scorer.player.lastName[0]}`;
+  const clipId = `court-headshot-clip-${scorer.player.id}`;
+  const fullName = `${scorer.player.firstName} ${scorer.player.lastName}`;
+  // A thin ink-colored ring on select, same weight as the rest of the
+  // court's linework — the earlier thick leather-orange ring read as a
+  // harsh block dropped onto the court rather than a selection state.
+  const ringColor = selected ? "var(--color-text-primary)" : "rgba(0,0,0,0.35)";
+  const ringWidth = selected ? 3 : 2;
+
   return (
-    <g>
-      <circle cx={x} cy={y} r={PLAYER_MARKER_RADIUS} fill={colors.primary} stroke="rgba(0,0,0,0.35)" strokeWidth={2} />
-      <text
-        x={x}
-        y={y + 1}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill={colors.secondary}
-        fontSize={15}
-        fontWeight={700}
-      >
-        {initials}
-      </text>
+    <g
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      aria-label={onSelect ? `Show ${fullName}'s predicted stats` : undefined}
+      aria-pressed={onSelect ? selected : undefined}
+      onClick={onSelect ? () => onSelect(scorer) : undefined}
+      onKeyDown={
+        onSelect
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(scorer);
+              }
+            }
+          : undefined
+      }
+      style={onSelect ? { cursor: "pointer" } : undefined}
+    >
+      <circle cx={x} cy={y} r={PLAYER_MARKER_RADIUS} fill={colors.primary} stroke={ringColor} strokeWidth={ringWidth} />
+      {!photoFailed ? (
+        <>
+          <clipPath id={clipId}>
+            <circle cx={x} cy={y} r={PLAYER_MARKER_RADIUS} />
+          </clipPath>
+          <image
+            href={getPlayerHeadshotUrl(scorer.player.nbaPlayerId)}
+            x={x - PLAYER_MARKER_RADIUS}
+            y={y - PLAYER_MARKER_RADIUS}
+            width={PLAYER_MARKER_RADIUS * 2}
+            height={PLAYER_MARKER_RADIUS * 2}
+            preserveAspectRatio="xMidYMid slice"
+            clipPath={`url(#${clipId})`}
+            onError={() => setPhotoFailed(true)}
+          />
+          <circle cx={x} cy={y} r={PLAYER_MARKER_RADIUS} fill="none" stroke={ringColor} strokeWidth={ringWidth} />
+        </>
+      ) : (
+        <text
+          x={x}
+          y={y + 1}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill={colors.secondary}
+          fontSize={15}
+          fontWeight={700}
+        >
+          {initials}
+        </text>
+      )}
       <text x={x} y={y + PLAYER_MARKER_RADIUS + 16} textAnchor="middle" fill="var(--color-text-secondary)" fontSize={12}>
         {scorer.player.lastName}
       </text>
@@ -100,7 +161,14 @@ function PlayerMarker({ scorer, x, y, colors }: PlayerMarkerProps) {
   );
 }
 
-export function CourtView({ homeTeam, awayTeam, homeScorers, awayScorers }: CourtViewProps) {
+export function CourtView({
+  homeTeam,
+  awayTeam,
+  homeScorers,
+  awayScorers,
+  selectedPlayerId = null,
+  onSelectPlayer,
+}: CourtViewProps) {
   const homeColors = resolveTeamColors(homeTeam.abbreviation);
   const awayColors = resolveTeamColors(awayTeam.abbreviation);
 
@@ -114,7 +182,7 @@ export function CourtView({ homeTeam, awayTeam, homeScorers, awayScorers }: Cour
       aria-label={`Predicted starting five formation for ${homeTeam.name} and ${awayTeam.name}, arranged by position — illustrative, not tracked positioning`}
       className="h-auto w-full"
     >
-      <rect x={0} y={0} width={COURT_WIDTH} height={COURT_HEIGHT} rx={12} fill="var(--color-surface-raised)" />
+      <rect x={0} y={0} width={COURT_WIDTH} height={COURT_HEIGHT} fill="var(--color-surface-raised)" />
 
       {/* Center line + circle */}
       <line x1={HALF_WIDTH} y1={0} x2={HALF_WIDTH} y2={COURT_HEIGHT} stroke="var(--color-border-subtle)" strokeWidth={2} />
@@ -127,13 +195,15 @@ export function CourtView({ homeTeam, awayTeam, homeScorers, awayScorers }: Cour
         strokeWidth={2}
       />
 
-      {/* Outer boundary */}
+      {/* Outer boundary — square corners, not rounded: the rest of the app's
+          panels (locker-surface cards, the hero band, etc.) are all
+          rounded-none, so a rounded court read as the one thing on the page
+          that didn't match. */}
       <rect
         x={4}
         y={4}
         width={COURT_WIDTH - 8}
         height={COURT_HEIGHT - 8}
-        rx={10}
         fill="none"
         stroke="var(--color-border-subtle)"
         strokeWidth={2}
@@ -184,7 +254,17 @@ export function CourtView({ homeTeam, awayTeam, homeScorers, awayScorers }: Cour
 
       {homePlacements.map(({ scorer, slot }) => {
         const offset = FORMATION_OFFSETS[slot];
-        return <PlayerMarker key={scorer.player.id} scorer={scorer} x={offset.x} y={offset.y} colors={homeColors} />;
+        return (
+          <PlayerMarker
+            key={scorer.player.id}
+            scorer={scorer}
+            x={offset.x}
+            y={offset.y}
+            colors={homeColors}
+            selected={scorer.player.id === selectedPlayerId}
+            onSelect={onSelectPlayer}
+          />
+        );
       })}
       {awayPlacements.map(({ scorer, slot }) => {
         const offset = FORMATION_OFFSETS[slot];
@@ -195,6 +275,8 @@ export function CourtView({ homeTeam, awayTeam, homeScorers, awayScorers }: Cour
             x={COURT_WIDTH - offset.x}
             y={offset.y}
             colors={awayColors}
+            selected={scorer.player.id === selectedPlayerId}
+            onSelect={onSelectPlayer}
           />
         );
       })}

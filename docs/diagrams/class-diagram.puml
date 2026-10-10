@@ -1,0 +1,184 @@
+@startuml class-diagram
+title NBA Analytics Platform — Backend Class Diagram (apps/api)
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+package "common" {
+  class ApiException <<HttpException>> {
+    +constructor(status: HttpStatus, code: string, message: string)
+  }
+
+  class AllExceptionsFilter <<ExceptionFilter>> {
+    +catch(exception, host: ArgumentsHost): void
+  }
+
+  class SessionAuthGuard <<CanActivate>> {
+    +canActivate(context: ExecutionContext): Promise<boolean>
+  }
+
+  class RolesGuard <<CanActivate>> {
+    -reflector: Reflector
+    +canActivate(context: ExecutionContext): boolean
+  }
+
+  class "@Roles(...roles: Role[])" as RolesDecorator <<decorator>>
+
+  class parsePageParams <<function>> {
+    +parsePageParams(query): { page, pageSize }
+  }
+}
+
+package "prisma" {
+  class PrismaService <<PrismaClient>> {
+    +onModuleInit(): Promise<void>
+    +onModuleDestroy(): Promise<void>
+  }
+}
+
+package "players" {
+  class PlayersController {
+    -playersService: PlayersService
+    -statsService: StatsService
+    +listPlayers(query): PagedResult<PlayerWithTeam>
+    +getPlayer(id): Promise<PlayerWithTeam>
+    +getPlayerStats(id): Promise<{seasonAverages, gameLog}>
+  }
+
+  class PlayersService {
+    -prisma: PrismaService
+    +getPlayers(query): Promise<PagedResult<PlayerWithTeam>>
+    +getPlayerById(playerId): Promise<PlayerWithTeam?>
+    +getPlayerSeasonStats(playerId): Promise<PlayerGameStat[]>
+  }
+
+  class StatsService {
+    -playersService: PlayersService
+    +deriveSeasonAverages(gameStats): DerivedSeasonAverages
+    +deriveGameLog(gameStats): GameLogEntry[]
+    +getPlayerSeasonAverages(playerId): Promise<DerivedSeasonAverages>
+    +getPlayerGameLog(playerId): Promise<GameLogEntry[]>
+  }
+}
+
+package "teams" {
+  class TeamsController {
+    -teamsService: TeamsService
+    +listTeams(query): PagedResult<Team>
+    +getTeam(id): Promise<Team>
+  }
+
+  class TeamsService {
+    -prisma: PrismaService
+    +getTeams(query): Promise<PagedResult<Team>>
+    +getTeamById(teamId): Promise<Team?>
+  }
+}
+
+package "games" {
+  class GamesController <<@UseGuards(SessionAuthGuard)>> {
+    -gamesService: GamesService
+    -predictionsService: PredictionsService
+    -gameDetailService: GameDetailService
+    +listGames(query): PagedResult<GameWithTeamsAndPrediction>
+    +getGame(id): Promise<GameDetail>
+    +getGamePrediction(id): Promise<GamePrediction>
+  }
+
+  class GamesService {
+    -prisma: PrismaService
+    +getGames(query): Promise<PagedResult<GameWithTeamsAndPrediction>>
+    +getGameById(gameId): Promise<GameWithTeamsAndPrediction?>
+  }
+
+  class GameDetailService {
+    -gamesService: GamesService
+    -prisma: PrismaService
+    +getGameDetail(gameId): Promise<GameDetail?>
+    -predictPointsFromRecentGames(gameStats): number
+  }
+}
+
+package "predictions" {
+  class PredictionsService {
+    -prisma: PrismaService
+    +getPredictionForGame(gameId): Promise<GamePrediction?>
+  }
+}
+
+package "optimizer" {
+  class OptimizerController <<@UseGuards(SessionAuthGuard)>> {
+    -optimizerService: OptimizerService
+    +getLatestLineup(): Promise<Lineup>
+  }
+
+  class OptimizerService {
+    -prisma: PrismaService
+    +getLatestLineup(): Promise<LineupWithSlots?>
+  }
+}
+
+package "health / not-found" {
+  class HealthController {
+    +getHealth(): { status: "ok" }
+  }
+  class NotFoundController <<catch-all>> {
+    +handle(): never
+  }
+}
+
+' --- controller -> service dependencies ---
+PlayersController --> PlayersService
+PlayersController --> StatsService
+StatsService --> PlayersService
+TeamsController --> TeamsService
+GamesController --> GamesService
+GamesController --> PredictionsService
+GamesController --> GameDetailService
+GameDetailService --> GamesService
+OptimizerController --> OptimizerService
+
+' --- services -> PrismaService ---
+PlayersService --> PrismaService
+TeamsService --> PrismaService
+GamesService --> PrismaService
+GameDetailService --> PrismaService
+PredictionsService --> PrismaService
+OptimizerService --> PrismaService
+
+' --- guards on protected controllers ---
+GamesController ..> SessionAuthGuard : guarded by
+OptimizerController ..> SessionAuthGuard : guarded by
+RolesGuard ..> RolesDecorator : reads metadata via Reflector
+SessionAuthGuard ..> ApiException : throws 401
+RolesGuard ..> ApiException : throws 403
+
+' --- controllers -> ApiException (404s) ---
+PlayersController ..> ApiException : throws 404
+TeamsController ..> ApiException : throws 404
+GamesController ..> ApiException : throws 404
+OptimizerController ..> ApiException : throws 404
+
+AllExceptionsFilter ..> ApiException : formats into\n{ error: { code, message } }
+
+note bottom of PrismaService
+  Extends PrismaClient directly --
+  every Prisma model (Player, Team,
+  Game, GamePrediction, Lineup, ...)
+  is available as this.player,
+  this.team, etc. Never called
+  directly from controllers.
+end note
+
+note bottom of RolesGuard
+  Registered but currently unused --
+  no route yet applies @Roles(...)
+  above the default USER role.
+end note
+
+@enduml

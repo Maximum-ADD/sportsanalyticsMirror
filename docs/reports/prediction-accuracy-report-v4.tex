@@ -1,0 +1,218 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{parskip}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[htt]{hyphenat}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Prediction Accuracy Report v4}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue,
+    pdftitle={Prediction Algorithm Accuracy Report v4 - Season-Boundary Elo Reset},
+    pdfauthor={Sports Analytics Project}
+}
+
+\newcommand{\code}[1]{\allowbreak\texttt{\small #1}\allowbreak}
+
+\title{\textbf{Prediction Algorithm Accuracy Report — v4} \\ \large Season-Boundary Elo Reset}
+\author{Sports Analytics Project}
+\date{September 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent The v3 report flagged an explicit, deliberately-unaddressed simplification in the Elo model:
+\code{compute\_elo\_ratings} treated every game across all three loaded seasons as one continuous
+chronological sequence, with no reset or regression-toward-the-mean at season boundaries, even though real
+NBA team strength shifts over an offseason (trades, draft, free agency). This report backtests and ships a
+fix. Holding the already-validated \code{HOME\_COURT\_ADVANTAGE\_ELO}\,=\,40 and \code{K\_FACTOR}\,=\,25
+constants fixed, a season-boundary reset that regresses each team's rating 50\% of the way back toward the
+1500 starting point was tested in isolation and found to be a real, robust improvement: it wins on two
+independent chronological validation splits, on 19 of 20 randomized split points spanning a wide range of
+train/validation cut points, and against a permutation-test null ($p < 0.001$). \code{SEASON\_RESET\_FRACTION
+= 0.5} is now shipped.
+\end{abstract}
+
+\tableofcontents
+
+\section{Motivation}
+
+v3's Elo re-tuning (\code{HOME\_COURT\_ADVANTAGE\_ELO}, \code{K\_FACTOR}) was deliberately run against the
+existing no-reset model so that experiment isolated one variable — more data — rather than two. That
+report's module-docstring caveat named the season-boundary question explicitly as the natural next,
+separately-evaluated step. This report is that step.
+
+\section{Method}
+
+\subsection{Isolating the reset from the already-shipped tuning}
+
+\code{HOME\_COURT\_ADVANTAGE\_ELO} and \code{K\_FACTOR} were held fixed at their v3-validated values (40 and
+25) throughout this experiment. Only a new parameter, \code{SEASON\_RESET\_FRACTION}, was grid-searched —
+the fraction of the distance back toward \code{STARTING\_ELO} (1500) that every team's rating regresses
+whenever a game's season differs from the previous game's. \code{SEASON\_RESET\_FRACTION = 0.0} exactly
+reproduces the pre-this-change behavior (verified programmatically: a 0.0-fraction pass was diffed against
+\code{elo.py}'s actual \code{compute\_elo\_ratings} output game-by-game across all 3,781 games before any
+grid-search result was trusted).
+
+\subsection{Grid search and validation}
+
+The same chronological train/validation discipline as v3's HCA/K tuning was applied: a grid over
+\code{SEASON\_RESET\_FRACTION} $\in [0, 0.5]$ was searched on each split's training portion (by Brier score),
+and the winner was checked against that split's held-out validation portion.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Split & No reset (0.0) validation Brier & Best-on-train reset validation Brier \\
+\midrule
+70/30 chronological & 0.2119 & 0.2095 (fraction 0.40) \\
+60/40 chronological & 0.2101 & 0.2077 (fraction 0.45) \\
+\bottomrule
+\end{tabular}
+\caption{Reset beats no-reset on both independent validation splits.}
+\end{table}
+
+\subsection{Characterizing the shape of the effect before picking a shipped value}
+
+The two splits' individual best-on-train fractions (0.40 and 0.45) did not exactly agree, and the
+training-split Brier surface near those points was quite flat (0.2156–0.2165 across fractions 0.30–0.50 on
+both splits) — the same pattern v1's single-season HCA/K attempt showed before turning out to be noise. Given
+that history, the fraction wasn't trusted at face value; the full validation-Brier curve was examined instead
+of just each split's single nominal winner.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Fraction & 70/30 split: validation Brier & 60/40 split: validation Brier \\
+\midrule
+0.00 (no reset) & 0.2119 & 0.2101 \\
+0.20            & 0.2104 & 0.2086 \\
+0.40            & 0.2095 & 0.2078 \\
+0.50            & 0.2092 & 0.2076 \\
+0.60            & 0.2090 & 0.2077 \\
+0.70            & 0.2089 & 0.2079 \\
+0.80            & 0.2090 & 0.2083 \\
+1.00 (full reset) & 0.2093 & 0.2096 \\
+\bottomrule
+\end{tabular}
+\caption{Validation Brier across the full fraction range, both splits. Both curves fall monotonically from
+0.0 to roughly the 0.5–0.7 region, then rise again toward a full reset at 1.0 — a genuine interior optimum,
+not noise or a boundary effect. The two splits' minima (0.70 and 0.50–0.60 respectively) are close but not
+identical.}
+\end{table}
+
+This is materially different from — and more convincing than — a single sharp per-split "winner": both
+curves are monotonically decreasing from no-reset, bottom out in a shared broad region, and rise again toward
+a full reset, on both splits independently. \textbf{Some reset clearly beats none, and a full reset is
+clearly worse than a partial one, on both splits}, even though the single sharpest point differs slightly
+between them.
+
+\code{SEASON\_RESET\_FRACTION = 0.5} was chosen as the value inside both splits' shared near-optimal region,
+rather than either split's individual point-estimate — deliberately not overfitting to one split's specific
+nominal winner (0.40 or 0.45) when the two disagreed by that much and the surface was this flat around the
+optimum.
+
+\subsection{Additional robustness checks}
+
+Two checks beyond the two-split comparison were run before shipping, matching the standard this project has
+applied to every prior tuning decision:
+
+\begin{itemize}
+    \item \textbf{Many randomized split points.} Rather than trusting two fixed splits (70/30, 60/40), 20
+    additional chronological train/validation splits were generated with the split point drawn uniformly at
+    random from the 50\%–85\% range of the season timeline. \code{SEASON\_RESET\_FRACTION = 0.5} beat no
+    reset on \textbf{19 of 20} of these splits.
+    \item \textbf{Permutation test.} 1,000 reruns of the full 3,781-game schedule with each game's outcome
+    replaced by an independent coin flip (same methodology as every permutation test in this report series)
+    produced a null Brier distribution with mean 0.2609 and standard deviation 0.0013; the observed Brier
+    score at \code{SEASON\_RESET\_FRACTION = 0.5} (0.2130) beat every single one of the 1,000 null runs
+    ($p < 0.001$).
+\end{itemize}
+
+\section{What Shipped}
+
+\code{elo.py}'s \code{compute\_elo\_ratings} now detects a season boundary (the current game's \code{season}
+differing from the previous game's) and regresses every team's current rating 50\% of the way back toward
+1500 before processing that boundary game and the rest of its season. \code{predict\_upcoming\_games} applies
+the same reset when every completed game so far belongs to an earlier season than the upcoming games being
+predicted — otherwise the very first predictions of a brand-new season (before any of its games have been
+played) would use stale, un-reset ratings until the first real result triggered the reset organically.
+
+\code{GamePrediction} was regenerated for all 3,781 games under the new model.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Metric & Before reset (v3) & After reset (v4) \\
+\midrule
+Full-dataset Brier score & 0.2145 & 0.2130 \\
+Full-dataset accuracy & 66.0\% & 65.8\% \\
+\bottomrule
+\end{tabular}
+\caption{Full-dataset (non-held-out) figures, before vs.\ after. As with the v3 HCA/K tuning, the headline
+full-dataset number moves modestly — the real evidence for the change is the held-out validation-split
+comparison in the tables above, not this summary statistic.}
+\end{table}
+
+Six unit tests (\code{test\_elo.py}) cover the reset's exact semantics: it fires once and only once per
+season boundary (not repeatedly within a season), it's a true no-op for a team with no rating history yet, it
+regresses by exactly the configured fraction, and \code{predict\_upcoming\_games} correctly applies a pending
+reset for a season whose first game hasn't been played yet. All pass, alongside the full existing suite
+(187 tests across the predictor, API, and web apps) with no regressions.
+
+\section{What Was Deliberately Not Done}
+
+The reset baseline is a fixed global constant (1500), not each team's own multi-season average rating or any
+per-team prior — matching the recommendation from v3 to keep this experiment testing one mechanism at a time.
+A team-specific baseline (e.g.\ a team's 3-year rolling average rather than the league-wide 1500 starting
+point) is a reasonable further refinement but was out of scope here, since it would reintroduce exactly the
+kind of multi-variable conflation this report was structured to avoid.
+
+\section{Recommendations Going Forward}
+
+\begin{enumerate}
+    \item \textbf{This closes the caveat v3 opened.} Elo's model structure (constants, season-awareness) is
+    now validated as thoroughly as the available data supports; further Elo gains most plausibly come from
+    more data (more seasons) rather than more model refinement, echoing v3's own recommendation.
+    \item \textbf{Four Factors and the player-point predictors remain the least-improved models relative to
+    their naive baselines} across this entire report series. None of the season-boundary logic here was
+    applied to Four Factors' running-average computation, which has the same implicit continuous-sequence
+    assumption Elo had — worth a similarly isolated, backtested experiment as a future step, now that the
+    methodology (isolate one variable, validate on multiple splits plus randomized splits plus a permutation
+    test) has been exercised three times running.
+\end{enumerate}
+
+\section*{Appendix: Reproducing These Results}
+
+\code{apps/predictor/check\_accuracy.py} recomputes Elo's Brier score/accuracy against the database's current
+state, reflecting the shipped \code{SEASON\_RESET\_FRACTION} automatically since it calls the real
+\code{compute\_elo\_ratings} directly. The grid-search, randomized-split, and permutation-test scripts behind
+this report are one-off analysis, not part of the committed codebase, matching the same appendix note in v3.
+
+\end{document}
