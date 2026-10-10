@@ -110,11 +110,11 @@ const TEAMS_TUTORIAL_STEPS: TutorialStep[] = [
       // Not "this season": TeamsService.getTeamRecords counts every completed
       // game held for the team, with no season or season-type filter.
       "Record is wins and losses, and Win % the share of games won — across every completed game we hold for the team, earlier seasons and playoffs included.",
-      "Elo is a team-strength rating that rises with wins and falls with losses. It's the rating the model used for the team's most recent predicted game.",
+      "Elo is a team-strength rating that rises with wins and falls with losses, by more when the opponent was strong. It's the rating the model used for the team's most recent predicted game.",
       "The W and L squares are the team's latest results, oldest on the left. Click a card to open that team's page.",
       // FollowTeamButton renders nothing signed out, and writes the single
       // User.favoriteTeamId — following another team replaces the first.
-      "When you're signed in, Follow makes it your team, shown under Your team on your home page. You follow one team at a time, so following another replaces it.",
+      "When you're signed in, Follow makes it your team, shown under Your team on your home page and in a Your team card above the list here, hidden while you search or filter. You follow one team at a time, so following another replaces it.",
     ],
   },
   {

@@ -59,6 +59,19 @@ function sortRows(rows: TeamRow[], sortKey: SortKey): TeamRow[] {
   }
 }
 
+/** Joins a team to its Elo rating and record, either of which may be missing (null). */
+function buildTeamRow(
+  team: Team,
+  eloByTeamId: Map<string, TeamEloRating>,
+  recordByTeamId: Map<string, TeamRecord>,
+): TeamRow {
+  return {
+    team,
+    elo: eloByTeamId.get(team.id)?.elo ?? null,
+    record: recordByTeamId.get(team.id) ?? null,
+  };
+}
+
 function RecentFormPills({ recentForm }: { recentForm: TeamRecord["recentForm"] }) {
   if (recentForm.length === 0) return null;
   return (
@@ -145,6 +158,8 @@ export function TeamsListPage() {
   const [division, setDivision] = useState<string | undefined>();
   const [sortKey, setSortKey] = useState<SortKey>("elo");
   const debouncedSearchTerm = useDebouncedValue(searchTerm.trim(), SEARCH_DEBOUNCE_IN_MILLISECONDS);
+  const { data: me } = useMe();
+  const favoriteTeamId = me?.favoriteTeam?.id;
 
   const teamsQuery = useQuery({
     queryKey: ["teams", "all"],
@@ -175,13 +190,19 @@ export function TeamsListPage() {
       .filter((team) => matchesSearch(team, debouncedSearchTerm))
       .filter((team) => !conference || team.conference === conference)
       .filter((team) => !division || team.division === division)
-      .map((team) => ({
-        team,
-        elo: eloByTeamId.get(team.id)?.elo ?? null,
-        record: recordByTeamId.get(team.id) ?? null,
-      }));
+      .map((team) => buildTeamRow(team, eloByTeamId, recordByTeamId));
     return sortRows(rows, sortKey);
   }, [teamsQuery.data, debouncedSearchTerm, conference, division, sortKey, eloByTeamId, recordByTeamId]);
+
+  // The signed-in user's own team, shown in its own card above the list so
+  // the list itself keeps its sort order — the team also stays wherever it
+  // ranks there. Hidden while a search or filter is narrowing the list, so
+  // it never sits above results it doesn't belong to.
+  const isNarrowed = Boolean(debouncedSearchTerm || conference || division);
+  const favoriteRow = useMemo(() => {
+    const favoriteTeam = teamsQuery.data?.data.find((team) => team.id === favoriteTeamId);
+    return favoriteTeam ? buildTeamRow(favoriteTeam, eloByTeamId, recordByTeamId) : null;
+  }, [teamsQuery.data, favoriteTeamId, eloByTeamId, recordByTeamId]);
 
   const pageStart = (page - 1) * PAGE_SIZE;
   const visibleRows = filteredRows.slice(pageStart, pageStart + PAGE_SIZE);
@@ -214,8 +235,10 @@ export function TeamsListPage() {
               <div>
                 <h1 className="font-display text-2xl tracking-[0.01em] text-landing-ink uppercase">Teams</h1>
                 <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed text-locker-ink-muted">
-                  All 30 franchises, with the record and Elo rating the predictor actually uses. Elo is the same
-                  pre-game figure stored on every GamePrediction row, so what you see here is what the model saw.
+                  All 30 franchises. Win % is the share of games won, with every win counting the same. Elo is a
+                  strength rating that also weighs who the win came against — beating a strong team lifts it more
+                  than beating a weak one — so it's the better guide to how good a team is now, and it's the rating
+                  our prediction model uses.
                 </p>
               </div>
               {filteredRows.length > 0 && (
@@ -290,6 +313,19 @@ export function TeamsListPage() {
         ) : (
           <Reveal>
             <SectionLoading loading={teamsQuery.isFetching || eloQuery.isFetching || recordsQuery.isFetching}>
+              {favoriteRow && !isNarrowed && (
+                <section aria-labelledby="your-team-heading" className="mb-6">
+                  <h2
+                    id="your-team-heading"
+                    className="mb-2 font-mono text-[10px] tracking-[0.12em] text-locker-ink-muted uppercase"
+                  >
+                    Your team
+                  </h2>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <TeamCard {...favoriteRow} />
+                  </div>
+                </section>
+              )}
               {visibleRows.length === 0 ? (
                 <p className="text-[12.5px] text-locker-ink-muted">No teams found.</p>
               ) : (

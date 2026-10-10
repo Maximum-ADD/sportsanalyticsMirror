@@ -129,9 +129,10 @@ const DATASETS_TUTORIAL_STEPS: TutorialStep[] = [
     title: "Download a release",
     summary: "Download saves the release as a CSV file — a spreadsheet-friendly text file — to your computer.",
     points: [
-      // The download endpoint takes a session or an API key (ApiKeyGuard);
-      // from this page that means a session.
-      "You need to be signed in to download.",
+      // The download endpoint takes a session or an API key (ApiKeyGuard),
+      // and the site's proxy adds its own key to every /api request
+      // (functions/_shared/proxy.ts), so signed-out visitors can download too.
+      "You don't need to be signed in to download.",
       "After a download, the page checks the file against the release's published checksum and tells you whether it matches.",
       "A checksum is a fingerprint of the file's exact contents. A match means you have exactly what was published, so earlier analysis can be repeated.",
     ],
