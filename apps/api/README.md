@@ -37,6 +37,7 @@ One Nest module per area under `src/`:
 | `admin` | Batch review, event corrections with recompute and undo, anomaly flags, ingestion pulls, API consumers, users |
 | `me` | The signed-in user's profile, follows, picks, saved items and API keys |
 | `become-pro`, `optimizer`, `live` | Become Pro, the lineup optimizer and the live-games feed |
+| `injuries` | Injuries and expected return dates from ESPN's injury report, matched to this app's teams and players; nothing stored |
 | `common` | Guards (session, API key, roles, version, origin), the error filter, pagination, OpenAPI helpers |
 | `cache` | The in-memory response cache for public reads |
 

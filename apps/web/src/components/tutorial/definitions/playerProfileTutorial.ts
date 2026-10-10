@@ -133,6 +133,8 @@ const PLAYER_PROFILE_TUTORIAL_STEPS: TutorialStep[] = [
       "Each tile names its stat in full under the number. USG% is the share of the team's possessions that end with the player shooting, drawing a foul or turning it over. +/- is the average score margin while they're on court. ORTG and DRTG are points scored and allowed per 100 possessions. The i button at the end of the segment row explains these four again.",
       "Edit stats lets you type in your own numbers to see the tiles, traits and shooting change. Nothing is saved, and Reset puts the real figures back.",
       "Compare opens this player on the Compare page. When you're signed in, Follow adds them to the watchlist on your home page.",
+      // PlayerInjuryBadge renders nothing for a player not on the report.
+      "If the player is on ESPN's injury report, a badge under their name shows whether they're out or day-to-day, the injury, and when ESPN expects them back. That date is ESPN's estimate.",
     ],
   },
   {

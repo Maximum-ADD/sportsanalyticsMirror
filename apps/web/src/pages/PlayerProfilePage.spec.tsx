@@ -28,6 +28,12 @@ vi.mock("@/lib/nbaApi", () => ({
   fetchPlayerCareerStats: vi.fn(),
 }));
 
+// The injury badge reads ESPN through the API; PlayerInjuryBadge's own spec
+// covers it, so here the player is simply not on the report.
+vi.mock("@/lib/injuriesApi", () => ({
+  fetchPlayerInjury: vi.fn().mockResolvedValue({ fetchedAt: "2026-10-09T18:00:00.000Z", injury: null }),
+}));
+
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();
   return { ...actual, useParams: () => ({ playerId: "player-1" }) };

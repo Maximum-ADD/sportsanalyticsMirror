@@ -10,6 +10,7 @@ import { ExportRequestsModule } from "./common/export-requests.module.js";
 import { OriginCheckGuard } from "./common/origin-check.guard.js";
 import { DatasetsModule } from "./datasets/datasets.module.js";
 import { GamesModule } from "./games/games.module.js";
+import { InjuriesModule } from "./injuries/injuries.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { LiveGamesModule } from "./live/live-games.module.js";
 import { FollowsModule } from "./me/follows/follows.module.js";
@@ -48,6 +49,7 @@ import { PrivacyModule } from "./privacy/privacy.module.js";
     BecomeProModule,
     LiveGamesModule,
     PrivacyModule,
+    InjuriesModule,
     // Registers a catch-all {/*splat, ALL} route (see NotFoundController) —
     // must stay last, or it would intercept every request meant for a
     // module imported after it before that module's own routes ever match.

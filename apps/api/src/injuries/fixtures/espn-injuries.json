@@ -1,0 +1,188 @@
+{
+  "timestamp": "2026-10-09T18:13:31Z",
+  "status": "success",
+  "injuries": [
+    {
+      "id": "1",
+      "displayName": "Atlanta Hawks",
+      "injuries": [
+        {
+          "id": "533678",
+          "status": "Day-To-Day",
+          "date": "2026-10-09T02:30Z",
+          "shortComment": "Gilbert didn't play in Thursday's 123-116 preseason win over the Spurs due to left patella tendinitis, Lauren L. Williams of The Atlanta Journal-Constitution reports.",
+          "type": {
+            "id": "6",
+            "name": "INJURY_STATUS_DAYTODAY",
+            "description": "day-to-day",
+            "abbreviation": "DD"
+          },
+          "details": {
+            "fantasyStatus": {
+              "description": "GTD",
+              "abbreviation": "GTD"
+            },
+            "type": "Knee",
+            "location": "Leg",
+            "detail": "Tendinitis",
+            "side": "Left",
+            "returnDate": "2026-10-10"
+          },
+          "athlete": {
+            "displayName": "Keshon Gilbert",
+            "firstName": "Keshon",
+            "lastName": "Gilbert",
+            "team": {
+              "id": "1",
+              "displayName": "Atlanta Hawks",
+              "abbreviation": "ATL"
+            }
+          }
+        },
+        {
+          "id": "533614",
+          "status": "Day-To-Day",
+          "date": "2026-10-08T22:33Z",
+          "shortComment": "Dort (knee) has been ruled out for Thursday's preseason matchup with San Antonio, Brad Rowland of the Locked On Podcast Network reports.",
+          "type": {
+            "id": "6",
+            "name": "INJURY_STATUS_DAYTODAY",
+            "description": "day-to-day",
+            "abbreviation": "DD"
+          },
+          "details": {
+            "fantasyStatus": {
+              "description": "GTD",
+              "abbreviation": "GTD"
+            },
+            "type": "Knee",
+            "location": "Leg",
+            "detail": "Bruise",
+            "side": "Right",
+            "returnDate": "2026-10-10"
+          },
+          "athlete": {
+            "displayName": "Luguentz Dort",
+            "firstName": "Luguentz",
+            "lastName": "Dort",
+            "team": {
+              "id": "1",
+              "displayName": "Atlanta Hawks",
+              "abbreviation": "ATL"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "displayName": "LA Clippers",
+      "injuries": [
+        {
+          "id": "533477",
+          "status": "Day-To-Day",
+          "date": "2026-10-07T20:42Z",
+          "shortComment": "Sanders (hip) was limited to individual player development work and did not take part in five-on-five activity Wednesday, Tomer Azarly of ClutchPoints.com reports. Azarly adds that the Clippers said Sanders is day-to-day.",
+          "type": {
+            "id": "6",
+            "name": "INJURY_STATUS_DAYTODAY",
+            "description": "day-to-day",
+            "abbreviation": "DD"
+          },
+          "details": {
+            "fantasyStatus": {
+              "description": "GTD",
+              "abbreviation": "GTD"
+            },
+            "type": "Hip",
+            "location": "Torso",
+            "side": "Left",
+            "returnDate": "2026-10-10"
+          },
+          "athlete": {
+            "displayName": "Kobe Sanders",
+            "firstName": "Kobe",
+            "lastName": "Sanders",
+            "team": {
+              "id": "12",
+              "displayName": "LA Clippers",
+              "abbreviation": "LAC"
+            }
+          }
+        },
+        {
+          "id": "533475",
+          "status": "Day-To-Day",
+          "date": "2026-10-07T20:35Z",
+          "shortComment": "Beal (knee) isn't participating in five-on-five work and is doing individual player development work, Tomer Azarly of ClutchPoints.com reports. Azarly adds that the Clippers said Wednesday that Beal is continuing to have inflammation managed.",
+          "type": {
+            "id": "6",
+            "name": "INJURY_STATUS_DAYTODAY",
+            "description": "day-to-day",
+            "abbreviation": "DD"
+          },
+          "details": {
+            "fantasyStatus": {
+              "description": "GTD",
+              "abbreviation": "GTD"
+            },
+            "type": "Knee",
+            "location": "Leg",
+            "detail": "Inflammation",
+            "side": "Not Specified",
+            "returnDate": "2026-10-10"
+          },
+          "athlete": {
+            "displayName": "Bradley Beal",
+            "firstName": "Bradley",
+            "lastName": "Beal",
+            "team": {
+              "id": "12",
+              "displayName": "LA Clippers",
+              "abbreviation": "LAC"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "22",
+      "displayName": "Portland Trail Blazers",
+      "injuries": [
+        {
+          "id": "532395",
+          "status": "Out",
+          "date": "2026-08-24T20:23Z",
+          "shortComment": "Sharpe suffered a torn meniscus in his knee and is expected to miss six months, per Shams Charania of ESPN.",
+          "type": {
+            "id": "4",
+            "name": "INJURY_STATUS_OUT",
+            "description": "out",
+            "abbreviation": "O"
+          },
+          "details": {
+            "fantasyStatus": {
+              "description": "OUT",
+              "abbreviation": "OUT"
+            },
+            "type": "Knee",
+            "location": "Leg",
+            "detail": "Surgery",
+            "side": "Right",
+            "returnDate": "2027-03-02"
+          },
+          "athlete": {
+            "displayName": "Shaedon Sharpe",
+            "firstName": "Shaedon",
+            "lastName": "Sharpe",
+            "team": {
+              "id": "22",
+              "displayName": "Portland Trail Blazers",
+              "abbreviation": "POR"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

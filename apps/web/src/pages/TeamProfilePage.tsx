@@ -5,6 +5,7 @@ import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 import { PageLoading, SectionLoading } from "@/components/ui/loading-overlay";
 import { ErrorState } from "@/components/ErrorState";
 import { FollowTeamButton } from "@/components/FollowTeamButton";
+import { TeamInjuriesSection } from "@/components/injuries/TeamInjuriesSection";
 import { PlayerHeadshot } from "@/components/PlayerHeadshot";
 import { PageTutorial } from "@/components/tutorial/PageTutorial";
 import { TEAM_PROFILE_TUTORIAL } from "@/components/tutorial/definitions/teamProfileTutorial";
@@ -123,64 +124,71 @@ export function TeamProfilePage() {
           </div>
         </Reveal>
 
-        <Reveal>
-          <h2 className="mb-3 font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">Roster</h2>
-          <SectionLoading loading={rosterQuery.isSuccess && rosterQuery.isFetching} label="Loading roster">
-            <div className="overflow-x-auto border border-landing-light bg-locker-surface">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-landing-light bg-landing-hero">
-                    {TABLE_HEADERS.map((header) => (
-                      <th
-                        key={header}
-                        className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase"
-                      >
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rosterQuery.isPending ? (
-                    <tr>
-                      <td colSpan={TABLE_HEADERS.length} className="py-10">
-                        <BasketballSpinner label="Loading roster" />
-                      </td>
+        {/* Roster and injuries side by side from lg, stacked below it. */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <Reveal className="lg:col-span-7">
+            <h2 className="mb-3 font-display text-sm tracking-[0.2em] text-locker-ink-muted uppercase">Roster</h2>
+            <SectionLoading loading={rosterQuery.isSuccess && rosterQuery.isFetching} label="Loading roster">
+              <div className="overflow-x-auto border border-landing-light bg-locker-surface">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-landing-light bg-landing-hero">
+                      {TABLE_HEADERS.map((header) => (
+                        <th
+                          key={header}
+                          className="px-3 py-2.5 font-mono text-[9px] font-normal tracking-[0.1em] text-locker-ink-muted uppercase"
+                        >
+                          {header}
+                        </th>
+                      ))}
                     </tr>
-                  ) : rosterQuery.data?.data.length === 0 ? (
-                    <tr>
-                      <td colSpan={TABLE_HEADERS.length} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
-                        No roster players found.
-                      </td>
-                    </tr>
-                  ) : (
-                    rosterQuery.data?.data.map((player) => (
-                      <tr
-                        key={player.id}
-                        className="border-b border-landing-light transition-colors last:border-b-0 hover:bg-landing-hero"
-                      >
-                        <td className="px-3 py-2.5">
-                          <Link to={`/players/${player.id}`} className="flex items-center gap-2.5 group">
-                            <PlayerHeadshot player={player} size="sm" className="size-8" alt="" />
-                            <span className="text-[13px] text-landing-ink group-hover:text-locker-leather">
-                              {player.firstName} {player.lastName}
-                            </span>
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2.5 font-mono text-[11px] tracking-[0.08em] text-locker-ink-muted uppercase">
-                          {player.position}
-                        </td>
-                        <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted tabular-nums">
-                          {player.jerseyNumber ? `#${player.jerseyNumber}` : "—"}
+                  </thead>
+                  <tbody>
+                    {rosterQuery.isPending ? (
+                      <tr>
+                        <td colSpan={TABLE_HEADERS.length} className="py-10">
+                          <BasketballSpinner label="Loading roster" />
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </SectionLoading>
-        </Reveal>
+                    ) : rosterQuery.data?.data.length === 0 ? (
+                      <tr>
+                        <td colSpan={TABLE_HEADERS.length} className="px-3 py-8 text-center text-[12.5px] text-locker-ink-muted">
+                          No roster players found.
+                        </td>
+                      </tr>
+                    ) : (
+                      rosterQuery.data?.data.map((player) => (
+                        <tr
+                          key={player.id}
+                          className="border-b border-landing-light transition-colors last:border-b-0 hover:bg-landing-hero"
+                        >
+                          <td className="px-3 py-2.5">
+                            <Link to={`/players/${player.id}`} className="flex items-center gap-2.5 group">
+                              <PlayerHeadshot player={player} size="sm" className="size-8" alt="" />
+                              <span className="text-[13px] text-landing-ink group-hover:text-locker-leather">
+                                {player.firstName} {player.lastName}
+                              </span>
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-[11px] tracking-[0.08em] text-locker-ink-muted uppercase">
+                            {player.position}
+                          </td>
+                          <td className="px-3 py-2.5 font-mono text-[11px] text-locker-ink-muted tabular-nums">
+                            {player.jerseyNumber ? `#${player.jerseyNumber}` : "—"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </SectionLoading>
+          </Reveal>
+
+          <Reveal className="lg:col-span-5">
+            <TeamInjuriesSection teamId={team.id} />
+          </Reveal>
+        </div>
       </div>
 
       {/* The page tutorial: opens by itself on this account's first visit,

@@ -132,7 +132,8 @@ page. In short:
   be reproduced with `?version=`.
 - **Beyond the brief.** Elo and Four Factors game predictions beside
   bookmakers' odds (The Odds API), a MILP fantasy lineup optimizer, Beat the
-  Model, Become Pro, player archetypes and a live-games tab.
+  Model, Become Pro, player archetypes, a live-games tab and injury reports
+  with expected return dates on team and player pages.
 - **Auth.** Google sign-in through BetterAuth, with account deletion and
   `USER`, `ANALYST` and `ADMIN` roles enforced by `RolesGuard`. Password
   reset doesn't apply to Google-only accounts; the lecturer confirmed it
@@ -148,6 +149,10 @@ page. In short:
   jobs; only admin ingestion pulls are queued.
 - Anomaly flags catch impossible box-score lines, not outliers against a
   player's history.
+- Injury reports come from ESPN's public but undocumented site API, read live
+  and cached for half an hour. It isn't licensed for reuse and can change
+  without notice; the pages credit ESPN and label return dates as its
+  estimates.
 
 ## Testing
 
