@@ -30,6 +30,10 @@ vi.mock("@/lib/meApi", () => ({
   // Used by the API keys section — its own behaviour is covered in
   // ApiKeysSection.spec.tsx, so here it only needs to resolve to nothing.
   fetchMyApiKeys: vi.fn().mockResolvedValue({ consumer: null, keys: [] }),
+  // useQuery validates queryFn is callable even when enabled is false (see
+  // ApiKeysSection's usage query), so this needs a real mock, not an
+  // omission, despite never actually running against consumer: null above.
+  fetchMyApiUsageBreakdown: vi.fn().mockResolvedValue(null),
   createMyApiKey: vi.fn(),
   revokeMyApiKey: vi.fn(),
   deleteMyApiKey: vi.fn(),

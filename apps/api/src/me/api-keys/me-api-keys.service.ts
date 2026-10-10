@@ -28,6 +28,18 @@ export interface MyApiKeysView {
   keys: ApiKey[];
 }
 
+// Breakdown of one consumer's logged requests: by endpoint (lifetime, most
+// called first) and by day (recent window, oldest first — a chart reads
+// left to right). Both come from the same ApiUsageLog the total count
+// already does, so a key owner can see what the one number is made of
+// instead of just its total.
+export interface MyApiUsageBreakdown {
+  byEndpoint: Array<{ endpoint: string; count: number }>;
+  byDay: Array<{ date: string; count: number }>;
+}
+
+const USAGE_BREAKDOWN_WINDOW_DAYS = 14;
+
 @Injectable()
 export class MeApiKeysService {
   // apiKeyLookup caches resolved keys for ApiKeyGuard; revoking or
@@ -60,6 +72,37 @@ export class MeApiKeysService {
         usageCount: consumer._count.usageLog,
       },
       keys: consumer.keys,
+    };
+  }
+
+  // GET /v1/me/api-keys/usage — the caller's own breakdown of the total
+  // listMyApiKeys already returns, by endpoint and by day. Returns null
+  // when the caller has no consumer yet (same "no keys yet" case as the
+  // main view), rather than an empty-but-present breakdown.
+  async getMyApiUsageBreakdown(userId: string): Promise<MyApiUsageBreakdown | null> {
+    const consumer = await this.prisma.apiConsumer.findUnique({ where: { userId }, select: { id: true } });
+    if (!consumer) return null;
+
+    const [byEndpoint, byDay] = await Promise.all([
+      this.prisma.apiUsageLog.groupBy({
+        by: ["endpoint"],
+        where: { consumerId: consumer.id },
+        _count: { _all: true },
+        orderBy: { _count: { endpoint: "desc" } },
+      }),
+      this.prisma.$queryRaw<Array<{ date: Date; count: bigint }>>`
+        SELECT date_trunc('day', "calledAt") AS date, count(*)::bigint AS count
+        FROM "ApiUsageLog"
+        WHERE "consumerId" = ${consumer.id}
+          AND "calledAt" >= now() - (${USAGE_BREAKDOWN_WINDOW_DAYS}::text || ' days')::interval
+        GROUP BY date
+        ORDER BY date ASC
+      `,
+    ]);
+
+    return {
+      byEndpoint: byEndpoint.map((row) => ({ endpoint: row.endpoint, count: row._count._all })),
+      byDay: byDay.map((row) => ({ date: row.date.toISOString().slice(0, 10), count: Number(row.count) })),
     };
   }
 

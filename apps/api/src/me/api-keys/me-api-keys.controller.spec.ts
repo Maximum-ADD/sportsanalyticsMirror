@@ -13,6 +13,7 @@ vi.mock("../../auth/auth.config.js", () => ({
 function createMockService() {
   return {
     listMyApiKeys: vi.fn().mockResolvedValue({ consumer: null, keys: [] }),
+    getMyApiUsageBreakdown: vi.fn().mockResolvedValue(null),
     createApiKey: vi.fn().mockResolvedValue({
       id: "k1",
       label: null,
@@ -34,6 +35,15 @@ describe("MeApiKeysController", () => {
     await controller.listMyKeys(REQUEST);
 
     expect(service.listMyApiKeys).toHaveBeenCalledWith("u1");
+  });
+
+  it("gets the usage breakdown for the session user", async () => {
+    const service = createMockService();
+    const controller = new MeApiKeysController(service);
+
+    await controller.getMyUsageBreakdown(REQUEST);
+
+    expect(service.getMyApiUsageBreakdown).toHaveBeenCalledWith("u1");
   });
 
   it("creates a key with the parsed label", async () => {

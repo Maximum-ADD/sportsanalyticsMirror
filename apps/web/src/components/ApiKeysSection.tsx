@@ -4,8 +4,10 @@ import {
   createMyApiKey,
   deleteMyApiKey,
   fetchMyApiKeys,
+  fetchMyApiUsageBreakdown,
   revokeMyApiKey,
 } from "@/lib/meApi";
+import { ApiUsageBreakdown } from "@/components/ApiUsageBreakdown";
 import { BasketballSpinner } from "@/components/ui/basketball-spinner";
 
 const INPUT_CLASS =
@@ -41,6 +43,14 @@ export function ApiKeysSection() {
   const { data, isPending, isError, refetch } = useQuery({
     queryKey: ["myApiKeys"],
     queryFn: fetchMyApiKeys,
+  });
+
+  // Only worth fetching once the user has a consumer at all — the same
+  // "no keys yet" case listMyApiKeys already distinguishes.
+  const { data: usage } = useQuery({
+    queryKey: ["myApiUsageBreakdown"],
+    queryFn: fetchMyApiUsageBreakdown,
+    enabled: !!data?.consumer,
   });
 
   const createMutation = useMutation({
@@ -126,6 +136,8 @@ export function ApiKeysSection() {
           {data.consumer.rateLimit}/min and {data.consumer.dailyQuota}/day
         </p>
       )}
+
+      {usage && <ApiUsageBreakdown byEndpoint={usage.byEndpoint} byDay={usage.byDay} />}
 
       {isPending ? (
         <div className="flex min-h-32 items-center justify-center">

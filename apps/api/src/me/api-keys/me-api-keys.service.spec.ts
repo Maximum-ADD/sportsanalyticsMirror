@@ -17,6 +17,10 @@ function createMockPrisma() {
     user: {
       findUnique: vi.fn().mockResolvedValue({ name: "Owen", email: "owen@example.com" }),
     },
+    apiUsageLog: {
+      groupBy: vi.fn().mockResolvedValue([]),
+    },
+    $queryRaw: vi.fn().mockResolvedValue([]),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock
   } as any;
 }
@@ -63,6 +67,45 @@ describe("MeApiKeysService", () => {
       expect(result).toEqual({
         consumer: { id: "c1", rateLimit: 60, dailyQuota: 5000, usageCount: 42 },
         keys: [{ id: "k1" }, { id: "k2" }],
+      });
+    });
+  });
+
+  describe("getMyApiUsageBreakdown", () => {
+    it("returns null when the user has no personal consumer yet", async () => {
+      prisma.apiConsumer.findUnique.mockResolvedValue(null);
+
+      const result = await service.getMyApiUsageBreakdown("u1");
+
+      expect(result).toBeNull();
+      expect(prisma.apiUsageLog.groupBy).not.toHaveBeenCalled();
+    });
+
+    it("returns the endpoint and daily breakdowns scoped to the user's consumer", async () => {
+      prisma.apiConsumer.findUnique.mockResolvedValue({ id: "c1" });
+      prisma.apiUsageLog.groupBy.mockResolvedValue([
+        { endpoint: "GET /v1/players", _count: { _all: 30 } },
+        { endpoint: "GET /v1/games", _count: { _all: 12 } },
+      ]);
+      prisma.$queryRaw.mockResolvedValue([
+        { date: new Date("2026-10-01T00:00:00.000Z"), count: 5n },
+        { date: new Date("2026-10-02T00:00:00.000Z"), count: 7n },
+      ]);
+
+      const result = await service.getMyApiUsageBreakdown("u1");
+
+      expect(prisma.apiUsageLog.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { consumerId: "c1" } })
+      );
+      expect(result).toEqual({
+        byEndpoint: [
+          { endpoint: "GET /v1/players", count: 30 },
+          { endpoint: "GET /v1/games", count: 12 },
+        ],
+        byDay: [
+          { date: "2026-10-01", count: 5 },
+          { date: "2026-10-02", count: 7 },
+        ],
       });
     });
   });
